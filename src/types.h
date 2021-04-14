@@ -100,15 +100,39 @@ enum
 	SMS_ROM_SIZE_MAX = 0x80000 // 512KiB
 };
 
+enum SMS_MapperType
+{
+	MAPPER_TYPE_SEGA
+};
+
+struct SMS_SegaMapper
+{
+	struct {
+		bool rom_write_enable;
+		bool ram_enable_c0000_ffff;
+		bool ram_enable_80000_bffff;
+		bool ram_bank_select;
+		uint8_t bank_shift;
+	} fffc;
+	uint8_t fffd;
+	uint8_t fffe;
+	uint8_t ffff;
+};
+
 struct SMS_Cart
 {
 	uint8_t rom[SMS_ROM_SIZE_MAX];
 	uint32_t rom_size;
 	uint32_t rom_mask;
+
+	union {
+		struct SMS_SegaMapper sega_mapper;
+	};
+
+	enum SMS_MapperType mapper_type;
 };
 
-struct SMS_RomHeader
-{
+struct SMS_RomHeader {
 	uint8_t magic[0x8];
 	uint16_t checksum;
 	uint32_t prod_code : 20;
@@ -117,8 +141,9 @@ struct SMS_RomHeader
 	uint8_t rom_size : 4;
 };
 
-struct SMS_Core
-{
+struct SMS_Core {
 	struct Z80 cpu;
 	struct SMS_Cart cart;
+	
+	uint8_t system_ram[0x2000];
 };

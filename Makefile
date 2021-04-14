@@ -9,13 +9,13 @@ SRC			= ./src
 SOURCES 	= src/main.c
 
 # core
-SOURCES		+= src/sms.c src/cpu.c
+SOURCES		+= src/sms.c src/cpu.c src/bus.c
 
 CFLAGS 		= -Wall -Wextra $(RELEASE) -DSMS_DEBUG
 
 OBJS		= $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 
-LIBS		= -lz
+# LIBS		= -lz
 
 ##---------------------------------------------------------------------
 ## BUILD RULES

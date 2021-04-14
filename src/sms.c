@@ -2,8 +2,8 @@
 #include "internal.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
-
 
 // not all values are listed here because the other
 // values are not used by official software and
