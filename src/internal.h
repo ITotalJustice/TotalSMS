@@ -47,6 +47,17 @@
 #define SET_BIT(v, bit, t) v = (v & ~(bit)) | ((t) << (bit))
 
 
+#ifdef SMS_DEBUG
+#include <stdio.h>
+#include <assert.h>
+#define SMS_log(...) fprintf(stdout, __VA_ARGS__)
+#define SMS_log_err(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define SMS_log(...)
+#define SMS_log_err(...)
+#endif // SMS_DEBUG
+
+
 uint8_t Z80_get_8bit_general_register(const struct Z80* z80, enum Z80_RegisterSet set, enum Z80_8bitGeneralRegisters idx);
 uint16_t Z80_get_16bit_general_register(const struct Z80* z80, enum Z80_RegisterSet set, enum Z80_16bitGeneralRegisters idx);
 

@@ -95,8 +95,30 @@ struct Z80
 	struct Z80_GeneralRegisterSet gregs[2];
 };
 
+enum
+{
+	SMS_ROM_SIZE_MAX = 0x80000 // 512KiB
+};
+
+struct SMS_Cart
+{
+	uint8_t rom[SMS_ROM_SIZE_MAX];
+	uint32_t rom_size;
+	uint32_t rom_mask;
+};
+
+struct SMS_RomHeader
+{
+	uint8_t magic[0x8];
+	uint16_t checksum;
+	uint32_t prod_code : 20;
+	uint8_t version : 4;
+	uint8_t region_code : 4;
+	uint8_t rom_size : 4;
+};
 
 struct SMS_Core
 {
 	struct Z80 cpu;
+	struct SMS_Cart cart;
 };

@@ -7,7 +7,9 @@ extern "C" {
 
 #include "types.h"
 
-void test();
+
+bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size);
+
 
 #ifdef __cplusplus
 }

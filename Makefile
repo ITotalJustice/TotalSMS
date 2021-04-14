@@ -1,5 +1,8 @@
 EXE			= TotalSMS
 
+ROM_PATH	= "roms/Sonic The Hedgehog (USA, Europe).sms"
+# ROM_PATH	= "roms/Altered Beast (USA, Europe).sms"
+
 SRC			= ./src
 
 # Main source file.
@@ -8,10 +11,11 @@ SOURCES 	= src/main.c
 # core
 SOURCES		+= src/sms.c src/cpu.c
 
-CFLAGS 		= -Wall -Wformat $(RELEASE)
+CFLAGS 		= -Wall -Wextra $(RELEASE) -DSMS_DEBUG
 
 OBJS		= $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 
+LIBS		= -lz
 
 ##---------------------------------------------------------------------
 ## BUILD RULES
@@ -20,9 +24,7 @@ OBJS		= $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 all: $(EXE)
-	@echo Build complete for $(EXE)
-	# run the exe after build
-	./$(EXE)
+	./$(EXE) $(ROM_PATH)
 
 $(EXE): $(OBJS)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
