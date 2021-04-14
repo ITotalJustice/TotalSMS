@@ -69,3 +69,11 @@ void Z80_set_16bit_general_register(struct Z80* z80, enum Z80_RegisterSet set, e
 
 void Z80_set_8bit_special_register(struct Z80* z80, enum Z80_8bitSpecialRegisters idx, uint8_t value);
 void Z80_set_16bit_special_register(struct Z80* z80, enum Z80_16bitSpecialRegisters idx, uint16_t value);
+
+
+// [BUS]
+uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);
+void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value);
+
+void sega_mapper_setup(struct SMS_Core* sms);
+void codemaster_mapper_setup(struct SMS_Core* sms);

@@ -6,7 +6,8 @@
 #include <stddef.h>
 
 
-enum Z80_Flags {
+enum Z80_Flags
+{
 	Z80_FLAG_C  = 1 << 0, // set if result is > 255
 	Z80_FLAG_N	= 1 << 1, // idk, ued for daa
 	Z80_FLAG_P	= 1 << 2, // parity
@@ -18,12 +19,14 @@ enum Z80_Flags {
 	Z80_FLAG_S	= 1 << 7, // set to bit-7 of a result
 };
 
-enum Z80_RegisterSet {
+enum Z80_RegisterSet
+{
 	REGISTER_SET_MAIN = 0,
 	REGISTER_SET_ALT = 1
 };
 
-enum Z80_8bitGeneralRegisters {
+enum Z80_8bitGeneralRegisters
+{
 	// general registers
 	GENERAL_REGISTER_A,
 	GENERAL_REGISTER_F,
@@ -35,14 +38,16 @@ enum Z80_8bitGeneralRegisters {
 	GENERAL_REGISTER_L,
 };
 
-enum Z80_16bitGeneralRegisters {
+enum Z80_16bitGeneralRegisters
+{
 	GENERAL_REGISTER_AF,
 	GENERAL_REGISTER_BC,
 	GENERAL_REGISTER_DE,
 	GENERAL_REGISTER_HL,
 };
 
-enum Z80_8bitSpecialRegisters {
+enum Z80_8bitSpecialRegisters
+{
 	SPECIAL_REGISTER_IXL,
 	SPECIAL_REGISTER_IXH,
 	SPECIAL_REGISTER_IYL,
@@ -52,7 +57,8 @@ enum Z80_8bitSpecialRegisters {
 	SPECIAL_REGISTER_R,
 };
 
-enum Z80_16bitSpecialRegisters {
+enum Z80_16bitSpecialRegisters
+{
 	SPECIAL_REGISTER_PC, // program counter
 	SPECIAL_REGISTER_SP, // stak pointer
 
@@ -102,21 +108,33 @@ enum
 
 enum SMS_MapperType
 {
-	MAPPER_TYPE_SEGA
+	MAPPER_TYPE_NONE,
+	MAPPER_TYPE_SEGA,
 };
 
 struct SMS_SegaMapper
 {
-	struct {
+	// mapped every 0x400
+	uint8_t* banks[48];
+
+	struct // control
+	{
 		bool rom_write_enable;
 		bool ram_enable_c0000_ffff;
 		bool ram_enable_80000_bffff;
 		bool ram_bank_select;
 		uint8_t bank_shift;
 	} fffc;
+
 	uint8_t fffd;
 	uint8_t fffe;
 	uint8_t ffff;
+};
+
+struct SMS_CodemastersMapper
+{
+	// mapped every 0x4000
+	uint8_t* banks[3];
 };
 
 struct SMS_Cart
@@ -125,14 +143,17 @@ struct SMS_Cart
 	uint32_t rom_size;
 	uint32_t rom_mask;
 
-	union {
-		struct SMS_SegaMapper sega_mapper;
-	};
+	union
+	{
+		struct SMS_SegaMapper sega;
+		struct SMS_CodemastersMapper codemasters;
+	} mappers;
 
 	enum SMS_MapperType mapper_type;
 };
 
-struct SMS_RomHeader {
+struct SMS_RomHeader
+{
 	uint8_t magic[0x8];
 	uint16_t checksum;
 	uint32_t prod_code : 20;
@@ -141,9 +162,10 @@ struct SMS_RomHeader {
 	uint8_t rom_size : 4;
 };
 
-struct SMS_Core {
+struct SMS_Core
+{
 	struct Z80 cpu;
 	struct SMS_Cart cart;
-	
+
 	uint8_t system_ram[0x2000];
 };

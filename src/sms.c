@@ -92,6 +92,14 @@ static void log_header(const struct SMS_RomHeader* header)
 	printf("rom_size: [0x%X] [%s]\n", header->rom_size, valid_rom_size_string[header->rom_size]);
 }
 
+static void setup_mapper(struct SMS_Core* sms)
+{
+	// this is where it would figure out which mapper
+	// to use, for now, hardcode sega mapper (99% of games)
+	sms->cart.mapper_type = MAPPER_TYPE_SEGA;
+	sega_mapper_setup(sms);
+}
+
 bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 {
 	assert(sms && rom && size);
@@ -123,6 +131,9 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 	sms->cart.rom_size = size;
 	sms->cart.rom_mask = size - 1; // this works because size is always pow2
 	
-
+	// this assumes the game is always sega mapper
+	// which (for testing at least), it always will be
+	setup_mapper(sms);
+	
 	return true;
 }
