@@ -68,5 +68,8 @@ void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value);
 uint16_t SMS_read16(struct SMS_Core* sms, uint16_t addr);
 void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value);
 
+uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr);
+void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value);
+
 void sega_mapper_setup(struct SMS_Core* sms);
 void codemaster_mapper_setup(struct SMS_Core* sms);

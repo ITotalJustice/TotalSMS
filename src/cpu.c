@@ -120,6 +120,9 @@ static bool COND(const struct SMS_Core* sms, uint8_t idx)
 #define write8(addr,value) SMS_write8(sms, addr, value)
 #define write16(addr,value) SMS_write16(sms, addr, value)
 
+#define readIO(addr) SMS_read_io(sms, addr)
+#define writeIO(addr,value) SMS_write_io(sms, addr, value)
+
 static uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
 {
 	switch (idx & 0x7)
@@ -559,6 +562,24 @@ static void SET(struct SMS_Core* sms, uint8_t opcode)
 	set_r8(sms, result, opcode);
 }
 
+static void IMM_set(struct SMS_Core* sms, uint8_t mode)
+{
+	assert(mode == 1 && "invalid mode set for SMS");
+	// TODO: find out how this instruction works...
+}
+
+static void IN_imm(struct SMS_Core* sms)
+{
+	const uint8_t port = read8(REG_PC++);
+	REG_A = readIO(port);
+}
+
+static void OUT_imm(struct SMS_Core* sms)
+{
+	const uint8_t port = read8(REG_PC++);
+	writeIO(port, REG_A);
+}
+
 static void execute_cb(struct SMS_Core* sms)
 {
 	const uint8_t opcode = SMS_read8(sms, REG_PC++);
@@ -587,6 +608,32 @@ static void execute_cb(struct SMS_Core* sms)
 		case 0x18: case 0x19: case 0x1A: case 0x1B:
 		case 0x1C: case 0x1D: case 0x1E: case 0x1F:
 			SET(sms, opcode);
+			break;
+	}
+}
+
+static void execute_ed(struct SMS_Core* sms)
+{
+	// fetch
+	const uint8_t opcode = SMS_read8(sms, REG_PC++);
+
+	switch (opcode)
+	{
+		case 0x46: case 0x66:
+			IMM_set(sms, 0);
+			break;
+
+		case 0x56: case 0x76:
+			IMM_set(sms, 1);
+			break;
+			
+		case 0x5E: case 0x7E:
+			IMM_set(sms, 2);
+			break;
+			
+		default:
+			printf("UNK OP: 0xED%02X\n", opcode);
+			exit(-1);
 			break;
 	}
 }
@@ -738,6 +785,9 @@ static void execute(struct SMS_Core* sms)
 			RST(sms, opcode & 0x38);
 			break;
 
+		case 0xD3: OUT_imm(sms); break;
+		case 0xDB: IN_imm(sms); break;
+
 		case 0xF3: DI(sms); break;
 		case 0xFB: EI(sms); break;
 
@@ -745,7 +795,7 @@ static void execute(struct SMS_Core* sms)
 
 		case 0xCB: execute_cb(sms); return;
 		// case 0xDD: return;
-		// case 0xED: return;
+		case 0xED: execute_ed(sms); return;
 		// case 0xFD: return;
 
 		default:
