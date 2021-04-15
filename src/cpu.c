@@ -388,6 +388,50 @@ static void CALL_cc(struct SMS_Core* sms, uint8_t opcode)
 	}
 }
 
+static void RET(struct SMS_Core* sms)
+{
+	REG_PC = POP(sms);
+}
+
+static void RET_cc(struct SMS_Core* sms, uint8_t opcode)
+{
+	if (COND(sms, opcode))
+	{
+		RET(sms);
+	}
+}
+
+static void JR(struct SMS_Core* sms)
+{
+	REG_PC += ((int8_t)read8(REG_PC)) + 1;
+}
+
+static void DJNZ(struct SMS_Core* sms)
+{
+	--REG_B;
+
+	if (REG_B)
+	{
+		JR(sms);
+	}
+	else
+	{
+		REG_PC += 1;
+	}
+}
+
+static void JR_cc(struct SMS_Core* sms, uint8_t opcode)
+{
+	if (COND(sms, opcode))
+	{
+		JR(sms);
+	}
+	else
+	{
+		REG_PC += 1;
+	}
+}
+
 static void JP(struct SMS_Core* sms)
 {
 	REG_PC = read16(REG_PC);
@@ -648,7 +692,10 @@ static void execute(struct SMS_Core* sms)
 			CP(sms, opcode);
 			break;
 
+		case 0x10: DJNZ(sms); break;
+		case 0x18: JR(sms); break;
 		case 0xC3: JP(sms); break;
+		case 0xC9: RET(sms); break;
 		case 0xCD: CALL(sms); break;
 
 		case 0xC1: SET_REG_BC(POP(sms)); break;
@@ -661,9 +708,13 @@ static void execute(struct SMS_Core* sms)
 		case 0xE5: PUSH(sms, REG_HL); break;
 		case 0xF5: PUSH(sms, REG_AF); break;
 
+		case 0x20: case 0x30: case 0x28: case 0x38:
+			JR_cc(sms, opcode);
+			break;
+
 		case 0xC0: case 0xD0: case 0xE0: case 0xF0:
 		case 0xC8: case 0xD8: case 0xE8: case 0xF8:
-			// RET_cc(sms, opcode);
+			RET_cc(sms, opcode);
 			break;
 
 		case 0xC2: case 0xD2: case 0xE2: case 0xF2:
@@ -679,12 +730,12 @@ static void execute(struct SMS_Core* sms)
 		case 0xF3: DI(sms); break;
 		case 0xFB: EI(sms); break;
 
-		case 0xDB: break;
+		// case 0xDB: break;
 
 		case 0xCB: execute_cb(sms); return;
-		case 0xDD: return;
-		case 0xED: return;
-		case 0xFD: return;
+		// case 0xDD: return;
+		// case 0xED: return;
+		// case 0xFD: return;
 
 		default:
 			printf("UNK OP: 0x%02X\n", opcode);
