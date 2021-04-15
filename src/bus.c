@@ -179,6 +179,30 @@ void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value)
 }
 
 
+static uint8_t IO_read_vcounter(const struct SMS_Core* sms)
+{
+	SMS_UNUSED(sms);
+	return 0xFF;
+}
+
+static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
+{
+	SMS_UNUSED(sms);
+	return 0xFF;
+}
+
+static uint8_t IO_read_port_A(const struct SMS_Core* sms)
+{
+	SMS_UNUSED(sms);
+	return 0xFF;
+}
+
+static uint8_t IO_read_port_B(const struct SMS_Core* sms)
+{
+	SMS_UNUSED(sms);
+	return 0xFF;
+}
+
 // [IO]
 uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 {
@@ -200,7 +224,7 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x38: case 0x39: case 0x3A: case 0x3B:
 		case 0x3C: case 0x3D: case 0x3E: case 0x3F:
-			printf("[PORT-READ] 0x%02X last byte of the instruction\n", addr);
+			SMS_log("[PORT-READ] 0x%02X last byte of the instruction\n", addr);
 			break;
 
 		case 0x40: case 0x42: case 0x44: case 0x46:
@@ -211,8 +235,8 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0x68: case 0x6A: case 0x6C: case 0x6E:
 		case 0x70: case 0x72: case 0x74: case 0x76:
 		case 0x78: case 0x7A: case 0x7C: case 0x7E:
-			printf("[PORT-READ] 0x%02X V counter\n", addr);
-			break;
+			SMS_log("[PORT-READ] 0x%02X V counter\n", addr);
+			return IO_read_vcounter(sms);
 
 		case 0x41: case 0x43: case 0x45: case 0x47:
 		case 0x49: case 0x4B: case 0x4D: case 0x4F:
@@ -222,8 +246,8 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0x69: case 0x6B: case 0x6D: case 0x6F:
 		case 0x71: case 0x73: case 0x75: case 0x77:
 		case 0x79: case 0x7B: case 0x7D: case 0x7F:
-			printf("[PORT-READ] 0x%02X H counter\n", addr);
-			break;
+			SMS_log("[PORT-READ] 0x%02X H counter\n", addr);
+			return IO_read_hcounter(sms);
 
 		case 0x80: case 0x82: case 0x84: case 0x86:
 		case 0x88: case 0x8A: case 0x8C: case 0x8E:
@@ -233,7 +257,7 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xA8: case 0xAA: case 0xAC: case 0xAE:
 		case 0xB0: case 0xB2: case 0xB4: case 0xB6:
 		case 0xB8: case 0xBA: case 0xBC: case 0xBE:
-			printf("[PORT-READ] 0x%02X VDP data\n", addr);
+			SMS_log("[PORT-READ] 0x%02X VDP data\n", addr);
 			break;
 
 		case 0x81: case 0x83: case 0x85: case 0x87:
@@ -244,7 +268,7 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xA9: case 0xAB: case 0xAD: case 0xAF:
 		case 0xB1: case 0xB3: case 0xB5: case 0xB7:
 		case 0xB9: case 0xBB: case 0xBD: case 0xBF:
-			printf("[PORT-READ] 0x%02X VDP status flags\n", addr);
+			SMS_log("[PORT-READ] 0x%02X VDP status flags\n", addr);
 			break;
 
 		case 0xC0: case 0xC2: case 0xC4: case 0xC6:
@@ -255,8 +279,8 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xE8: case 0xEA: case 0xEC: case 0xEE:
 		case 0xF0: case 0xF2: case 0xF4: case 0xF6:
 		case 0xF8: case 0xFA: case 0xFC: case 0xFE:
-			printf("[PORT-READ] 0x%02X A\n", addr);
-			break;
+			SMS_log("[PORT-READ] 0x%02X A\n", addr);
+			return IO_read_port_A(sms);
 
 		case 0xC1: case 0xC3: case 0xC5: case 0xC7:
 		case 0xC9: case 0xCB: case 0xCD: case 0xCF:
@@ -266,11 +290,16 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xE9: case 0xEB: case 0xED: case 0xEF:
 		case 0xF1: case 0xF3: case 0xF5: case 0xF7:
 		case 0xF9: case 0xFB: case 0xFD: case 0xFF:
-			printf("[PORT-READ] 0x%02X B\n", addr);
-			break;
+			SMS_log("[PORT-READ] 0x%02X B\n", addr);
+			return IO_read_port_B(sms);
 	}
 
 	return 0xFF;
+}
+
+static void IO_memory_control_write(struct SMS_Core* sms, uint8_t value)
+{
+	SMS_UNUSED(sms); SMS_UNUSED(value);
 }
 
 void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
@@ -285,7 +314,8 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0x28: case 0x2A: case 0x2C: case 0x2E:
 		case 0x30: case 0x32: case 0x34: case 0x36:
 		case 0x38: case 0x3A: case 0x3C: case 0x3E:
-			printf("[PORT-WRITE] 0x%02X Memory Control\n", addr);
+			SMS_log("[PORT-WRITE] 0x%02X Memory Control\n", addr);
+			IO_memory_control_write(sms, value);
 			break;
 
 		case 0x01: case 0x03: case 0x05: case 0x07:
@@ -296,7 +326,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0x29: case 0x2B: case 0x2D: case 0x2F:
 		case 0x31: case 0x33: case 0x35: case 0x37:
 		case 0x39: case 0x3B: case 0x3D: case 0x3F:
-			printf("[PORT-WRITE] 0x%02X IO Control\n", addr);
+			SMS_log("[PORT-WRITE] 0x%02X IO Control\n", addr);
 			break;
 
 		case 0x40: case 0x41: case 0x42: case 0x43:
@@ -315,7 +345,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0x74: case 0x75: case 0x76: case 0x77:
 		case 0x78: case 0x79: case 0x7A: case 0x7B:
 		case 0x7C: case 0x7D: case 0x7E: case 0x7F:
-			printf("[PORT-WRITE] 0x%02X SN76489 PSG\n", addr);
+			SMS_log("[PORT-WRITE] 0x%02X SN76489 PSG\n", addr);
 			break;
 
 		case 0x80: case 0x82: case 0x84: case 0x86:
@@ -326,7 +356,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0xA8: case 0xAA: case 0xAC: case 0xAE:
 		case 0xB0: case 0xB2: case 0xB4: case 0xB6:
 		case 0xB8: case 0xBA: case 0xBC: case 0xBE:
-			printf("[PORT-WRITE] 0x%02X VDP data\n", addr);
+			SMS_log("[PORT-WRITE] 0x%02X VDP data\n", addr);
 			break;
 
 		case 0x81: case 0x83: case 0x85: case 0x87:
@@ -337,7 +367,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0xA9: case 0xAB: case 0xAD: case 0xAF:
 		case 0xB1: case 0xB3: case 0xB5: case 0xB7:
 		case 0xB9: case 0xBB: case 0xBD: case 0xBF:
-			printf("[PORT-WRITE] 0x%02X VDP control flags\n", addr);
+			SMS_log("[PORT-WRITE] 0x%02X VDP control flags\n", addr);
 			break;
 	}
 }
