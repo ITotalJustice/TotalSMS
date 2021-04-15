@@ -55,10 +55,22 @@ enum
 #define FLAG_Z sms->cpu.main.flags.Z
 #define FLAG_S sms->cpu.main.flags.S
 
+#define FLAG_C_ALT sms->cpu.alt.flags.C
+#define FLAG_N_ALT sms->cpu.alt.flags.N
+#define FLAG_P_ALT sms->cpu.alt.flags.P // P/V
+#define FLAG_V_ALT sms->cpu.alt.flags.P // P/V
+#define FLAG_H_ALT sms->cpu.alt.flags.H
+#define FLAG_Z_ALT sms->cpu.alt.flags.Z
+#define FLAG_S_ALT sms->cpu.alt.flags.S
+
 // REG_F getter
 #define REG_F_GET() \
 	((FLAG_S << 7) | (FLAG_Z << 6) | (FLAG_H << 4) | \
 	(FLAG_V << 2) | (FLAG_N << 1) | (FLAG_C << 0))
+
+#define REG_F_GET_ALT() \
+	((FLAG_S_ALT << 7) | (FLAG_Z_ALT << 6) | (FLAG_H_ALT << 4) | \
+	(FLAG_V_ALT << 2) | (FLAG_N_ALT << 1) | (FLAG_C_ALT << 0))
 
 // REG_F setter
 #define REG_F_SET(v) \
@@ -69,6 +81,15 @@ enum
 	FLAG_N = (v) & FLAG_N_MASK; \
 	FLAG_C = (v) & FLAG_C_MASK
 
+// REG_F setter
+#define REG_F_SET_ALT(v) \
+	FLAG_S_ALT = (v) & FLAG_S_MASK; \
+	FLAG_Z_ALT = (v) & FLAG_Z_MASK; \
+	FLAG_H_ALT = (v) & FLAG_H_MASK; \
+	FLAG_V_ALT = (v) & FLAG_V_MASK; \
+	FLAG_N_ALT = (v) & FLAG_N_MASK; \
+	FLAG_C_ALT = (v) & FLAG_C_MASK
+
 // getters
 #define REG_BC ((REG_B << 8) | REG_C)
 #define REG_DE ((REG_D << 8) | REG_E)
@@ -77,6 +98,11 @@ enum
 #define REG_IX ((REG_IXL << 8) | REG_IXH)
 #define REG_IY ((REG_IYL << 8) | REG_IYH)
 
+#define REG_BC_ALT ((REG_B_ALT << 8) | REG_C_ALT)
+#define REG_DE_ALT ((REG_D_ALT << 8) | REG_E_ALT)
+#define REG_HL_ALT ((REG_H_ALT << 8) | REG_L_ALT)
+#define REG_AF_ALT ((REG_A_ALT << 8) | REG_F_GET_ALT())
+
 // setters
 #define SET_REG_BC(v) REG_B = (((v) >> 8) & 0xFF); REG_C = ((v) & 0xFF)
 #define SET_REG_DE(v) REG_D = (((v) >> 8) & 0xFF); REG_E = ((v) & 0xFF)
@@ -84,6 +110,11 @@ enum
 #define SET_REG_AF(v) REG_A = (((v) >> 8) & 0xFF); REG_F_SET(v)
 #define SET_REG_IX(v) REG_IXL = (((v) >> 8) & 0xFF); REG_IXH = ((v) & 0xFF)
 #define SET_REG_IY(v) REG_IYL = (((v) >> 8) & 0xFF); REG_IYH = ((v) & 0xFF)
+
+#define SET_REG_BC_ALT(v) REG_B_ALT = (((v) >> 8) & 0xFF); REG_C_ALT = ((v) & 0xFF)
+#define SET_REG_DE_ALT(v) REG_D_ALT = (((v) >> 8) & 0xFF); REG_E_ALT = ((v) & 0xFF)
+#define SET_REG_HL_ALT(v) REG_H_ALT = (((v) >> 8) & 0xFF); REG_L_ALT = ((v) & 0xFF)
+#define SET_REG_AF_ALT(v) REG_A_ALT = (((v) >> 8) & 0xFF); REG_F_SET_ALT(v)
 
 #define SET_FLAGS_NHZ(n,h,z) \
 	FLAG_N = n; \
@@ -647,6 +678,44 @@ static void OUT_imm(struct SMS_Core* sms)
 	writeIO(port, REG_A);
 }
 
+static void EX_af_af(struct SMS_Core* sms)
+{
+	const uint16_t temp = REG_AF_ALT;
+	SET_REG_AF_ALT(REG_AF);
+	SET_REG_AF(temp);
+}
+
+static void EXX(struct SMS_Core* sms)
+{
+	// BC
+	uint16_t temp = REG_BC_ALT;
+	SET_REG_BC_ALT(REG_BC);
+	SET_REG_BC(temp);
+	// DE
+	temp = REG_DE_ALT;
+	SET_REG_DE_ALT(REG_DE);
+	SET_REG_DE(temp);
+	// HL
+	temp = REG_HL_ALT;
+	SET_REG_HL_ALT(REG_HL);
+	SET_REG_HL(temp);
+}
+
+static void EX_de_hl(struct SMS_Core* sms)
+{
+	const uint16_t temp = REG_DE;
+	SET_REG_DE(REG_HL);
+	SET_REG_HL(temp);
+}
+
+static void EX_sp_hl(struct SMS_Core* sms)
+{
+	// this swaps the value at (SP), not SP!
+	const uint16_t value = read16(REG_SP);
+	write16(REG_SP, REG_HL);
+	SET_REG_HL(value);
+}
+
 static void execute_cb(struct SMS_Core* sms)
 {
 	const uint8_t opcode = SMS_read8(sms, REG_PC++);
@@ -860,6 +929,11 @@ static void execute(struct SMS_Core* sms)
 		case 0xE7: case 0xEF: case 0xF7: case 0xFF:
 			RST(sms, opcode & 0x38);
 			break;
+
+		case 0x08: EX_af_af(sms); break;
+		case 0xD9: EXX(sms); break;
+		case 0xE3: EX_sp_hl(sms); break;
+		case 0xEB: EX_de_hl(sms); break;
 
 		case 0xD3: OUT_imm(sms); break;
 		case 0xDB: IN_imm(sms); break;
