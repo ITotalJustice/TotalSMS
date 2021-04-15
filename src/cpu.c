@@ -369,6 +369,12 @@ static void LD_rr(struct SMS_Core* sms, uint8_t opcode)
 	set_r8(sms, get_r8(sms, opcode), opcode >> 3);
 }
 
+static void RST(struct SMS_Core* sms, uint16_t value)
+{
+	PUSH(sms, REG_PC);
+	REG_PC = value;
+}
+
 static void CALL(struct SMS_Core* sms)
 {
 	const uint16_t value = read16(REG_PC);
@@ -725,6 +731,11 @@ static void execute(struct SMS_Core* sms)
 		case 0xC4: case 0xD4: case 0xE4: case 0xF4:
 		case 0xCC: case 0xDC: case 0xEC: case 0xFC:
 			CALL_cc(sms, opcode);
+			break;
+
+		case 0xC7: case 0xCF: case 0xD7: case 0xDF:
+		case 0xE7: case 0xEF: case 0xF7: case 0xFF:
+			RST(sms, opcode & 0x38);
 			break;
 
 		case 0xF3: DI(sms); break;
