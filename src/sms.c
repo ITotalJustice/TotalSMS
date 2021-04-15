@@ -140,6 +140,10 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 	sms->cpu.PC = 0x0000; // i think?
 	sms->cpu.SP = 0xDFF0;
 
+	// port A/B are hi when a button is NOT pressed
+	sms->port.a = 0xFF;
+	sms->port.b = 0xFF;
+
 	return true;
 }
 

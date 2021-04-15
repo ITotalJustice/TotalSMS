@@ -4,26 +4,6 @@
 #include <string.h>
 #include <assert.h>
 
-/*
-$0000-$bfff	Cartridge (ROM/RAM/etc) (or other attached hardware)
-$c000-$dfff	System RAM
-$e000-$ffff	System RAM (mirror)
-*/
-
-/*
-$0000-$03ff	ROM (unpaged)
-$0400-$3fff	ROM mapper slot 0
-$4000-$7fff	ROM mapper slot 1
-$8000-$bfff	ROM/RAM mapper slot 2
-$c000-$dfff	System RAM
-$e000-$ffff	System RAM (mirror)
-$fff8	3D glasses control
-$fff9-$fffb	3D glasses control (mirrors)
-$fffc	Cartridge RAM mapper control
-$fffd	Mapper slot 0 control
-$fffe	Mapper slot 1 control
-$ffff	Mapper slot 2 control
-*/
 
 static inline void sega_mapper_update_slot0(struct SMS_Core* sms)
 {
@@ -32,9 +12,10 @@ static inline void sega_mapper_update_slot0(struct SMS_Core* sms)
 	// this is fixed, never updated!
 	sms->cart.mappers.sega.banks[0x00] = sms->cart.rom;
 
-	for (size_t i = 1; i < 0x10; ++i)
+	for (size_t i = 0; i < 0xF; ++i)
 	{
-		sms->cart.mappers.sega.banks[i + 0x00] = sms->cart.rom + offset + (0x0400 * i);
+		// only the first 15 banks are saved
+		sms->cart.mappers.sega.banks[i + 0x01] = sms->cart.rom + offset + (0x0400 * i);
 	}
 }
 
@@ -191,18 +172,6 @@ static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 	return 0xFF;
 }
 
-static uint8_t IO_read_port_A(const struct SMS_Core* sms)
-{
-	SMS_UNUSED(sms);
-	return 0xFF;
-}
-
-static uint8_t IO_read_port_B(const struct SMS_Core* sms)
-{
-	SMS_UNUSED(sms);
-	return 0xFF;
-}
-
 // [IO]
 uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 {
@@ -284,7 +253,7 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xF0: case 0xF2: case 0xF4: case 0xF6:
 		case 0xF8: case 0xFA: case 0xFC: case 0xFE:
 			SMS_log("[PORT-READ] 0x%02X A\n", addr);
-			return IO_read_port_A(sms);
+			return sms->port.a;
 
 		case 0xC1: case 0xC3: case 0xC5: case 0xC7:
 		case 0xC9: case 0xCB: case 0xCD: case 0xCF:
@@ -295,7 +264,7 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xF1: case 0xF3: case 0xF5: case 0xF7:
 		case 0xF9: case 0xFB: case 0xFD: case 0xFF:
 			SMS_log("[PORT-READ] 0x%02X B\n", addr);
-			return IO_read_port_B(sms);
+			return sms->port.b;
 	}
 
 	return 0xFF;
@@ -350,6 +319,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0x78: case 0x79: case 0x7A: case 0x7B:
 		case 0x7C: case 0x7D: case 0x7E: case 0x7F:
 			SMS_log("[PORT-WRITE] 0x%02X SN76489 PSG\n", addr);
+			SN76489_reg_write(sms, value);
 			break;
 
 		case 0x80: case 0x82: case 0x84: case 0x86:

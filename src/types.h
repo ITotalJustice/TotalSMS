@@ -221,10 +221,35 @@ struct SMS_Ports
 	uint8_t b;
 };
 
+struct SN76489
+{
+	struct
+	{
+		uint16_t vol : 4;
+		uint16_t tone : 10;
+	} tone_channels[3];
+
+	struct
+	{
+		// this can be either 16-bit or 15-bit...
+		uint16_t lfsr;
+
+		uint8_t vol : 4;
+		uint8_t mode : 1;
+		uint8_t shift_rate : 2;
+	} noise_channel;
+
+	// which of the 4 channels are latched.
+	uint8_t latched_channel;
+	// vol or tone (or mode + shift instead of tone for noise).
+	uint8_t latched_type;
+};
+
 struct SMS_Core
 {
 	struct Z80 cpu;
 	struct SMS_Vdp vdp;
+	struct SN76489 apu;
 	struct SMS_Cart cart;
 	struct SMS_Ports port;
 

@@ -50,8 +50,8 @@
 #ifdef SMS_DEBUG
 #include <stdio.h>
 #include <assert.h>
-#define SMS_log(...) fprintf(stdout, __VA_ARGS__)
-#define SMS_log_err(...) fprintf(stderr, __VA_ARGS__)
+#define SMS_log(...) fprintf(stdout, __VA_ARGS__); fflush(stdout)
+#define SMS_log_err(...) fprintf(stderr, __VA_ARGS__); fflush(stderr)
 #else
 #define SMS_log(...)
 #define SMS_log_err(...)
@@ -73,3 +73,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 
 void sega_mapper_setup(struct SMS_Core* sms);
 void codemaster_mapper_setup(struct SMS_Core* sms);
+
+
+// [APU]
+void SN76489_reg_write(struct SMS_Core* sms, uint8_t value);
