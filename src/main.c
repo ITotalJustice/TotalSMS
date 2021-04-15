@@ -47,5 +47,8 @@ int main(int argc, char const *argv[]) {
 		return -1;
 	}
 
+	// todo: run forever...
+	SMS_run_frame(&CORE);
+
 	return 0;
 }

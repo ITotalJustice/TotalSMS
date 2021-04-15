@@ -58,22 +58,15 @@
 #endif // SMS_DEBUG
 
 
-uint8_t Z80_get_8bit_general_register(const struct Z80* z80, enum Z80_RegisterSet set, enum Z80_8bitGeneralRegisters idx);
-uint16_t Z80_get_16bit_general_register(const struct Z80* z80, enum Z80_RegisterSet set, enum Z80_16bitGeneralRegisters idx);
-
-uint8_t Z80_get_8bit_special_register(const struct Z80* z80, enum Z80_8bitSpecialRegisters idx);
-uint16_t Z80_get_16bit_special_register(const struct Z80* z80, enum Z80_16bitSpecialRegisters idx);
-
-void Z80_set_8bit_general_register(struct Z80* z80, enum Z80_RegisterSet set, enum Z80_8bitGeneralRegisters idx, uint8_t value);
-void Z80_set_16bit_general_register(struct Z80* z80, enum Z80_RegisterSet set, enum Z80_16bitGeneralRegisters idx, uint16_t value);
-
-void Z80_set_8bit_special_register(struct Z80* z80, enum Z80_8bitSpecialRegisters idx, uint8_t value);
-void Z80_set_16bit_special_register(struct Z80* z80, enum Z80_16bitSpecialRegisters idx, uint16_t value);
+// [CPU]
+void Z80_run(struct SMS_Core* sms);
 
 
 // [BUS]
 uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);
 void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value);
+uint16_t SMS_read16(struct SMS_Core* sms, uint16_t addr);
+void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value);
 
 void sega_mapper_setup(struct SMS_Core* sms);
 void codemaster_mapper_setup(struct SMS_Core* sms);

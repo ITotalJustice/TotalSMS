@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+
 // not all values are listed here because the other
 // values are not used by official software and
 // the checksum is broken on those sizes.
@@ -134,6 +135,28 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 	// this assumes the game is always sega mapper
 	// which (for testing at least), it always will be
 	setup_mapper(sms);
-	
+
+	// setup cpu regs
+	sms->cpu.PC = 0x0000; // i think?
+	sms->cpu.SP = 0xDFF0;
+
 	return true;
+}
+
+void SMS_step(struct SMS_Core* sms)
+{
+	// step cpu
+	Z80_run(sms);
+	
+	// step vdp
+	// step apu
+}
+
+void SMS_run_frame(struct SMS_Core* sms)
+{
+	// todo: find out how many cycles
+	for (;;)
+	{
+		SMS_step(sms);
+	}
 }

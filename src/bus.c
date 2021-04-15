@@ -162,3 +162,17 @@ void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 			break;
 	}
 }
+
+uint16_t SMS_read16(struct SMS_Core* sms, uint16_t addr)
+{
+	const uint8_t lo = SMS_read8(sms, addr + 0);
+	const uint8_t hi = SMS_read8(sms, addr + 1);
+
+	return (hi << 8) | lo;
+}
+
+void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value)
+{
+	SMS_write8(sms, addr + 0, value & 0xFF);
+    SMS_write8(sms, addr + 1, value >> 8);
+}

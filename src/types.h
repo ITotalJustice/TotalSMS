@@ -6,19 +6,6 @@
 #include <stddef.h>
 
 
-enum Z80_Flags
-{
-	Z80_FLAG_C  = 1 << 0, // set if result is > 255
-	Z80_FLAG_N	= 1 << 1, // idk, ued for daa
-	Z80_FLAG_P	= 1 << 2, // parity
-	Z80_FLAG_V	= 1 << 2, // overflow
-	Z80_FLAG_C3	= 1 << 3, // set to bit-3 of a result
-	Z80_FLAG_H	= 1 << 4, // set if carry from bit-3 and bit-4
-	Z80_FLAG_C5 = 1 << 5, // set to bit-5 of a result
-	Z80_FLAG_Z	= 1 << 6, // set if the result is 0
-	Z80_FLAG_S	= 1 << 7, // set to bit-7 of a result
-};
-
 enum Z80_RegisterSet
 {
 	REGISTER_SET_MAIN = 0,
@@ -68,14 +55,23 @@ enum Z80_16bitSpecialRegisters
 
 struct Z80_GeneralRegisterSet
 {
-	uint8_t A;
-	uint8_t F;
 	uint8_t B;
 	uint8_t C;
 	uint8_t D;
 	uint8_t E;
 	uint8_t H;
 	uint8_t L;
+	uint8_t A;
+
+	struct
+	{
+		bool C;
+		bool N;
+		bool P;
+		bool H;
+		bool Z;
+		bool S;
+	} flags;
 };
 
 
@@ -98,7 +94,12 @@ struct Z80
 
 	// [general purpose registers]
 	// theres 2-sets, main and alt
-	struct Z80_GeneralRegisterSet gregs[2];
+	struct Z80_GeneralRegisterSet main;
+	struct Z80_GeneralRegisterSet alt;
+
+	// interrupt flipflops
+	bool IFF1;
+	bool IFF2;
 };
 
 enum
