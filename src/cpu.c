@@ -1,5 +1,6 @@
 #include "internal.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -97,7 +98,7 @@ enum
 	FLAG_Z = z; \
 	FLAG_S = s;
 
-static inline bool COND(const struct SMS_Core* sms, uint8_t idx)
+static bool COND(const struct SMS_Core* sms, uint8_t idx)
 {
 	switch (idx & 0x7)
 	{
@@ -119,7 +120,7 @@ static inline bool COND(const struct SMS_Core* sms, uint8_t idx)
 #define write8(addr,value) SMS_write8(sms, addr, value)
 #define write16(addr,value) SMS_write16(sms, addr, value)
 
-static inline uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
+static uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
 {
 	switch (idx & 0x7)
 	{
@@ -136,7 +137,7 @@ static inline uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
 	SMS_UNREACHABLE(0xFF);
 }
 
-static inline void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
+static void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
 {
 	switch (idx & 0x7)
 	{
@@ -151,7 +152,146 @@ static inline void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
 	}
 }
 
-static inline void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
+static uint16_t get_r16(struct SMS_Core* sms, uint8_t idx)
+{
+	switch (idx & 0x3)
+	{
+		case 0x0: return REG_BC;
+		case 0x1: return REG_DE;
+		case 0x2: return REG_HL;
+		case 0x3: return REG_SP;
+	}
+
+	SMS_UNREACHABLE(0xFF);
+}
+
+static void set_r16(struct SMS_Core* sms, uint16_t value, uint8_t idx)
+{
+	switch (idx & 0x3)
+	{
+		case 0x0: SET_REG_BC(value); break;
+		case 0x1: SET_REG_DE(value); break;
+		case 0x2: SET_REG_HL(value); break;
+		case 0x3: REG_SP = value; break;
+	}
+}
+
+static void _ADD(struct SMS_Core* sms, uint8_t value)
+{
+	const uint8_t result = REG_A + value;
+	
+	FLAG_C = (REG_A + value) > 0xFF;
+	FLAG_N = false;
+	FLAG_H = ((REG_A & 0xF) + (value & 0xF)) > 0xF;
+	FLAG_Z = result == 0;
+	FLAG_S = result >> 7;
+
+	REG_A = result;
+}
+
+static void _SUB(struct SMS_Core* sms, uint8_t value)
+{
+	const uint8_t result = REG_A - value;
+	
+	FLAG_C = value > REG_A;
+	FLAG_N = true;
+	FLAG_H = (REG_A & 0xF) < (value & 0xF);
+	FLAG_Z = result == 0;
+	FLAG_S = result >> 7;
+
+	REG_A = result;
+}
+
+static void AND(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t value = get_r8(sms, opcode);
+	const uint8_t result = REG_A & value;
+
+	FLAG_C = false;
+	FLAG_N = false;
+	FLAG_P = PARITY(result);
+	FLAG_H = true;
+	FLAG_Z = result == 0;
+	FLAG_S = result >> 7;
+
+	REG_A = result;
+}
+
+static void XOR(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t value = get_r8(sms, opcode);
+	const uint8_t result = REG_A ^ value;
+
+	FLAG_C = false;
+	FLAG_N = false;
+	FLAG_P = PARITY(result);
+	FLAG_H = false;
+	FLAG_Z = result == 0;
+	FLAG_S = result >> 7;
+
+	REG_A = result;
+}
+
+static void OR(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t value = get_r8(sms, opcode);
+	const uint8_t result = REG_A | value;
+
+	FLAG_C = false;
+	FLAG_N = false;
+	FLAG_P = PARITY(result);
+	FLAG_H = false;
+	FLAG_Z = result == 0;
+	FLAG_S = result >> 7;
+
+	REG_A = result;
+}
+
+static void CP(struct SMS_Core* sms, uint8_t value)
+{
+	const uint8_t result = REG_A - value;
+	
+	FLAG_C = value > REG_A;
+	FLAG_N = true;
+	FLAG_H = (REG_A & 0xF) < (value & 0xF);
+	FLAG_Z = result == 0;
+	FLAG_S = result >> 7;
+}
+
+static void ADD(struct SMS_Core* sms, uint8_t opcode)
+{
+	_ADD(sms, get_r8(sms, opcode));
+}
+
+static void SUB(struct SMS_Core* sms, uint8_t opcode)
+{
+	_SUB(sms, get_r8(sms, opcode));
+}
+
+static void ADC(struct SMS_Core* sms, uint8_t opcode)
+{
+	_ADD(sms, get_r8(sms, opcode) + FLAG_C);
+}
+
+static void SBC(struct SMS_Core* sms, uint8_t opcode)
+{
+	_SUB(sms, get_r8(sms, opcode) + FLAG_C);
+}
+
+static void PUSH(struct SMS_Core* sms, uint16_t value)
+{
+	write8(--REG_SP, (value >> 8) & 0xFF);
+	write8(--REG_SP, value & 0xFF);
+}
+
+static uint16_t POP(struct SMS_Core* sms)
+{
+	const uint16_t result = read16(REG_SP);
+	REG_SP += 2;
+	return result;
+}
+
+static void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
 {
 	FLAG_C = value >> 7;
 	FLAG_N = false;
@@ -161,7 +301,7 @@ static inline void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_
 	FLAG_S = result >> 7;
 }
 
-static inline void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
+static void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
 {
 	FLAG_C = value & 0x1;
 	FLAG_N = false;
@@ -171,16 +311,93 @@ static inline void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8
 	FLAG_S = result >> 7;
 }
 
+static void ADD_HL(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint16_t value = get_r16(sms, opcode >> 4);
+	const uint16_t HL = REG_HL;
+	const uint16_t result = HL + value;
+	FLAG_C = HL + value > 0xFFFF;
+	FLAG_H = (HL & 0xFFF) + (value & 0xFFF) > 0xFFF;
+	FLAG_N = false;
+	SET_REG_HL(result);
+}
+
+static void INC_r8(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t result = get_r8(sms, opcode >> 3) + 1;
+	set_r8(sms, result, opcode >> 3);
+	FLAG_N = false;
+	FLAG_H = (result & 0xF) == 0;
+	FLAG_Z = result == 0;
+}
+
+static void DEC_r8(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t result = get_r8(sms, opcode >> 3) - 1;
+	set_r8(sms, result, opcode >> 3);
+	FLAG_N = true;
+	FLAG_H = (result & 0xF) == 0xF;
+	FLAG_Z = result == 0;
+}
+
+static void INC_r16(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t idx = opcode >> 4;
+	set_r16(sms, get_r16(sms, idx) + 1, idx);
+}
+
+static void DEC_r16(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint8_t idx = opcode >> 4;
+	set_r16(sms, get_r16(sms, idx) - 1, idx);
+}
+
+static void LD_16(struct SMS_Core* sms, uint8_t opcode)
+{
+	const uint16_t value = read16(REG_PC);
+	REG_PC += 2;
+	set_r16(sms, value, opcode >> 4);
+}
+
+static void LD_r_u8(struct SMS_Core* sms, uint8_t opcode)
+{
+	set_r8(sms, read8(REG_PC++), opcode >> 3);
+}
+
 static void LD_rr(struct SMS_Core* sms, uint8_t opcode)
 {
 	set_r8(sms, get_r8(sms, opcode), opcode >> 3);
+}
+
+static void CALL(struct SMS_Core* sms)
+{
+	const uint16_t value = read16(REG_PC);
+	PUSH(sms, REG_PC + 2);
+	REG_PC = value;
+}
+
+static void CALL_cc(struct SMS_Core* sms, uint8_t opcode)
+{
+	if (COND(sms, opcode))
+	{
+		CALL(sms);
+	}
+	else
+	{
+		REG_PC += 2;
+	}
+}
+
+static void JP(struct SMS_Core* sms)
+{
+	REG_PC = read16(REG_PC);
 }
 
 static void JP_cc(struct SMS_Core* sms, uint8_t opcode)
 {
 	if (COND(sms, opcode))
 	{
-		REG_PC = read16(REG_PC);
+		JP(sms);
 	}
 	else
 	{
@@ -198,45 +415,45 @@ static void DI(struct SMS_Core* sms)
 	sms->cpu.IFF1 = false;
 }
 
-static inline void _RL(struct SMS_Core* sms, uint8_t opcode, uint8_t value, bool carry)
+static void _RL(struct SMS_Core* sms, uint8_t opcode, uint8_t value, bool carry)
 {
 	const uint8_t result = (value << 1) | carry; 
 	set_r8(sms, result, opcode);
 	shift_left_flags(sms, result, opcode);
 }
 
-static inline void _RR(struct SMS_Core* sms, uint8_t opcode, uint8_t value, bool carry)
+static void _RR(struct SMS_Core* sms, uint8_t opcode, uint8_t value, bool carry)
 {
 	const uint8_t result = (value >> 1) | (carry << 7); 
 	set_r8(sms, result, opcode);
 	shift_right_flags(sms, result, opcode);
 }
 
-static inline void RL(struct SMS_Core* sms, uint8_t opcode)
+static void RL(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	_RL(sms, opcode, value, FLAG_C);
 }
 
-static inline void RLC(struct SMS_Core* sms, uint8_t opcode)
+static void RLC(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	_RL(sms, opcode, value, value >> 7);
 }
 
-static inline void RR(struct SMS_Core* sms, uint8_t opcode)
+static void RR(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	_RR(sms, opcode, value, FLAG_C);
 }
 
-static inline void RRC(struct SMS_Core* sms, uint8_t opcode)
+static void RRC(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	_RR(sms, opcode, value, value & 1);
 }
 
-static inline void SLA(struct SMS_Core* sms, uint8_t opcode)
+static void SLA(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = value << 1;
@@ -244,7 +461,7 @@ static inline void SLA(struct SMS_Core* sms, uint8_t opcode)
 	shift_left_flags(sms, result, opcode);
 }
 
-static inline void SRA(struct SMS_Core* sms, uint8_t opcode)
+static void SRA(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = (value >> 1) | (value & 0x80);
@@ -252,7 +469,7 @@ static inline void SRA(struct SMS_Core* sms, uint8_t opcode)
 	shift_right_flags(sms, result, opcode);
 }
 
-static inline void SLL(struct SMS_Core* sms, uint8_t opcode)
+static void SLL(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = (value << 1) | 0x1;
@@ -260,7 +477,7 @@ static inline void SLL(struct SMS_Core* sms, uint8_t opcode)
 	shift_left_flags(sms, result, opcode);
 }
 
-static inline void SRL(struct SMS_Core* sms, uint8_t opcode)
+static void SRL(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = value >> 1;
@@ -268,7 +485,7 @@ static inline void SRL(struct SMS_Core* sms, uint8_t opcode)
 	shift_right_flags(sms, result, opcode);
 }
 
-static inline void BIT(struct SMS_Core* sms, uint8_t opcode)
+static void BIT(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t bit = 1 << (opcode >> 3);
 	const uint8_t value = get_r8(sms, opcode);
@@ -276,7 +493,7 @@ static inline void BIT(struct SMS_Core* sms, uint8_t opcode)
 	SET_FLAGS_NHZ(false, true, result == 0);
 }
 
-static inline void RES(struct SMS_Core* sms, uint8_t opcode)
+static void RES(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t bit = 1 << (opcode >> 3);
 	const uint8_t value = get_r8(sms, opcode);
@@ -284,7 +501,7 @@ static inline void RES(struct SMS_Core* sms, uint8_t opcode)
 	set_r8(sms, result, opcode);
 }
 
-static inline void SET(struct SMS_Core* sms, uint8_t opcode)
+static void SET(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t bit = 1 << (opcode >> 3);
 	const uint8_t value = get_r8(sms, opcode);
@@ -292,7 +509,7 @@ static inline void SET(struct SMS_Core* sms, uint8_t opcode)
 	set_r8(sms, result, opcode);
 }
 
-static inline void execute_cb(struct SMS_Core* sms)
+static void execute_cb(struct SMS_Core* sms)
 {
 	const uint8_t opcode = SMS_read8(sms, REG_PC++);
 
@@ -333,8 +550,36 @@ static void execute(struct SMS_Core* sms)
 	{
 		case 0x00: break; // nop
 		
-		// case 0x04: case 0x0C: case 0x14: case 0x1C: case 0x24: case 0x2C: case 0x3C: INC_r(); break;
-		// case 0x05: case 0x0D: case 0x15: case 0x1D: case 0x25: case 0x2D: case 0x3D: DEC_r(); break;
+		case 0x04: case 0x0C: case 0x14: case 0x1C:
+		case 0x24: case 0x2C: case 0x34: case 0x3C:
+			INC_r8(sms, opcode);
+			break;
+
+		case 0x05: case 0x0D: case 0x15: case 0x1D:
+		case 0x25: case 0x2D: case 0x35: case 0x3D:
+			DEC_r8(sms, opcode);
+			break;
+
+		case 0x03: case 0x13: case 0x23: case 0x33:
+			INC_r16(sms, opcode);
+			break;
+
+		case 0x0B: case 0x1B: case 0x2B: case 0x3B:
+			DEC_r16(sms, opcode);
+			break;
+
+		case 0x09: case 0x19: case 0x29: case 0x39:
+			ADD_HL(sms, opcode);
+			break;
+
+		case 0x01: case 0x11: case 0x21: case 0x31:
+			LD_16(sms, opcode);
+			break;
+
+		case 0x06: case 0x0E: case 0x16: case 0x1E:
+		case 0x26: case 0x2E: case 0x36: case 0x3E:
+			LD_r_u8(sms, opcode);
+			break;
 
 		case 0x41: case 0x42: case 0x43: case 0x44:
 		case 0x45: case 0x46: case 0x47: case 0x48:
@@ -363,14 +608,58 @@ static void execute(struct SMS_Core* sms)
 
 		// case 0x76: HALT(sms); break;
 
-		// case 0x80: case 0x81: case 0x82: case 0x83: case 0x84: case 0x85: case 0x86: case 0x87: ADD_r(); break;
-		// case 0x88: case 0x89: case 0x8A: case 0x8B: case 0x8C: case 0x8D: case 0x8E: case 0x8F: ADC_r(); break;
-		// case 0x90: case 0x91: case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: case 0x97: SUB_r(); break;
-		// case 0x98: case 0x99: case 0x9A: case 0x9B: case 0x9C: case 0x9D: case 0x9E: case 0x9F: SBC_r(); break;
-		// case 0xA0: case 0xA1: case 0xA2: case 0xA3: case 0xA4: case 0xA5: case 0xA6: case 0xA7: AND_r(); break;
-		// case 0xA8: case 0xA9: case 0xAA: case 0xAB: case 0xAC: case 0xAD: case 0xAE: case 0xAF: XOR_r(); break;
-		// case 0xB0: case 0xB1: case 0xB2: case 0xB3: case 0xB4: case 0xB5: case 0xB6: case 0xB7: OR_r(); break;
-		// case 0xB8: case 0xB9: case 0xBA: case 0xBB: case 0xBC: case 0xBD: case 0xBE: case 0xBF: CP_r(); break;
+		case 0x80: case 0x81: case 0x82: case 0x83:
+		case 0x84: case 0x85: case 0x86: case 0x87:
+			ADD(sms, opcode);
+			break;
+
+		case 0x88: case 0x89: case 0x8A: case 0x8B:
+		case 0x8C: case 0x8D: case 0x8E: case 0x8F:
+			ADC(sms, opcode);
+			break;
+
+		case 0x90: case 0x91: case 0x92: case 0x93:
+		case 0x94: case 0x95: case 0x96: case 0x97:
+			SUB(sms, opcode);
+			break;
+
+		case 0x98: case 0x99: case 0x9A: case 0x9B:
+		case 0x9C: case 0x9D: case 0x9E: case 0x9F:
+			SBC(sms, opcode);
+			break;
+
+		case 0xA0: case 0xA1: case 0xA2: case 0xA3:
+		case 0xA4: case 0xA5: case 0xA6: case 0xA7:
+			AND(sms, opcode);
+			break;
+
+		case 0xA8: case 0xA9: case 0xAA: case 0xAB:
+		case 0xAC: case 0xAD: case 0xAE: case 0xAF:
+			XOR(sms, opcode);
+			break;
+
+		case 0xB0: case 0xB1: case 0xB2: case 0xB3:
+		case 0xB4: case 0xB5: case 0xB6: case 0xB7:
+			OR(sms, opcode);
+			break;
+
+		case 0xB8: case 0xB9: case 0xBA: case 0xBB:
+		case 0xBC: case 0xBD: case 0xBE: case 0xBF:
+			CP(sms, opcode);
+			break;
+
+		case 0xC3: JP(sms); break;
+		case 0xCD: CALL(sms); break;
+
+		case 0xC1: SET_REG_BC(POP(sms)); break;
+		case 0xD1: SET_REG_DE(POP(sms)); break;
+		case 0xE1: SET_REG_HL(POP(sms)); break;
+		case 0xF1: SET_REG_AF(POP(sms)); break;
+
+		case 0xC5: PUSH(sms, REG_BC); break;
+		case 0xD5: PUSH(sms, REG_DE); break;
+		case 0xE5: PUSH(sms, REG_HL); break;
+		case 0xF5: PUSH(sms, REG_AF); break;
 
 		case 0xC0: case 0xD0: case 0xE0: case 0xF0:
 		case 0xC8: case 0xD8: case 0xE8: case 0xF8:
@@ -384,11 +673,13 @@ static void execute(struct SMS_Core* sms)
 
 		case 0xC4: case 0xD4: case 0xE4: case 0xF4:
 		case 0xCC: case 0xDC: case 0xEC: case 0xFC:
-			// CALL_cc(sms, opcode);
+			CALL_cc(sms, opcode);
 			break;
 
 		case 0xF3: DI(sms); break;
 		case 0xFB: EI(sms); break;
+
+		case 0xDB: break;
 
 		case 0xCB: execute_cb(sms); return;
 		case 0xDD: return;

@@ -1,7 +1,7 @@
 EXE			= TotalSMS
 
-ROM_PATH	= "roms/Sonic The Hedgehog (USA, Europe).sms"
-# ROM_PATH	= "roms/Altered Beast (USA, Europe).sms"
+# ROM_PATH	= "roms/Sonic The Hedgehog (USA, Europe).sms"
+ROM_PATH	= "roms/Altered Beast (USA, Europe).sms"
 
 SRC			= ./src
 
