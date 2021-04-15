@@ -9,7 +9,7 @@ SRC			= ./src
 SOURCES 	= src/main.c
 
 # core
-SOURCES		+= src/sms.c src/cpu.c src/bus.c
+SOURCES		+= src/sms.c src/cpu.c src/bus.c src/vdp.c src/joypad.c
 
 CFLAGS 		= -Wall -Wextra $(RELEASE) -DSMS_DEBUG
 

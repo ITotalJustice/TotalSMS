@@ -14,6 +14,10 @@ void SMS_step(struct SMS_Core* sms);
 void SMS_run_frame(struct SMS_Core* sms);
 
 
+// [INPUT]
+void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down);
+void SMS_set_port_b(struct SMS_Core* sms, enum SMS_PortB pin, bool down);
+
 // [Z80-MISC]
 uint8_t Z80_get_8bit_general_register(const struct SMS_Core* sms, enum Z80_RegisterSet set, enum Z80_8bitGeneralRegisters idx);
 uint16_t Z80_get_16bit_general_register(const struct SMS_Core* sms, enum Z80_RegisterSet set, enum Z80_16bitGeneralRegisters idx);

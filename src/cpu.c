@@ -133,14 +133,14 @@ static bool COND(const struct SMS_Core* sms, uint8_t idx)
 {
 	switch (idx & 0x7)
 	{
-		case 0: return FLAG_C;		
-		case 1: return !FLAG_C;		
-		case 2: return FLAG_Z;		
-		case 3: return !FLAG_Z;		
-		case 4: return FLAG_P;		
-		case 5: return !FLAG_P;		
-		case 6: return FLAG_S;		
-		case 7: return !FLAG_S;		
+		case 0: return FLAG_C == true;
+		case 1: return FLAG_C == false;
+		case 2: return FLAG_Z == true;
+		case 3: return FLAG_Z == false;
+		case 4: return FLAG_P == true;
+		case 5: return FLAG_P == false;
+		case 6: return FLAG_S == true;
+		case 7: return FLAG_S == false;
 	}
 
 	SMS_UNREACHABLE(false);
@@ -417,9 +417,11 @@ static void ADD_HL(struct SMS_Core* sms, uint8_t opcode)
 	const uint16_t value = get_r16(sms, opcode >> 4);
 	const uint16_t HL = REG_HL;
 	const uint16_t result = HL + value;
+
 	FLAG_C = HL + value > 0xFFFF;
 	FLAG_H = (HL & 0xFFF) + (value & 0xFFF) > 0xFFF;
 	FLAG_N = false;
+	
 	SET_REG_HL(result);
 }
 
@@ -427,6 +429,7 @@ static void INC_r8(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t result = get_r8(sms, opcode >> 3) + 1;
 	set_r8(sms, result, opcode >> 3);
+	
 	FLAG_N = false;
 	FLAG_H = (result & 0xF) == 0;
 	FLAG_Z = result == 0;
@@ -436,6 +439,7 @@ static void DEC_r8(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t result = get_r8(sms, opcode >> 3) - 1;
 	set_r8(sms, result, opcode >> 3);
+	
 	FLAG_N = true;
 	FLAG_H = (result & 0xF) == 0xF;
 	FLAG_Z = result == 0;
@@ -451,6 +455,54 @@ static void DEC_r16(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t idx = opcode >> 4;
 	set_r16(sms, get_r16(sms, idx) - 1, idx);
+}
+
+static void LD_a_bc(struct SMS_Core* sms)
+{
+	// loads the value at (BC) not BC!
+	REG_A = read8(REG_BC);
+}
+
+static void LD_a_de(struct SMS_Core* sms)
+{
+	// loads the value at (DE) not DE!
+	REG_A = read8(REG_DE);
+}
+
+static void LD_bc_a(struct SMS_Core* sms)
+{
+	// sets the value at (BC) not BC!
+	write8(REG_BC, REG_A);
+}
+
+static void LD_de_a(struct SMS_Core* sms)
+{
+	// sets the value at (DE) not DE!
+	write8(REG_DE, REG_A);
+}
+
+static void LD_hl_imm(struct SMS_Core* sms)
+{
+	const uint16_t addr = read16(REG_PC);
+	REG_PC += 2;
+
+	SET_REG_HL(read16(addr));
+}
+
+static void LD_imm_a(struct SMS_Core* sms)
+{
+	const uint16_t addr = read16(REG_PC);
+	REG_PC += 2;
+
+	write8(addr, REG_A);
+}
+
+static void LD_a_imm(struct SMS_Core* sms)
+{
+	const uint16_t addr = read16(REG_PC);
+	REG_PC += 2;
+
+	REG_A = read8(addr);
 }
 
 static void LD_16(struct SMS_Core* sms, uint8_t opcode)
@@ -608,6 +660,7 @@ static void SLA(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = value << 1;
+	
 	set_r8(sms, result, opcode);
 	shift_left_flags(sms, result, opcode);
 }
@@ -616,6 +669,7 @@ static void SRA(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = (value >> 1) | (value & 0x80);
+	
 	set_r8(sms, result, opcode);
 	shift_right_flags(sms, result, opcode);
 }
@@ -624,6 +678,7 @@ static void SLL(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = (value << 1) | 0x1;
+	
 	set_r8(sms, result, opcode);
 	shift_left_flags(sms, result, opcode);
 }
@@ -632,6 +687,7 @@ static void SRL(struct SMS_Core* sms, uint8_t opcode)
 {
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = value >> 1;
+	
 	set_r8(sms, result, opcode);
 	shift_right_flags(sms, result, opcode);
 }
@@ -641,6 +697,7 @@ static void BIT(struct SMS_Core* sms, uint8_t opcode)
 	const uint8_t bit = 1 << (opcode >> 3);
 	const uint8_t value = get_r8(sms, opcode);
 	const bool result = IS_BIT_SET(value, bit);
+	
 	SET_FLAGS_NHZ(false, true, result == 0);
 }
 
@@ -649,6 +706,7 @@ static void RES(struct SMS_Core* sms, uint8_t opcode)
 	const uint8_t bit = 1 << (opcode >> 3);
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = value & ~bit;
+	
 	set_r8(sms, result, opcode);
 }
 
@@ -657,6 +715,7 @@ static void SET(struct SMS_Core* sms, uint8_t opcode)
 	const uint8_t bit = 1 << (opcode >> 3);
 	const uint8_t value = get_r8(sms, opcode);
 	const uint8_t result = value | bit;
+	
 	set_r8(sms, result, opcode);
 }
 
@@ -830,6 +889,9 @@ static void execute(struct SMS_Core* sms)
 		case 0x7B: case 0x7C: case 0x7D: case 0x7E:
 			LD_rr(sms, opcode);
 			break;
+
+		case 0x32: LD_imm_a(sms); break;
+		case 0x3A: LD_a_imm(sms); break;
 
 		case 0x40: break; // nop LD b,b
 		case 0x49: break; // nop LD c,c

@@ -258,6 +258,8 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xB0: case 0xB2: case 0xB4: case 0xB6:
 		case 0xB8: case 0xBA: case 0xBC: case 0xBE:
 			SMS_log("[PORT-READ] 0x%02X VDP data\n", addr);
+			// latch is reset on read / writes
+			sms->vdp.buffer_byte_latch = false;
 			break;
 
 		case 0x81: case 0x83: case 0x85: case 0x87:
@@ -269,6 +271,8 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 		case 0xB1: case 0xB3: case 0xB5: case 0xB7:
 		case 0xB9: case 0xBB: case 0xBD: case 0xBF:
 			SMS_log("[PORT-READ] 0x%02X VDP status flags\n", addr);
+			// latch is reset on read / writes
+			sms->vdp.buffer_byte_latch = false;
 			break;
 
 		case 0xC0: case 0xC2: case 0xC4: case 0xC6:
@@ -357,6 +361,8 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0xB0: case 0xB2: case 0xB4: case 0xB6:
 		case 0xB8: case 0xBA: case 0xBC: case 0xBE:
 			SMS_log("[PORT-WRITE] 0x%02X VDP data\n", addr);
+			// latch is reset on read / writes
+			sms->vdp.buffer_byte_latch = false;
 			break;
 
 		case 0x81: case 0x83: case 0x85: case 0x87:
@@ -368,6 +374,16 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 		case 0xB1: case 0xB3: case 0xB5: case 0xB7:
 		case 0xB9: case 0xBB: case 0xBD: case 0xBF:
 			SMS_log("[PORT-WRITE] 0x%02X VDP control flags\n", addr);
+			if (sms->vdp.buffer_byte_latch)
+			{
+				sms->vdp.addr = (sms->vdp.addr & 0x00FF) | (value << 8);
+				sms->vdp.buffer_byte_latch = false;
+			}
+			else
+			{
+				sms->vdp.addr = (sms->vdp.addr & 0xFF00) | value;
+				sms->vdp.buffer_byte_latch = true;
+			}
 			break;
 	}
 }

@@ -163,10 +163,70 @@ struct SMS_RomHeader
 	uint8_t rom_size : 4;
 };
 
+enum VDP_Code
+{
+	VDP_CODE_VRAM_WRITE,
+	VDP_CODE_VRAM_READ,
+	VDP_CODE_CRAM_WRITE,
+	VDP_CODE_VDP_REG_WRITE,
+};
+
+struct SMS_Vdp
+{
+	// this is used for vram r/w and cram writes.
+	uint16_t addr : 14;
+	// see [enum VDP_Code] 
+	uint16_t code : 2;
+
+	// colour ram, BGR555 format.
+	// bg can use either palette, while sprites can only use
+	// the second half of the cram.
+	uint8_t cram[2][32];
+
+	// set if already have lo byte
+	bool buffer_byte_latch;
+
+	// idk...its cleared on control port read
+	bool frame_interrupt_pending;
+	// set when there's more than 8 sprites on a line
+	bool sprite_overflow;
+	// set when a sprite collides
+	bool sprite_collision;
+};
+
+enum SMS_PortA
+{
+	JOY1_UP_BUTTON		= 1 << 0,
+	JOY1_DOWN_BUTTON	= 1 << 1,
+	JOY1_LEFT_BUTTON	= 1 << 2,
+	JOY1_RIGHT_BUTTON	= 1 << 3,
+	JOY1_A_BUTTON		= 1 << 4,
+	JOY1_B_BUTTON		= 1 << 5,
+	JOY2_UP_BUTTON		= 1 << 6,
+	JOY2_DOWN_BUTTON	= 1 << 7,
+};
+
+enum SMS_PortB
+{
+	JOY2_LEFT_BUTTON	= 1 << 0,
+	JOY2_RIGHT_BUTTON	= 1 << 1,
+	JOY2_A_BUTTON		= 1 << 2,
+	JOY2_B_BUTTON		= 1 << 3,
+	RESET_BUTTON		= 1 << 4,
+};
+
+struct SMS_Ports
+{
+	uint8_t a;
+	uint8_t b;
+};
+
 struct SMS_Core
 {
 	struct Z80 cpu;
+	struct SMS_Vdp vdp;
 	struct SMS_Cart cart;
+	struct SMS_Ports port;
 
 	uint8_t system_ram[0x2000];
 };
