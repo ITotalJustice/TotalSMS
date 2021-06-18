@@ -93,9 +93,9 @@ struct SMS_RomHeader SMS_parse_rom_header(const uint8_t* data, uint16_t offset)
 
 static void log_header(const struct SMS_RomHeader* header)
 {
-	printf("version: [0x%X]\n", header->version);
-	printf("region_code: [0x%X] [%s]\n", header->region_code, region_code_string[header->region_code]);
-	printf("rom_size: [0x%X] [%s]\n", header->rom_size, valid_rom_size_string[header->rom_size]);
+	SMS_log("version: [0x%X]\n", header->version);
+	SMS_log("region_code: [0x%X] [%s]\n", header->region_code, region_code_string[header->region_code]);
+	SMS_log("rom_size: [0x%X] [%s]\n", header->rom_size, valid_rom_size_string[header->rom_size]);
 }
 
 static void setup_mapper(struct SMS_Core* sms)
