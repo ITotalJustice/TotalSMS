@@ -1,5 +1,38 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef SMS_DEBUG
+    #define SMS_DEBUG 0
+#endif
+
+#if defined _WIN32 || defined __CYGWIN__
+    #ifdef BUILDING_LIB
+        #define SMSAPI __declspec(dllexport)
+    #else
+        #define SMSAPI __declspec(dllimport)
+    #endif
+#else
+    #ifdef BUILDING_LIB
+        #define SMSAPI __attribute__ ((visibility ("default")))
+    #else
+        #define SMSAPI
+    #endif
+#endif
+
+#ifndef SMS_SINGLE_FILE
+    #define SMS_SINGLE_FILE 0
+#endif
+
+#if SMS_SINGLE_FILE
+    #define SMS_STATIC static
+    #define SMS_INLINE static inline
+#else
+    #define SMS_STATIC
+    #define SMS_INLINE
+#endif // SMS_SINGLE_FILE
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -153,6 +186,8 @@ struct SMS_Cart
 	enum SMS_MapperType mapper_type;
 };
 
+// TODO: remove bitfields!
+// read header into an array and manually parse the bits!
 struct SMS_RomHeader
 {
 	uint8_t magic[0x8];
@@ -171,6 +206,7 @@ enum VDP_Code
 	VDP_CODE_VDP_REG_WRITE,
 };
 
+// TODO: remove bitfields!!!!!!!
 struct SMS_Vdp
 {
 	// this is used for vram r/w and cram writes.
@@ -221,6 +257,7 @@ struct SMS_Ports
 	uint8_t b;
 };
 
+// TODO: REMOVE BITFIELDS!!!
 struct SN76489
 {
 	struct
@@ -255,3 +292,7 @@ struct SMS_Core
 
 	uint8_t system_ram[0x2000];
 };
+
+#ifdef __cplusplus
+}
+#endif

@@ -2,14 +2,14 @@
 #include "internal.h"
 
 #include <assert.h>
-#include <stdio.h>
 #include <string.h>
 
 
 // not all values are listed here because the other
 // values are not used by official software and
 // the checksum is broken on those sizes.
-static const bool valid_rom_size_values[0x10] = {
+static const bool valid_rom_size_values[0x10] =
+{
 	[0xC] = true, // 32KiB
 	[0xE] = true, // 64KiB
 	[0xF] = true, // 128KiB
@@ -17,7 +17,8 @@ static const bool valid_rom_size_values[0x10] = {
 	[0x1] = true, // 512KiB
 };
 
-static const char* valid_rom_size_string[0x10] = {
+static const char* valid_rom_size_string[0x10] =
+{
 	[0xC] = "32KiB",
 	[0xE] = "64KiB",
 	[0xF] = "128KiB",
@@ -25,7 +26,8 @@ static const char* valid_rom_size_string[0x10] = {
 	[0x1] = "512KiB",
 };
 
-static const char* region_code_string[0x10] = {
+static const char* region_code_string[0x10] =
+{
 	[0x3] = "SMS Japan",
 	[0x4] = "SMS Export",
 	[0x5] = "GG Japan",
@@ -34,17 +36,19 @@ static const char* region_code_string[0x10] = {
 };
 
 
-static uint16_t find_rom_header_offset(const uint8_t* data) {
+static uint16_t find_rom_header_offset(const uint8_t* data)
+{
 	// loop until we find the magic num
 	// the rom header can start at 1 of 3 offsets
-	static const uint16_t offsets[] = {
+	static const uint16_t offsets[] =
+    {
 		// the bios checks in reverse order
 		0x7FF0,
 		0x3FF0,
 		0x1FF0,
 	};
 
-	for (size_t i = 0; i < SMS_ARR_SIZE(offsets); ++i)
+	for (size_t i = 0; i < ARRAY_SIZE(offsets); ++i)
 	{
 		const uint8_t* d = data + offsets[i];
 		const char* magic = "TMR SEGA";
@@ -52,7 +56,8 @@ static uint16_t find_rom_header_offset(const uint8_t* data) {
 		if (d[0] == magic[0] && d[1] == magic[1] &&
 			d[2] == magic[2] && d[3] == magic[3] &&
 			d[4] == magic[4] && d[5] == magic[5] &&
-			d[6] == magic[6] && d[7] == magic[7]) {
+			d[6] == magic[6] && d[7] == magic[7])
+        {
 			return offsets[i];
 		}
 	}
@@ -111,8 +116,9 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 	const uint16_t header_offset = find_rom_header_offset(rom);
 
 	// no header found!
-	if (header_offset == 0) {
-		SMS_log_err("[ERROR] unable to find rom header!\n");
+	if (header_offset == 0)
+    {
+		SMS_log_fatal("[ERROR] unable to find rom header!\n");
 		return false;
 	}
 
@@ -122,8 +128,9 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 	log_header(&header);
 
 	// check if the size is valid
-	if (!valid_rom_size_values[header.rom_size]) {
-		SMS_log_err("[ERROR] invalid rom size in header! 0x%X\n", header.rom_size);
+	if (!valid_rom_size_values[header.rom_size])
+    {
+		SMS_log_fatal("[ERROR] invalid rom size in header! 0x%X\n", header.rom_size);
 		return false;
 	}
 

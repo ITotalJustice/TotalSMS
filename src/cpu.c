@@ -1,13 +1,23 @@
 #include "internal.h"
 
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
 
-#define PARITY(v) !__builtin_parity(v)
+#if 1
+    #define PARITY(v) !__builtin_parity(v)
+#else
+    // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
+    static inline int bit_parity(int val)
+    {
+        val ^= val >> 8;
+        val ^= val >> 4;
+        val ^= val >> 2;
+        val ^= val >> 1;
+        return val;
+    };
+    #define PARITY(v) bit_parity(v)
+#endif
 
 enum
 {
@@ -143,7 +153,7 @@ static bool COND(const struct SMS_Core* sms, uint8_t idx)
 		case 7: return FLAG_S == false;
 	}
 
-	SMS_UNREACHABLE(false);
+	UNREACHABLE(false);
 }
 
 #define read8(addr) SMS_read8(sms, addr)
@@ -168,7 +178,7 @@ static uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
 		case 0x7: return REG_A;
 	}
 
-	SMS_UNREACHABLE(0xFF);
+	UNREACHABLE(0xFF);
 }
 
 static void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
@@ -196,7 +206,7 @@ static uint16_t get_r16(struct SMS_Core* sms, uint8_t idx)
 		case 0x3: return REG_SP;
 	}
 
-	SMS_UNREACHABLE(0xFF);
+	UNREACHABLE(0xFF);
 }
 
 static void set_r16(struct SMS_Core* sms, uint16_t value, uint8_t idx)
@@ -722,6 +732,7 @@ static void SET(struct SMS_Core* sms, uint8_t opcode)
 static void IMM_set(struct SMS_Core* sms, uint8_t mode)
 {
 	assert(mode == 1 && "invalid mode set for SMS");
+    SMS_log_fatal("IMM_set - not implemented\n");
 	// TODO: find out how this instruction works...
 }
 
@@ -827,8 +838,7 @@ static void execute_ed(struct SMS_Core* sms)
 			break;
 			
 		default:
-			printf("UNK OP: 0xED%02X\n", opcode);
-			exit(-1);
+			SMS_log_fatal("UNK OP: 0xED%02X\n", opcode);
 			break;
 	}
 }
@@ -1011,8 +1021,7 @@ static void execute(struct SMS_Core* sms)
 		// case 0xFD: return;
 
 		default:
-			printf("UNK OP: 0x%02X\n", opcode);
-			exit(-1);
+			SMS_log_fatal("UNK OP: 0x%02X\n", opcode);
 			break;
 	}
 }

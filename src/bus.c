@@ -1,6 +1,5 @@
 #include "internal.h"
 
-#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
@@ -56,7 +55,7 @@ void sega_mapper_setup(struct SMS_Core* sms)
 void codemaster_mapper_setup(struct SMS_Core* sms)
 {
 	assert(0 && "unfinished codemasters mapper!");
-	SMS_UNUSED(sms);
+	UNUSED(sms);
 }
 
 static inline uint8_t none_mapper_read(struct SMS_Core* sms, uint16_t addr)
@@ -77,12 +76,12 @@ static inline uint8_t cart_read(struct SMS_Core* sms, uint16_t addr)
 		case MAPPER_TYPE_SEGA: return sega_mapper_read(sms, addr);
 	}
 
-	SMS_UNREACHABLE(0xFF);
+	UNREACHABLE(0xFF);
 }
 
 static inline void cart_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 {
-	SMS_UNUSED(sms); SMS_UNUSED(addr); SMS_UNUSED(value);
+	UNUSED(sms); UNUSED(addr); UNUSED(value);
 }
 
 uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr)
@@ -97,7 +96,7 @@ uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr)
 			return sms->system_ram[addr & 0x1FFF];
 	}
 
-	SMS_UNREACHABLE(0xFF);
+	UNREACHABLE(0xFF);
 }
 
 static inline void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
@@ -162,13 +161,13 @@ void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value)
 
 static uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 {
-	SMS_UNUSED(sms);
+	UNUSED(sms);
 	return 0xFF;
 }
 
 static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
-	SMS_UNUSED(sms);
+	UNUSED(sms);
 	return 0xFF;
 }
 
@@ -272,7 +271,7 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 
 static void IO_memory_control_write(struct SMS_Core* sms, uint8_t value)
 {
-	SMS_UNUSED(sms); SMS_UNUSED(value);
+	UNUSED(sms); UNUSED(value);
 }
 
 void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
