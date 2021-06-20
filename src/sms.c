@@ -183,17 +183,17 @@ void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, void* use
     sms->apu.freq = freq;
 }
 
-bool SMS_parity(int value)
+bool SMS_parity(unsigned value)
 {
-    #if 1
+    #if HAS_BUILTIN(__builtin_parity)
         return !__builtin_parity(value);
     #else
-        // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
-        value ^= value >> 8;
-        value ^= value >> 4;
-        value ^= value >> 2;
-        value ^= value >> 1;
-        return value;
+        // SOURCE: https://graphics.stanford.edu/~seander/bithacks.html#ParityParallel
+        // value ^= value >> 16; // 32-bit
+        value ^= value >> 8; // 16-bit
+        value ^= value >> 4; // 8-bit
+        value &= 0xF;
+        return (0x6996 >> value) & 0x1;
     #endif
 }
 

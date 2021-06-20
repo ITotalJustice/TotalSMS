@@ -58,17 +58,17 @@ void codemaster_mapper_setup(struct SMS_Core* sms)
     UNUSED(sms);
 }
 
-static inline uint8_t none_mapper_read(struct SMS_Core* sms, uint16_t addr)
+static FORCE_INLINE uint8_t none_mapper_read(struct SMS_Core* sms, uint16_t addr)
 {
     return sms->cart.rom[addr & sms->cart.rom_mask];
 }
 
-static inline uint8_t sega_mapper_read(struct SMS_Core* sms, uint16_t addr)
+static FORCE_INLINE uint8_t sega_mapper_read(struct SMS_Core* sms, uint16_t addr)
 {
     return sms->cart.mappers.sega.banks[addr >> 10][addr & 0x3FF];
 }
 
-static inline uint8_t cart_read(struct SMS_Core* sms, uint16_t addr)
+static FORCE_INLINE uint8_t cart_read(struct SMS_Core* sms, uint16_t addr)
 {
     switch (sms->cart.mapper_type)
     {
@@ -79,7 +79,7 @@ static inline uint8_t cart_read(struct SMS_Core* sms, uint16_t addr)
     UNREACHABLE(0xFF);
 }
 
-static inline void cart_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
+static FORCE_INLINE void cart_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 {
     UNUSED(sms); UNUSED(addr); UNUSED(value);
 }
@@ -102,7 +102,7 @@ uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr)
 // NOTE: writes from 0xEXXX will happen to this function, due to the
 // the switch currently used in the write func.
 // this is okay though because i use a switch here to check the addr!
-static inline void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
+static FORCE_INLINE void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 {
     // SMS_log("[SEGA-MAPPER-W] addr: 0x%04X value: 0x%02X\n", addr, value);
 
@@ -184,29 +184,29 @@ static void IO_memory_control_write(struct SMS_Core* sms, uint8_t value)
 //     return 0xFF;
 // }
 
-static void IO_control_write(struct SMS_Core* sms, uint8_t value)
+static inline void IO_control_write(struct SMS_Core* sms, uint8_t value)
 {
     (void)sms; (void)value;
 }
 
-static uint8_t IO_read_vcounter(const struct SMS_Core* sms)
+static inline uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 {
     return sms->vdp.vcount;
 }
 
-static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
+static inline uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
     return sms->vdp.hcount >> 1;
 }
 
-static uint8_t IO_vdp_status_read(struct SMS_Core* sms)
+static inline uint8_t IO_vdp_status_read(struct SMS_Core* sms)
 {
     sms->vdp.buffer_addr_latch = false;
 
     return vdp_status_flag_read(sms);
 }
 
-static uint8_t IO_vdp_data_read(struct SMS_Core* sms)
+static inline uint8_t IO_vdp_data_read(struct SMS_Core* sms)
 {
     sms->vdp.buffer_addr_latch = false;
     
@@ -217,7 +217,7 @@ static uint8_t IO_vdp_data_read(struct SMS_Core* sms)
     return data;
 }
 
-static void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
+static inline void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
 {
     sms->vdp.buffer_addr_latch = false;
 
@@ -241,7 +241,7 @@ static void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
     }
 }
 
-static void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
+static inline void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
 {
     if (sms->vdp.buffer_addr_latch)
     {

@@ -199,7 +199,7 @@ enum
 #define readIO(addr) SMS_read_io(sms, addr)
 #define writeIO(addr,value) SMS_write_io(sms, addr, value)
 
-static uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
+static FORCE_INLINE uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
 {
     switch (idx & 0x7)
     {
@@ -216,7 +216,7 @@ static uint8_t get_r8(struct SMS_Core* sms, uint8_t idx)
     UNREACHABLE(0xFF);
 }
 
-static void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
+static FORCE_INLINE void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
 {
     switch (idx & 0x7)
     {
@@ -231,7 +231,7 @@ static void set_r8(struct SMS_Core* sms, uint8_t value, uint8_t idx)
     }
 }
 
-static uint16_t get_r16(struct SMS_Core* sms, uint8_t idx)
+static FORCE_INLINE uint16_t get_r16(struct SMS_Core* sms, uint8_t idx)
 {
     switch (idx & 0x3)
     {
@@ -244,7 +244,7 @@ static uint16_t get_r16(struct SMS_Core* sms, uint8_t idx)
     UNREACHABLE(0xFF);
 }
 
-static void set_r16(struct SMS_Core* sms, uint16_t value, uint8_t idx)
+static FORCE_INLINE void set_r16(struct SMS_Core* sms, uint16_t value, uint8_t idx)
 {
     switch (idx & 0x3)
     {
@@ -255,12 +255,12 @@ static void set_r16(struct SMS_Core* sms, uint16_t value, uint8_t idx)
     }
 }
 
-static inline bool calc_vflag_8(const uint8_t a, const uint8_t b, const uint8_t r)
+static FORCE_INLINE inline bool calc_vflag_8(const uint8_t a, const uint8_t b, const uint8_t r)
 {
     return ((a & 0x80) == (b & 0x80)) && ((a & 0x80) != (r & 0x80));
 }
 
-static void _ADD(struct SMS_Core* sms, uint16_t value)
+static FORCE_INLINE void _ADD(struct SMS_Core* sms, uint16_t value)
 {
     const uint8_t result = REG_A + value;
     
@@ -274,7 +274,7 @@ static void _ADD(struct SMS_Core* sms, uint16_t value)
     REG_A = result;
 }
 
-static void _SUB(struct SMS_Core* sms, uint16_t value)
+static FORCE_INLINE void _SUB(struct SMS_Core* sms, uint16_t value)
 {
     const uint8_t result = REG_A - value;
     
@@ -288,7 +288,7 @@ static void _SUB(struct SMS_Core* sms, uint16_t value)
     REG_A = result;
 }
 
-static void _AND(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void _AND(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = REG_A & value;
 
@@ -302,7 +302,7 @@ static void _AND(struct SMS_Core* sms, uint8_t value)
     REG_A = result;
 }
 
-static void _XOR(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void _XOR(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = REG_A ^ value;
 
@@ -316,7 +316,7 @@ static void _XOR(struct SMS_Core* sms, uint8_t value)
     REG_A = result;
 }
 
-static void _OR(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void _OR(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = REG_A | value;
 
@@ -330,7 +330,7 @@ static void _OR(struct SMS_Core* sms, uint8_t value)
     REG_A = result;
 }
 
-static void _CP(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void _CP(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = REG_A - value;
     
@@ -342,102 +342,102 @@ static void _CP(struct SMS_Core* sms, uint8_t value)
     FLAG_S = result >> 7;
 }
 
-static void _ADC(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void _ADC(struct SMS_Core* sms, uint8_t value)
 {
     _ADD(sms, value + FLAG_C);
 }
 
-static void _SBC(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void _SBC(struct SMS_Core* sms, uint8_t value)
 {
     _SUB(sms, value + FLAG_C);
 }
 
-static void AND_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void AND_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _AND(sms, get_r8(sms, opcode));
 }
 
-static void XOR_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void XOR_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _XOR(sms, get_r8(sms, opcode));
 }
 
-static void OR_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void OR_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _OR(sms, get_r8(sms, opcode));
 }
 
-static void CP_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void CP_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _CP(sms, get_r8(sms, opcode));
 }
 
-static void ADD_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void ADD_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _ADD(sms, get_r8(sms, opcode));
 }
 
-static void SUB_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void SUB_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _SUB(sms, get_r8(sms, opcode));
 }
 
-static void ADC_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void ADC_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _ADC(sms, get_r8(sms, opcode));
 }
 
-static void SBC_r(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void SBC_r(struct SMS_Core* sms, uint8_t opcode)
 {
     _SBC(sms, get_r8(sms, opcode));
 }
 
-static void AND_imm(struct SMS_Core* sms)
+static FORCE_INLINE void AND_imm(struct SMS_Core* sms)
 {
     _AND(sms, read8(REG_PC++));
 }
 
-static void XOR_imm(struct SMS_Core* sms)
+static FORCE_INLINE void XOR_imm(struct SMS_Core* sms)
 {
     _XOR(sms, read8(REG_PC++));
 }
 
-static void OR_imm(struct SMS_Core* sms)
+static FORCE_INLINE void OR_imm(struct SMS_Core* sms)
 {
     _OR(sms, read8(REG_PC++));
 }
 
-static void CP_imm(struct SMS_Core* sms)
+static FORCE_INLINE void CP_imm(struct SMS_Core* sms)
 {
     _CP(sms, read8(REG_PC++));
 }
 
-static void ADD_imm(struct SMS_Core* sms)
+static FORCE_INLINE void ADD_imm(struct SMS_Core* sms)
 {
     _ADD(sms, read8(REG_PC++));
 }
 
-static void SUB_imm(struct SMS_Core* sms)
+static FORCE_INLINE void SUB_imm(struct SMS_Core* sms)
 {
     _SUB(sms, read8(REG_PC++));
 }
 
-static void ADC_imm(struct SMS_Core* sms)
+static FORCE_INLINE void ADC_imm(struct SMS_Core* sms)
 {
     _ADC(sms, read8(REG_PC++));
 }
 
-static void SBC_imm(struct SMS_Core* sms)
+static FORCE_INLINE void SBC_imm(struct SMS_Core* sms)
 {
     _SBC(sms, read8(REG_PC++));
 }
 
-static void NEG(struct SMS_Core* sms)
+static FORCE_INLINE void NEG(struct SMS_Core* sms)
 {
     _SUB(sms, REG_A * 2); // 1 - (1*2) = 0xFF
 }
 
-static uint16_t ADD_DD_16(struct SMS_Core* sms, uint16_t a, uint16_t b)
+static FORCE_INLINE uint16_t ADD_DD_16(struct SMS_Core* sms, uint16_t a, uint16_t b)
 {
     const uint16_t result = a + b;
 
@@ -448,7 +448,7 @@ static uint16_t ADD_DD_16(struct SMS_Core* sms, uint16_t a, uint16_t b)
     return result;
 }
 
-static void ADC_hl(struct SMS_Core* sms, uint32_t value)
+static FORCE_INLINE void ADC_hl(struct SMS_Core* sms, uint32_t value)
 {
     value += FLAG_C;
     
@@ -464,7 +464,7 @@ static void ADC_hl(struct SMS_Core* sms, uint32_t value)
     SET_REG_HL(result);
 }
 
-static void SBC_hl(struct SMS_Core* sms, uint32_t value)
+static FORCE_INLINE void SBC_hl(struct SMS_Core* sms, uint32_t value)
 {
     value += FLAG_C;
 
@@ -480,44 +480,44 @@ static void SBC_hl(struct SMS_Core* sms, uint32_t value)
     SET_REG_HL(result);
 }
 
-static void PUSH(struct SMS_Core* sms, uint16_t value)
+static FORCE_INLINE void PUSH(struct SMS_Core* sms, uint16_t value)
 {
     write8(--REG_SP, (value >> 8) & 0xFF);
     write8(--REG_SP, value & 0xFF);
 }
 
-static uint16_t POP(struct SMS_Core* sms)
+static FORCE_INLINE uint16_t POP(struct SMS_Core* sms)
 {
     const uint16_t result = read16(REG_SP);
     REG_SP += 2;
     return result;
 }
 
-static void POP_BC(struct SMS_Core* sms)
+static FORCE_INLINE void POP_BC(struct SMS_Core* sms)
 {
     const uint16_t r = POP(sms);
     SET_REG_BC(r);
 }
 
-static void POP_DE(struct SMS_Core* sms)
+static FORCE_INLINE void POP_DE(struct SMS_Core* sms)
 {
     const uint16_t r = POP(sms);
     SET_REG_DE(r);
 }
 
-static void POP_HL(struct SMS_Core* sms)
+static FORCE_INLINE void POP_HL(struct SMS_Core* sms)
 {
     const uint16_t r = POP(sms);
     SET_REG_HL(r);
 }
 
-static void POP_AF(struct SMS_Core* sms)
+static FORCE_INLINE void POP_AF(struct SMS_Core* sms)
 {
     const uint16_t r = POP(sms);
     SET_REG_AF(r);
 }
 
-static void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
+static FORCE_INLINE void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
 {
     FLAG_C = value >> 7;
     FLAG_N = false;
@@ -527,7 +527,7 @@ static void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_t value
     FLAG_S = result >> 7;
 }
 
-static void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
+static FORCE_INLINE void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8_t value)
 {
     FLAG_C = value & 0x1;
     FLAG_N = false;
@@ -537,7 +537,7 @@ static void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8_t valu
     FLAG_S = result >> 7;
 }
 
-static void ADD_HL(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void ADD_HL(struct SMS_Core* sms, uint8_t opcode)
 {
     const uint16_t value = get_r16(sms, opcode >> 4);
     const uint16_t HL = REG_HL;
@@ -550,7 +550,7 @@ static void ADD_HL(struct SMS_Core* sms, uint8_t opcode)
     SET_REG_HL(result);
 }
 
-static uint8_t _INC(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t _INC(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = value + 1;
         
@@ -563,7 +563,7 @@ static uint8_t _INC(struct SMS_Core* sms, uint8_t value)
     return result;
 }
 
-static uint8_t _DEC(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t _DEC(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = value - 1;
     
@@ -576,32 +576,32 @@ static uint8_t _DEC(struct SMS_Core* sms, uint8_t value)
     return result;
 }
 
-static void INC_r8(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void INC_r8(struct SMS_Core* sms, uint8_t opcode)
 {
     const uint8_t result = _INC(sms, get_r8(sms, opcode >> 3));
     set_r8(sms, result, opcode >> 3);
 }
 
-static void DEC_r8(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void DEC_r8(struct SMS_Core* sms, uint8_t opcode)
 {
     const uint8_t result = _DEC(sms, get_r8(sms, opcode >> 3));
     set_r8(sms, result, opcode >> 3);
 }
 
 // TODO: THESE ARE WRONG, MISSING FLAGS!!!
-static void INC_r16(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void INC_r16(struct SMS_Core* sms, uint8_t opcode)
 {
     const uint8_t idx = opcode >> 4;
     set_r16(sms, get_r16(sms, idx) + 1, idx);
 }
 
-static void DEC_r16(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void DEC_r16(struct SMS_Core* sms, uint8_t opcode)
 {
     const uint8_t idx = opcode >> 4;
     set_r16(sms, get_r16(sms, idx) - 1, idx);
 }
 
-static void LD_imm_a(struct SMS_Core* sms)
+static FORCE_INLINE void LD_imm_a(struct SMS_Core* sms)
 {
     const uint16_t addr = read16(REG_PC);
     REG_PC += 2;
@@ -609,7 +609,7 @@ static void LD_imm_a(struct SMS_Core* sms)
     write8(addr, REG_A);
 }
 
-static void LD_a_imm(struct SMS_Core* sms)
+static FORCE_INLINE void LD_a_imm(struct SMS_Core* sms)
 {
     const uint16_t addr = read16(REG_PC);
     REG_PC += 2;
@@ -617,7 +617,7 @@ static void LD_a_imm(struct SMS_Core* sms)
     REG_A = read8(addr);
 }
 
-static void LD_imm_r16(struct SMS_Core* sms, uint16_t r16)
+static FORCE_INLINE void LD_imm_r16(struct SMS_Core* sms, uint16_t r16)
 {
     const uint16_t addr = read16(REG_PC);
     REG_PC += 2;
@@ -625,7 +625,7 @@ static void LD_imm_r16(struct SMS_Core* sms, uint16_t r16)
     write16(addr, r16);
 }
 
-static void LD_hl_imm(struct SMS_Core* sms)
+static FORCE_INLINE void LD_hl_imm(struct SMS_Core* sms)
 {
     const uint16_t addr = read16(REG_PC);
     REG_PC += 2;
@@ -634,52 +634,52 @@ static void LD_hl_imm(struct SMS_Core* sms)
     SET_REG_HL(r);
 }
 
-static void LD_16(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void LD_16(struct SMS_Core* sms, uint8_t opcode)
 {
     const uint16_t value = read16(REG_PC);
     REG_PC += 2;
     set_r16(sms, value, opcode >> 4);
 }
 
-static void LD_r_u8(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void LD_r_u8(struct SMS_Core* sms, uint8_t opcode)
 {
     set_r8(sms, read8(REG_PC++), opcode >> 3);
 }
 
-static void LD_rr(struct SMS_Core* sms, uint8_t opcode)
+static FORCE_INLINE void LD_rr(struct SMS_Core* sms, uint8_t opcode)
 {
     set_r8(sms, get_r8(sms, opcode), opcode >> 3);
 }
 
-static void LD_sp_hl(struct SMS_Core* sms)
+static FORCE_INLINE void LD_sp_hl(struct SMS_Core* sms)
 {
     REG_SP = REG_HL;
 }
 
-static void LD_r16_a(struct SMS_Core* sms, uint16_t r16)
+static FORCE_INLINE void LD_r16_a(struct SMS_Core* sms, uint16_t r16)
 {
     write8(r16, REG_A);
 }
 
-static void LD_a_r16(struct SMS_Core* sms, uint16_t r16)
+static FORCE_INLINE void LD_a_r16(struct SMS_Core* sms, uint16_t r16)
 {
     REG_A = read8(r16);
 }
 
-static void RST(struct SMS_Core* sms, uint16_t value)
+static FORCE_INLINE void RST(struct SMS_Core* sms, uint16_t value)
 {
     PUSH(sms, REG_PC);
     REG_PC = value;
 }
 
-static void CALL(struct SMS_Core* sms)
+static FORCE_INLINE void CALL(struct SMS_Core* sms)
 {
     const uint16_t value = read16(REG_PC);
     PUSH(sms, REG_PC + 2);
     REG_PC = value;
 }
 
-static void CALL_cc(struct SMS_Core* sms, bool cond)
+static FORCE_INLINE void CALL_cc(struct SMS_Core* sms, bool cond)
 {
     if (cond)
     {
@@ -692,12 +692,12 @@ static void CALL_cc(struct SMS_Core* sms, bool cond)
     }
 }
 
-static void RET(struct SMS_Core* sms)
+static FORCE_INLINE void RET(struct SMS_Core* sms)
 {
     REG_PC = POP(sms);
 }
 
-static void RET_cc(struct SMS_Core* sms, bool cond)
+static FORCE_INLINE void RET_cc(struct SMS_Core* sms, bool cond)
 {
     if (cond)
     {
@@ -706,12 +706,12 @@ static void RET_cc(struct SMS_Core* sms, bool cond)
     }
 }
 
-static void JR(struct SMS_Core* sms)
+static FORCE_INLINE void JR(struct SMS_Core* sms)
 {
     REG_PC += ((int8_t)read8(REG_PC)) + 1;
 }
 
-static void DJNZ(struct SMS_Core* sms)
+static FORCE_INLINE void DJNZ(struct SMS_Core* sms)
 {
     --REG_B;
 
@@ -726,7 +726,7 @@ static void DJNZ(struct SMS_Core* sms)
     }
 }
 
-static void JR_cc(struct SMS_Core* sms, bool cond)
+static FORCE_INLINE void JR_cc(struct SMS_Core* sms, bool cond)
 {
     if (cond)
     {
@@ -739,12 +739,12 @@ static void JR_cc(struct SMS_Core* sms, bool cond)
     }
 }
 
-static void JP(struct SMS_Core* sms)
+static FORCE_INLINE void JP(struct SMS_Core* sms)
 {
     REG_PC = read16(REG_PC);
 }
 
-static void JP_cc(struct SMS_Core* sms, bool cond)
+static FORCE_INLINE void JP_cc(struct SMS_Core* sms, bool cond)
 {
     if (cond)
     {
@@ -756,18 +756,18 @@ static void JP_cc(struct SMS_Core* sms, bool cond)
     }
 }
 
-static void EI(struct SMS_Core* sms)
+static FORCE_INLINE void EI(struct SMS_Core* sms)
 {
     sms->cpu.ei_delay = true;
 }
 
-static void DI(struct SMS_Core* sms)
+static FORCE_INLINE void DI(struct SMS_Core* sms)
 {
     sms->cpu.IFF1 = false;
     sms->cpu.IFF2 = false;
 }
 
-static uint8_t _RL(struct SMS_Core* sms, uint8_t value, bool carry)
+static FORCE_INLINE uint8_t _RL(struct SMS_Core* sms, uint8_t value, bool carry)
 {
     const uint8_t result = (value << 1) | carry;
 
@@ -776,7 +776,7 @@ static uint8_t _RL(struct SMS_Core* sms, uint8_t value, bool carry)
     return result;
 }
 
-static uint8_t _RR(struct SMS_Core* sms, uint8_t value, bool carry)
+static FORCE_INLINE uint8_t _RR(struct SMS_Core* sms, uint8_t value, bool carry)
 {
     const uint8_t result = (value >> 1) | (carry << 7);
 
@@ -786,7 +786,7 @@ static uint8_t _RR(struct SMS_Core* sms, uint8_t value, bool carry)
 }
 
 // the accumulator shifts do not affect the [p, z, s] flags
-static void RLA(struct SMS_Core* sms)
+static FORCE_INLINE void RLA(struct SMS_Core* sms)
 {
     const bool p = FLAG_P, z = FLAG_Z, s = FLAG_S;
 
@@ -795,7 +795,7 @@ static void RLA(struct SMS_Core* sms)
     FLAG_P = p; FLAG_Z = z; FLAG_S = s;
 }
 
-static void RRA(struct SMS_Core* sms)
+static FORCE_INLINE void RRA(struct SMS_Core* sms)
 {
     const bool p = FLAG_P, z = FLAG_Z, s = FLAG_S;
 
@@ -804,7 +804,7 @@ static void RRA(struct SMS_Core* sms)
     FLAG_P = p; FLAG_Z = z; FLAG_S = s;
 }
 
-static void RLCA(struct SMS_Core* sms)
+static FORCE_INLINE void RLCA(struct SMS_Core* sms)
 {
     const bool p = FLAG_P, z = FLAG_Z, s = FLAG_S;
 
@@ -813,7 +813,7 @@ static void RLCA(struct SMS_Core* sms)
     FLAG_P = p; FLAG_Z = z; FLAG_S = s;
 }
 
-static void RRCA(struct SMS_Core* sms)
+static FORCE_INLINE void RRCA(struct SMS_Core* sms)
 {
     const bool p = FLAG_P, z = FLAG_Z, s = FLAG_S;
 
@@ -822,27 +822,27 @@ static void RRCA(struct SMS_Core* sms)
     FLAG_P = p; FLAG_Z = z; FLAG_S = s;
 }
 
-static uint8_t RL(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t RL(struct SMS_Core* sms, uint8_t value)
 {   
     return _RL(sms, value, FLAG_C);
 }
 
-static uint8_t RLC(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t RLC(struct SMS_Core* sms, uint8_t value)
 {    
     return _RL(sms, value, value >> 7);
 }
 
-static uint8_t RR(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t RR(struct SMS_Core* sms, uint8_t value)
 {   
     return _RR(sms, value, FLAG_C);
 }
 
-static uint8_t RRC(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t RRC(struct SMS_Core* sms, uint8_t value)
 {
     return _RR(sms, value, value & 1);
 }
 
-static uint8_t SLA(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t SLA(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = value << 1;
     
@@ -851,7 +851,7 @@ static uint8_t SLA(struct SMS_Core* sms, uint8_t value)
     return result;
 }
 
-static uint8_t SRA(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t SRA(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = (value >> 1) | (value & 0x80);
     
@@ -860,7 +860,7 @@ static uint8_t SRA(struct SMS_Core* sms, uint8_t value)
     return result;
 }
 
-static uint8_t SLL(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t SLL(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = (value << 1) | 0x1;
     
@@ -869,7 +869,7 @@ static uint8_t SLL(struct SMS_Core* sms, uint8_t value)
     return result;
 }
 
-static uint8_t SRL(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE uint8_t SRL(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t result = value >> 1;
     
@@ -878,14 +878,14 @@ static uint8_t SRL(struct SMS_Core* sms, uint8_t value)
     return result;
 }
 
-static void BIT(struct SMS_Core* sms, uint8_t value, uint8_t bit)
+static FORCE_INLINE void BIT(struct SMS_Core* sms, uint8_t value, uint8_t bit)
 {
     const bool result = value & bit;
 
     SET_FLAGS_NHZ(false, true, result == 0);
 }
 
-static uint8_t RES(struct SMS_Core* sms, uint8_t value, uint8_t bit)
+static FORCE_INLINE uint8_t RES(struct SMS_Core* sms, uint8_t value, uint8_t bit)
 {
     UNUSED(sms);
 
@@ -894,7 +894,7 @@ static uint8_t RES(struct SMS_Core* sms, uint8_t value, uint8_t bit)
     return result;
 }
 
-static uint8_t SET(struct SMS_Core* sms, uint8_t value, uint8_t bit)
+static FORCE_INLINE uint8_t SET(struct SMS_Core* sms, uint8_t value, uint8_t bit)
 {
     UNUSED(sms);
 
@@ -903,32 +903,32 @@ static uint8_t SET(struct SMS_Core* sms, uint8_t value, uint8_t bit)
     return result;
 }
 
-static void IMM_set(struct SMS_Core* sms, uint8_t mode)
+static FORCE_INLINE void IMM_set(struct SMS_Core* sms, uint8_t mode)
 {
     assert(mode == 1 && "invalid mode set for SMS");
     UNUSED(sms); UNUSED(mode);
 }
 
-static void IN_imm(struct SMS_Core* sms)
+static FORCE_INLINE void IN_imm(struct SMS_Core* sms)
 {
     const uint8_t port = read8(REG_PC++);
     REG_A = readIO(port);
 }
 
-static void OUT_imm(struct SMS_Core* sms)
+static FORCE_INLINE void OUT_imm(struct SMS_Core* sms)
 {
     const uint8_t port = read8(REG_PC++);
     writeIO(port, REG_A);
 }
 
-static void EX_af_af(struct SMS_Core* sms)
+static FORCE_INLINE void EX_af_af(struct SMS_Core* sms)
 {
     const uint16_t temp = REG_AF_ALT;
     SET_REG_AF_ALT(REG_AF);
     SET_REG_AF(temp);
 }
 
-static void EXX(struct SMS_Core* sms)
+static FORCE_INLINE void EXX(struct SMS_Core* sms)
 {
     // BC
     uint16_t temp = REG_BC_ALT;
@@ -944,14 +944,14 @@ static void EXX(struct SMS_Core* sms)
     SET_REG_HL(temp);
 }
 
-static void EX_de_hl(struct SMS_Core* sms)
+static FORCE_INLINE void EX_de_hl(struct SMS_Core* sms)
 {
     const uint16_t temp = REG_DE;
     SET_REG_DE(REG_HL);
     SET_REG_HL(temp);
 }
 
-static void EX_sp_hl(struct SMS_Core* sms)
+static FORCE_INLINE void EX_sp_hl(struct SMS_Core* sms)
 {
     // this swaps the value at (SP), not SP!
     const uint16_t value = read16(REG_SP);
@@ -959,7 +959,7 @@ static void EX_sp_hl(struct SMS_Core* sms)
     SET_REG_HL(value);
 }
 
-static void LDI(struct SMS_Core* sms)
+static FORCE_INLINE void LDI(struct SMS_Core* sms)
 {
     uint16_t hl = REG_HL;
     uint16_t de = REG_DE;
@@ -980,7 +980,7 @@ static void LDI(struct SMS_Core* sms)
     SET_REG_HL(hl);
 }
 
-static void LDIR(struct SMS_Core* sms)
+static FORCE_INLINE void LDIR(struct SMS_Core* sms)
 {
     LDI(sms);
 
@@ -990,7 +990,7 @@ static void LDIR(struct SMS_Core* sms)
     }
 }
 
-static void LDD(struct SMS_Core* sms)
+static FORCE_INLINE void LDD(struct SMS_Core* sms)
 {
     uint16_t hl = REG_HL;
     uint16_t de = REG_DE;
@@ -1009,7 +1009,7 @@ static void LDD(struct SMS_Core* sms)
     SET_REG_BC(bc);
 }
 
-static void LDDR(struct SMS_Core* sms)
+static FORCE_INLINE void LDDR(struct SMS_Core* sms)
 {
     LDD(sms);
 
@@ -1021,7 +1021,7 @@ static void LDDR(struct SMS_Core* sms)
     FLAG_Z = true;
 }
 
-static void OUTI(struct SMS_Core* sms)
+static FORCE_INLINE void OUTI(struct SMS_Core* sms)
 {
     uint16_t hl = REG_HL;
 
@@ -1037,7 +1037,7 @@ static void OUTI(struct SMS_Core* sms)
     SET_REG_HL(hl);
 }
 
-static void OTIR(struct SMS_Core* sms)
+static FORCE_INLINE void OTIR(struct SMS_Core* sms)
 {
     OUTI(sms);
 
@@ -1049,7 +1049,7 @@ static void OTIR(struct SMS_Core* sms)
     FLAG_Z = true;
 }
 
-static void OUTD(struct SMS_Core* sms)
+static FORCE_INLINE void OUTD(struct SMS_Core* sms)
 {
     uint16_t hl = REG_HL;
 
@@ -1065,7 +1065,7 @@ static void OUTD(struct SMS_Core* sms)
     SET_REG_HL(hl);
 }
 
-static void OTDR(struct SMS_Core* sms)
+static FORCE_INLINE void OTDR(struct SMS_Core* sms)
 {
     OUTD(sms);
 
@@ -1077,7 +1077,7 @@ static void OTDR(struct SMS_Core* sms)
     FLAG_Z = true;
 }
 
-static uint8_t IN(struct SMS_Core* sms)
+static FORCE_INLINE uint8_t IN(struct SMS_Core* sms)
 {
     const uint8_t result = readIO(REG_C);
 
@@ -1088,17 +1088,17 @@ static uint8_t IN(struct SMS_Core* sms)
     return result;
 }
 
-static void OUT(struct SMS_Core* sms, uint8_t value)
+static FORCE_INLINE void OUT(struct SMS_Core* sms, uint8_t value)
 {
     writeIO(REG_C, value);
 }
 
-static void HALT(struct SMS_Core* sms)
+static FORCE_INLINE void HALT(struct SMS_Core* sms)
 {
     sms->cpu.halt = true;
 }
 
-static void DAA(struct SMS_Core* sms)
+static FORCE_INLINE void DAA(struct SMS_Core* sms)
 {
     if (FLAG_N)
     {
@@ -1131,28 +1131,28 @@ static void DAA(struct SMS_Core* sms)
     FLAG_S = REG_A >> 7;
 }
 
-static void CCF(struct SMS_Core* sms)
+static FORCE_INLINE void CCF(struct SMS_Core* sms)
 {
     FLAG_H = FLAG_C;
     FLAG_C = !FLAG_C;
     FLAG_N = false;
 }
 
-static void SCF(struct SMS_Core* sms)
+static FORCE_INLINE void SCF(struct SMS_Core* sms)
 {
     FLAG_C = true;
     FLAG_H = false;
     FLAG_N = false;
 }
 
-static void CPL(struct SMS_Core* sms)
+static FORCE_INLINE void CPL(struct SMS_Core* sms)
 {
     REG_A = ~REG_A;
     FLAG_H = true;
     FLAG_N = true;
 }
 
-static void RLD(struct SMS_Core* sms)
+static FORCE_INLINE void RLD(struct SMS_Core* sms)
 {
     const uint16_t hl = REG_HL;
     const uint8_t a = REG_A;
@@ -1168,12 +1168,12 @@ static void RLD(struct SMS_Core* sms)
     FLAG_S = REG_A >> 7;
 }
 
-static void LD_I_A(struct SMS_Core* sms)
+static FORCE_INLINE void LD_I_A(struct SMS_Core* sms)
 {
     REG_I = REG_A;
 }
 
-static void LD_A_I(struct SMS_Core* sms)
+static FORCE_INLINE void LD_A_I(struct SMS_Core* sms)
 {
     REG_A = REG_I;
 
@@ -1184,12 +1184,12 @@ static void LD_A_I(struct SMS_Core* sms)
     FLAG_S = REG_A >> 7;
 }
 
-static void LD_R_A(struct SMS_Core* sms)
+static FORCE_INLINE void LD_R_A(struct SMS_Core* sms)
 {
     REG_R = REG_A;
 }
 
-static void LD_A_R(struct SMS_Core* sms)
+static FORCE_INLINE void LD_A_R(struct SMS_Core* sms)
 {
     // the refresh reg is ticked on every mem access.
     // to avoid this slight overhead, just increment the value
@@ -1204,7 +1204,7 @@ static void LD_A_R(struct SMS_Core* sms)
     FLAG_S = REG_A >> 7;
 }
 
-static void isr(struct SMS_Core* sms)
+static FORCE_INLINE void isr(struct SMS_Core* sms)
 {
     if (sms->cpu.ei_delay)
     {
@@ -1243,7 +1243,7 @@ void Z80_irq(struct SMS_Core* sms)
 
 // NOTE: templates would be much nicer here
 // returns true if the result needs to be written back (all except BIT)
-static bool _CB(struct SMS_Core* sms, uint8_t opcode, uint8_t value, uint8_t* result)
+static FORCE_INLINE bool _CB(struct SMS_Core* sms, uint8_t opcode, uint8_t value, uint8_t* result)
 {
     sms->cpu.cycles += 8; // pretty sure this isn't accurate
 
@@ -1277,7 +1277,7 @@ static bool _CB(struct SMS_Core* sms, uint8_t opcode, uint8_t value, uint8_t* re
     UNREACHABLE(false);
 }
 
-static void execute_CB(struct SMS_Core* sms)
+static FORCE_INLINE void execute_CB(struct SMS_Core* sms)
 {
     const uint8_t opcode = SMS_read8(sms, REG_PC++);
     const uint8_t value = get_r8(sms, opcode);
@@ -1290,7 +1290,7 @@ static void execute_CB(struct SMS_Core* sms)
     }
 }
 
-static void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
+static FORCE_INLINE void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
 {
     // the address is actually fectched before the opcode
     const uint16_t addr = ixy + (int8_t)read8(REG_PC++);
@@ -1315,7 +1315,7 @@ static void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
     }
 }
 
-static void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uint8_t* ixy_lo)
+static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uint8_t* ixy_lo)
 {
     const uint8_t opcode = SMS_read8(sms, REG_PC++);
     const uint16_t pair = PAIR(*ixy_hi, *ixy_lo);
@@ -1445,7 +1445,7 @@ static void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uint8_t* ixy_lo)
     #undef DISP
 }
 
-static void execute_ED(struct SMS_Core* sms)
+static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
 {
     const uint8_t opcode = SMS_read8(sms, REG_PC++);
     sms->cpu.cycles += CYC_ED[opcode];
@@ -1564,7 +1564,7 @@ static void execute_ED(struct SMS_Core* sms)
     }
 }
 
-static void execute(struct SMS_Core* sms)
+static FORCE_INLINE void execute(struct SMS_Core* sms)
 {
     const uint8_t opcode = SMS_read8(sms, REG_PC++);
     sms->cpu.cycles += CYC_00[opcode];

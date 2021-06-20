@@ -26,14 +26,6 @@ extern "C" {
     #define SMS_SINGLE_FILE 0
 #endif
 
-#if SMS_SINGLE_FILE
-    #define SMS_STATIC static
-    #define SMS_INLINE static inline
-#else
-    #define SMS_STATIC
-    #define SMS_INLINE
-#endif // SMS_SINGLE_FILE
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>

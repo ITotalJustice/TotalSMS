@@ -33,7 +33,7 @@ enum
 };
 
 
-static void latch_reg_write(struct SMS_Core* sms, uint8_t value)
+static inline void latch_reg_write(struct SMS_Core* sms, uint8_t value)
 {
     APU.latched_channel = (value >> 5) & 0x3;
     APU.latched_type = (value >> 4) & 0x1;
@@ -70,7 +70,7 @@ static void latch_reg_write(struct SMS_Core* sms, uint8_t value)
     }
 }
 
-static void data_reg_write(struct SMS_Core* sms, uint8_t value)
+static inline void data_reg_write(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t data = value & 0x3F;
 
@@ -118,7 +118,7 @@ void SN76489_reg_write(struct SMS_Core* sms, uint8_t value)
     }
 }
 
-static void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_t cycles)
+static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_t cycles)
 {
     APU.tone[index].counter -= cycles;
 
@@ -130,7 +130,7 @@ static void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_t cycle
     }
 }
 
-static void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
+static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 {
     APU.noise.counter -= cycles;
 
@@ -173,12 +173,12 @@ static const int8_t VOLUME_INVERT_TABLE[] =
     0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0
 };
 
-static int8_t SN76489_sample_tone(struct SMS_Core* sms, uint8_t index)
+static inline int8_t SN76489_sample_tone(struct SMS_Core* sms, uint8_t index)
 {
     return APU.tone[index].polarity * VOLUME_INVERT_TABLE[APU.tone[index].volume];
 }
 
-static int8_t SN76489_sample_noise(struct SMS_Core* sms)
+static inline int8_t SN76489_sample_noise(struct SMS_Core* sms)
 {
     return APU.noise.shifted_bit * VOLUME_INVERT_TABLE[APU.noise.volume];
 }

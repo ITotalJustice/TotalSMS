@@ -46,16 +46,18 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
 {
     (void)user;
 
-    uint8_t sample = 0;
-
-    SDL_MixAudioFormat(&sample, (const uint8_t*)&data->tone0, AUDIO_S8, sizeof(data->tone0), VOLUME);
-    SDL_MixAudioFormat(&sample, (const uint8_t*)&data->tone1, AUDIO_S8, sizeof(data->tone1), VOLUME);
-    SDL_MixAudioFormat(&sample, (const uint8_t*)&data->tone2, AUDIO_S8, sizeof(data->tone2), VOLUME);
-    SDL_MixAudioFormat(&sample, (const uint8_t*)&data->noise, AUDIO_S8, sizeof(data->noise), VOLUME);
+    // disable to allow for volume control
+    #if 1
+        const int8_t sample = data->tone0 + data->tone1 + data->tone2 + data->noise;
+    #else
+        const int8_t mixed_channels = data->tone0 + data->tone1 + data->tone2 + data->noise;
+        uint8_t sample = 0;
+        SDL_MixAudioFormat(&sample, (const uint8_t*)&mixed_channels, AUDIO_S8, sizeof(mixed_channels), VOLUME);
+    #endif
 
     while ((SDL_GetQueuedAudioSize(audio_device)) > (1024 * 4))
     {
-        SDL_Delay(1);
+        SDL_Delay(4);
     }
 
     SDL_QueueAudio(audio_device, &sample, sizeof(sample));
