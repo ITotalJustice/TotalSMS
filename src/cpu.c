@@ -66,22 +66,6 @@ static const uint8_t CYC_DDFD[0x100] =
     0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0A, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
 };
 
-
-#if 1
-    #define PARITY(v) !__builtin_parity(v)
-#else
-    // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
-    static inline int bit_parity(int val)
-    {
-        val ^= val >> 8;
-        val ^= val >> 4;
-        val ^= val >> 2;
-        val ^= val >> 1;
-        return val;
-    };
-    #define PARITY(v) bit_parity(v)
-#endif
-
 enum
 {
     FLAG_C_MASK = 1 << 0, // set if result is > 255
@@ -310,7 +294,7 @@ static void _AND(struct SMS_Core* sms, uint8_t value)
 
     FLAG_C = false;
     FLAG_N = false;
-    FLAG_P = PARITY(result);
+    FLAG_P = SMS_parity(result);
     FLAG_H = true;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
@@ -324,7 +308,7 @@ static void _XOR(struct SMS_Core* sms, uint8_t value)
 
     FLAG_C = false;
     FLAG_N = false;
-    FLAG_P = PARITY(result);
+    FLAG_P = SMS_parity(result);
     FLAG_H = false;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
@@ -338,7 +322,7 @@ static void _OR(struct SMS_Core* sms, uint8_t value)
 
     FLAG_C = false;
     FLAG_N = false;
-    FLAG_P = PARITY(result);
+    FLAG_P = SMS_parity(result);
     FLAG_H = false;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
@@ -537,7 +521,7 @@ static void shift_left_flags(struct SMS_Core* sms, uint8_t result, uint8_t value
 {
     FLAG_C = value >> 7;
     FLAG_N = false;
-    FLAG_P = PARITY(result);
+    FLAG_P = SMS_parity(result);
     FLAG_H = false;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
@@ -547,7 +531,7 @@ static void shift_right_flags(struct SMS_Core* sms, uint8_t result, uint8_t valu
 {
     FLAG_C = value & 0x1;
     FLAG_N = false;
-    FLAG_P = PARITY(result);
+    FLAG_P = SMS_parity(result);
     FLAG_H = false;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
@@ -1098,7 +1082,7 @@ static uint8_t IN(struct SMS_Core* sms)
     const uint8_t result = readIO(REG_C);
 
     FLAG_N = false;
-    FLAG_P = PARITY(result);
+    FLAG_P = SMS_parity(result);
     FLAG_H = false;
 
     return result;
@@ -1142,7 +1126,7 @@ static void DAA(struct SMS_Core* sms)
     }
 
     // TODO: check how half flag is set!!!
-    FLAG_P = PARITY(REG_A);
+    FLAG_P = SMS_parity(REG_A);
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
 }
@@ -1178,7 +1162,7 @@ static void RLD(struct SMS_Core* sms)
     REG_A = (a & 0xF0) | (value >> 4);
 
     FLAG_N = false;
-    FLAG_P = PARITY(REG_A);
+    FLAG_P = SMS_parity(REG_A);
     FLAG_H = false;
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
@@ -1194,7 +1178,7 @@ static void LD_A_I(struct SMS_Core* sms)
     REG_A = REG_I;
 
     FLAG_N = false;
-    FLAG_P = PARITY(REG_A);
+    FLAG_P = SMS_parity(REG_A);
     FLAG_H = false;
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
@@ -1214,7 +1198,7 @@ static void LD_A_R(struct SMS_Core* sms)
     REG_A = REG_R;
 
     FLAG_N = false;
-    FLAG_P = PARITY(REG_A);
+    FLAG_P = SMS_parity(REG_A);
     FLAG_H = false;
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;

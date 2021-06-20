@@ -183,6 +183,20 @@ void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, void* use
     sms->apu.freq = freq;
 }
 
+bool SMS_parity(int value)
+{
+    #if 1
+        return !__builtin_parity(value);
+    #else
+        // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
+        value ^= value >> 8;
+        value ^= value >> 4;
+        value ^= value >> 2;
+        value ^= value >> 1;
+        return value;
+    #endif
+}
+
 void SMS_step(struct SMS_Core* sms)
 {
     Z80_run(sms);

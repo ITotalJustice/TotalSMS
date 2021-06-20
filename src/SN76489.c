@@ -130,22 +130,6 @@ static void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_t cycle
     }
 }
 
-// todo: create bit.c and put this in there, along with bit_is_set()
-#if 1
-    #define PARITY(v) !__builtin_parity(v)
-#else
-    // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
-    static inline int bit_parity(int val)
-    {
-        val ^= val >> 8;
-        val ^= val >> 4;
-        val ^= val >> 2;
-        val ^= val >> 1;
-        return val;
-    };
-    #define PARITY(v) bit_parity(v)
-#endif
-
 static void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 {
     APU.noise.counter -= cycles;
@@ -173,7 +157,7 @@ static void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 
             if (APU.noise.mode == WHITE_NOISE)
             {
-                APU.noise.lfsr = (APU.noise.lfsr  >> 1) | (PARITY(APU.noise.lfsr & TAPPED_BITS) << 15);
+                APU.noise.lfsr = (APU.noise.lfsr  >> 1) | (SMS_parity(APU.noise.lfsr & TAPPED_BITS) << 15);
             }
             else
             {

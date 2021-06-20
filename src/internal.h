@@ -83,6 +83,8 @@ void SN76489_init(struct SMS_Core* sms);
 uint8_t vdp_status_flag_read(struct SMS_Core* sms);
 void vdp_run(struct SMS_Core* sms, uint8_t cycles);
 
+// [MISC]
+bool SMS_parity(int value);
 
 #ifdef __cplusplus
 }
