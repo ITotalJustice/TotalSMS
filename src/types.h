@@ -214,12 +214,17 @@ struct SMS_Vdp
     // the second half of the cram.
     uint8_t cram[32];
 
-    uint16_t vcount;
     uint16_t hcount;
+    uint16_t vcount;
 
-    // uint8_t io_reg_num;
-    // uint8_t io_reg_data;
-    // bool buffer_reg_latch;
+    // this differ from above in that this is what will be read on the port.
+    // due to the fact that scanlines can be 262 or 312, the value would
+    // would eventually overflow, so scanline 256 would read as 0!
+    // internally this does not actually wrap around, instead, at set
+    // values (differes between ntsc and pal), it will jump back to a
+    // previous value, for example, on ntsc, it'll jump from value
+    // 218 back to 213, though i am unsure if it keeps jumping...
+    uint8_t vcount_port;
 
     // reads are buffered
     uint8_t buffer_read_data;

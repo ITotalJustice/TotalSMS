@@ -3,10 +3,6 @@
 // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
 
 /* TODO:
-    writing to the noise channel should reset the lfsr, however it sounds
-    awful if done on latch write, so i only do this on data_reg_write().
-    needs to be looked into, likely my impl on writes is wrong as a whole.
-
     check what the noise counter reload should be (is it * 16?)
 */
 
@@ -45,26 +41,25 @@ static inline void latch_reg_write(struct SMS_Core* sms, uint8_t value)
         case 0: case 1: case 2:
             if (APU.latched_type == LATCH_TYPE_TONE)
             {
-                APU.tone[APU.latched_channel].tone &= 0x3FF0;
+                APU.tone[APU.latched_channel].tone &= 0x3F0;
                 APU.tone[APU.latched_channel].tone |= data;
             }
             else
             {
-                APU.tone[APU.latched_channel].volume = data & 0xF;
+                APU.tone[APU.latched_channel].volume = data;
             }
             break;
 
         case 3:
-            // APU.noise.lfsr = LFSR_RESET_VALUE;
-
             if (APU.latched_type == LATCH_TYPE_NOISE)
             {
+                APU.noise.lfsr = LFSR_RESET_VALUE;
                 APU.noise.shift_rate = data & 0x3;
-                APU.noise.mode = (data >> 2) & 1;
+                APU.noise.mode = (data >> 2) & 0x1;
             }
             else
             {
-                APU.noise.volume = data & 0xF;
+                APU.noise.volume = data;
             }
             break;
     }
@@ -80,7 +75,7 @@ static inline void data_reg_write(struct SMS_Core* sms, uint8_t value)
             if (APU.latched_type == LATCH_TYPE_TONE)
             {
                 APU.tone[APU.latched_channel].tone &= 0xF;
-                APU.tone[APU.latched_channel].tone |= (data & 0x3F) << 4;
+                APU.tone[APU.latched_channel].tone |= data << 4;
             }
             else
             {
@@ -89,12 +84,9 @@ static inline void data_reg_write(struct SMS_Core* sms, uint8_t value)
             break;
 
         case 3:
-            // APU.noise.lfsr = LFSR_RESET_VALUE;
-
             if (APU.latched_type == LATCH_TYPE_NOISE)
             {
-                APU.noise.shift_rate = data & 0x3;
-                APU.noise.mode = (data >> 2) & 1;
+                APU.noise.lfsr = LFSR_RESET_VALUE;
             }
             else
             {
@@ -120,13 +112,21 @@ void SN76489_reg_write(struct SMS_Core* sms, uint8_t value)
 
 static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_t cycles)
 {
-    APU.tone[index].counter -= cycles;
-
-    if (APU.tone[index].counter <= 0)
+    // we don't want to keep change the polarity if the counter is already zero,
+    // especially if the volume is still not off!
+    // otherwise this will cause a hi-pitch screech, can be heard in golden-axe
+    // to fix this, i check if the counter > 0 || if we have a value to reload
+    // the counter with.
+    if (APU.tone[index].counter || APU.tone[index].tone)
     {
-        APU.tone[index].counter = APU.tone[index].tone * 16;
-        // change the polarity
-        APU.tone[index].polarity *= -1;
+        APU.tone[index].counter -= cycles;
+
+        if (APU.tone[index].counter <= 0)
+        {
+            APU.tone[index].counter = APU.tone[index].tone * 16;
+            // change the polarity
+            APU.tone[index].polarity *= -1;
+        }
     }
 }
 
@@ -136,10 +136,11 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 
     if (APU.noise.counter <= 0)
     {
-        // const uint8_t low2 = APU.noise.lfsr & 0x3;
-
         switch (APU.noise.shift_rate)
         {
+            // i found that (freq * 8) or more sounds best for golden axe
+            // when the lightning move is used, though this is probably a bug
+            // with how my noise is implemented!
             case 0x0: APU.noise.counter = 0x10; break;
             case 0x1: APU.noise.counter = 0x20; break;
             case 0x2: APU.noise.counter = 0x40; break;
@@ -157,11 +158,11 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 
             if (APU.noise.mode == WHITE_NOISE)
             {
-                APU.noise.lfsr = (APU.noise.lfsr  >> 1) | (SMS_parity(APU.noise.lfsr & TAPPED_BITS) << 15);
+                APU.noise.lfsr = (APU.noise.lfsr >> 1) | (SMS_parity(APU.noise.lfsr & TAPPED_BITS) << 15);
             }
             else
             {
-                APU.noise.lfsr = (APU.noise.lfsr  >> 1) | ((APU.noise.lfsr & 0x1) << 15);
+                APU.noise.lfsr = (APU.noise.lfsr >> 1) | ((APU.noise.lfsr & 0x1) << 15);
             }
         }
     }
@@ -226,7 +227,7 @@ void SN76489_init(struct SMS_Core* sms)
     APU.tone[2].volume = 0xF;
 
     APU.noise.lfsr = LFSR_RESET_VALUE;
-    APU.noise.mode = 0; // ???
+    APU.noise.mode = 0;
     APU.noise.shift_rate = 0;
     APU.noise.shifted_bit = 0;
     APU.noise.flip_flop = false;

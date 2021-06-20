@@ -185,7 +185,7 @@ static inline void IO_control_write(struct SMS_Core* sms, uint8_t value)
 
 static inline uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 {
-    return sms->vdp.vcount;
+    return sms->vdp.vcount_port;
 }
 
 static inline uint8_t IO_read_hcounter(const struct SMS_Core* sms)
