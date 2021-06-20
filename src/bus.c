@@ -178,12 +178,6 @@ static void IO_memory_control_write(struct SMS_Core* sms, uint8_t value)
     sms->memory_control.io_chip_disable      = IS_BIT_SET(value, 2);
 }
 
-// static uint8_t IO_control_read(struct SMS_Core* sms)
-// {
-//     (void)sms;
-//     return 0xFF;
-// }
-
 static inline void IO_control_write(struct SMS_Core* sms, uint8_t value)
 {
     (void)sms; (void)value;
@@ -196,19 +190,20 @@ static inline uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 
 static inline uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
+    // docs say that this is a 9-bit counter, but only upper 8-bits read
     return sms->vdp.hcount >> 1;
 }
 
 static inline uint8_t IO_vdp_status_read(struct SMS_Core* sms)
 {
-    sms->vdp.buffer_addr_latch = false;
+    sms->vdp.control_latch = false;
 
     return vdp_status_flag_read(sms);
 }
 
 static inline uint8_t IO_vdp_data_read(struct SMS_Core* sms)
 {
-    sms->vdp.buffer_addr_latch = false;
+    sms->vdp.control_latch = false;
     
     const uint8_t data = sms->vdp.buffer_read_data;
     sms->vdp.buffer_read_data = sms->vdp.vram[sms->vdp.addr];
@@ -219,7 +214,7 @@ static inline uint8_t IO_vdp_data_read(struct SMS_Core* sms)
 
 static inline void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
 {
-    sms->vdp.buffer_addr_latch = false;
+    sms->vdp.control_latch = false;
 
     switch (sms->vdp.code)
     {
@@ -243,16 +238,38 @@ static inline void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
 
 static inline void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
 {
-    if (sms->vdp.buffer_addr_latch)
+    if (sms->vdp.control_latch)
     {
-        sms->vdp.addr = (sms->vdp.addr & 0x00FF) | ((value & 0x3F) << 8);
+        sms->vdp.control_word = (sms->vdp.control_word & 0xFF) | (value << 8);
         sms->vdp.code = value >> 6;
-        sms->vdp.buffer_addr_latch = false;
+        sms->vdp.control_latch = false;
+
+        switch (sms->vdp.code)
+        {
+            // code0 immediatley loads a byte from vram into buffer
+            case VDP_CODE_VRAM_WRITE_LOAD:
+                sms->vdp.addr = sms->vdp.control_word & 0x3FFF;
+                sms->vdp.buffer_read_data = sms->vdp.vram[sms->vdp.addr];
+                sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
+                break;
+
+            case VDP_CODE_VRAM_WRITE:
+                sms->vdp.addr = sms->vdp.control_word & 0x3FFF;
+                break;
+            
+            case VDP_CODE_REG_WRITE:
+                // SMS_log_fatal("writing to vdp io reg: %u\n", value);
+                break;
+            
+            case VDP_CODE_CRAM_WRITE:
+                sms->vdp.addr = sms->vdp.control_word & 0x3FFF;
+                break;
+        }
     }
     else
     {
-        sms->vdp.addr = (sms->vdp.addr & 0x3F00) | value;
-        sms->vdp.buffer_addr_latch = true;
+        sms->vdp.control_word = value;
+        sms->vdp.control_latch = true;
     }
 }
 

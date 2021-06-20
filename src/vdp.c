@@ -3,6 +3,27 @@
 
 #define VDP sms->vdp
 
+enum
+{
+    NTSC_HCOUNT_MAX = 342,
+    PAL_HCOUNT_MAX = 342,
+
+    NTSC_VCOUNT_MAX = 262,
+    PAL_VCOUNT_MAX = 312,
+
+    NTSC_FPS = 60,
+    PAL_FPS = 50,
+
+    NTSC_CYCLES_PER_FRAME = CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
+    PAL_CYCLES_PER_FRAME = CPU_CLOCK / PAL_VCOUNT_MAX / PAL_FPS, // ~230
+};
+
+// there are always 342 pixels across, but each scanline is either
+// 228 or 230 cycles, so, we need to mult the cpu cycles by a %
+// (this will be a decimal, so it cannot be an enum, aka an int)
+#define NTSC_HCOUNT_MULT ((float)NTSC_HCOUNT_MAX / (float)NTSC_CYCLES_PER_FRAME)
+#define PAL_HCOUNT_MULT ((float)PAL_HCOUNT_MAX / (float)PAL_CYCLES_PER_FRAME)
+
 
 uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 {
@@ -22,32 +43,9 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 
 void vdp_run(struct SMS_Core* sms, uint8_t cycles)
 {
-    VDP.hcount += cycles;
+    VDP.hcount += cycles * NTSC_HCOUNT_MULT;
 
-
-    #if 0
-    if (VDP.hcount > 241)
-    {
-        VDP.hcount = 0;
-        VDP.vcount++;
-
-        if (VDP.vcount == 191)
-        {
-            z80_gen_int(&sms->z80, 0);
-            Z80_irq(sms);
-            VDP.frame_interrupt_pending = true;
-        }
-
-        if (VDP.vcount > 241)
-        {
-            VDP.frame_interrupt_pending = false;
-            VDP.vcount = 0;
-        }
-    }
-    
-    #else
-
-    if (VDP.hcount > 342)
+    if (VDP.hcount >= NTSC_HCOUNT_MAX)
     {
         VDP.hcount = 0;
         VDP.vcount++;
@@ -58,25 +56,10 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
             VDP.frame_interrupt_pending = true;
         }
 
-        // if (VDP.vcount == 224)
-        // {
-        //     z80_gen_int(&sms->z80, 0);
-        //     Z80_irq(sms);
-        //     VDP.frame_interrupt_pending = true;
-        // }
-
-        // if (VDP.vcount == 240)
-        // {
-        //     z80_gen_int(&sms->z80, 0);
-        //     Z80_irq(sms);
-        //     VDP.frame_interrupt_pending = true;
-        // }
-
-        if (VDP.vcount == 262)
+        if (VDP.vcount == NTSC_VCOUNT_MAX)
         {
             VDP.frame_interrupt_pending = false;
             VDP.vcount = 0;
         }
     }
-    #endif
 }

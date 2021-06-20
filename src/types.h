@@ -8,6 +8,10 @@ extern "C" {
     #define SMS_DEBUG 0
 #endif
 
+#ifndef SMS_SINGLE_FILE
+    #define SMS_SINGLE_FILE 0
+#endif
+
 #if defined _WIN32 || defined __CYGWIN__
     #ifdef BUILDING_LIB
         #define SMSAPI __declspec(dllexport)
@@ -20,10 +24,6 @@ extern "C" {
     #else
         #define SMSAPI
     #endif
-#endif
-
-#ifndef SMS_SINGLE_FILE
-    #define SMS_SINGLE_FILE 0
 #endif
 
 #include <stdint.h>
@@ -217,15 +217,20 @@ struct SMS_Vdp
     uint16_t vcount;
     uint16_t hcount;
 
-    uint8_t io_reg_num;
-    uint8_t io_reg_data;
-    bool buffer_reg_latch;
+    // uint8_t io_reg_num;
+    // uint8_t io_reg_data;
+    // bool buffer_reg_latch;
 
     // reads are buffered
     uint8_t buffer_read_data;
 
+    // it takes 2 writes to control port to form the control word
+    // this can be used to set the addr, vdp reg or set writes
+    // to be made to cram
+    uint16_t control_word;
+
     // set if already have lo byte
-    bool buffer_addr_latch;
+    bool control_latch;
 
     // idk...its cleared on control port read
     bool frame_interrupt_pending;

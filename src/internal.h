@@ -6,7 +6,14 @@ extern "C" {
 
 #include "types.h"
 
-#define CPU_CLOCK (3579545)
+#if 1
+    // runs at 3.58MHz
+    #define CPU_CLOCK (3580000)
+#else
+    // this value was taken for sms power docs
+    #define CPU_CLOCK (3579545)
+#endif
+
 #define CYCLES_PER_FRAME (CPU_CLOCK / 60)
 
 

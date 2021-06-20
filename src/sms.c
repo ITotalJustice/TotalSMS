@@ -1,4 +1,3 @@
-#include "sms.h"
 #include "internal.h"
 
 #include <assert.h>
@@ -106,6 +105,8 @@ static void setup_mapper(struct SMS_Core* sms)
     // to use, for now, hardcode sega mapper (99% of games)
     sms->cart.mapper_type = MAPPER_TYPE_SEGA;
     sega_mapper_setup(sms);
+
+    (void)codemaster_mapper_setup; // silence warning
 }
 
 bool SMS_init(struct SMS_Core* sms)
@@ -200,9 +201,7 @@ bool SMS_parity(unsigned value)
 void SMS_step(struct SMS_Core* sms)
 {
     Z80_run(sms);
-    // timings are very messed up atm so this is a hack for games to
-    // sound nice for now at least
-    vdp_run(sms, sms->cpu.cycles * 1.6);
+    vdp_run(sms, sms->cpu.cycles);
     SN76489_run(sms, sms->cpu.cycles);
 
     assert(sms->cpu.cycles != 0);
