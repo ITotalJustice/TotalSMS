@@ -74,6 +74,7 @@ extern "C" {
 
 #if SMS_DEBUG
     #include <stdio.h>
+    #include <assert.h>
     #define SMS_log(...) fprintf(stdout, __VA_ARGS__)
     #define SMS_log_err(...) fprintf(stderr, __VA_ARGS__)
     #define SMS_log_fatal(...) do { fprintf(stderr, __VA_ARGS__); assert(0); } while(0)
@@ -84,11 +85,7 @@ extern "C" {
 #endif // SMS_DEBUG
 
 // returns 1 OR 0
-#define IS_BIT_SET(v, bit) (!!((v) & (bit)))
-
-// clears the bit before setting
-#define SET_BIT(v, bit, t) v = (v & ~(bit)) | ((t) << (bit))
-
+#define IS_BIT_SET(v, bit) (!!((v) & (1 << (bit))))
 
 // [CPU]
 SMS_FORCE_INLINE void Z80_run(struct SMS_Core* sms);
@@ -114,6 +111,7 @@ SMS_FORCE_INLINE void SN76489_run(struct SMS_Core* sms, uint8_t cycles);
 SMS_STATIC void SN76489_init(struct SMS_Core* sms);
 
 SMS_INLINE uint8_t vdp_status_flag_read(struct SMS_Core* sms);
+SMS_INLINE void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 SMS_FORCE_INLINE void vdp_run(struct SMS_Core* sms, uint8_t cycles);
 
 // [MISC]

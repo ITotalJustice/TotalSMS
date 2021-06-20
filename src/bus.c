@@ -206,6 +206,7 @@ static inline uint8_t IO_vdp_data_read(struct SMS_Core* sms)
     sms->vdp.control_latch = false;
     
     const uint8_t data = sms->vdp.buffer_read_data;
+
     sms->vdp.buffer_read_data = sms->vdp.vram[sms->vdp.addr];
     sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
 
@@ -218,15 +219,13 @@ static inline void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
 
     switch (sms->vdp.code)
     {
-        case VDP_CODE_VRAM_WRITE_LOAD: case VDP_CODE_VRAM_WRITE:
+        case VDP_CODE_VRAM_WRITE_LOAD:
+        case VDP_CODE_VRAM_WRITE:
+        case VDP_CODE_REG_WRITE:
             // writes store the new value in the buffered_data
             sms->vdp.buffer_read_data = value;
             sms->vdp.vram[sms->vdp.addr] = value;
             sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
-            break;
-        
-        case VDP_CODE_REG_WRITE:
-            // SMS_log_fatal("writing to vdp io reg: %u\n", value);
             break;
         
         case VDP_CODE_CRAM_WRITE:
@@ -258,7 +257,7 @@ static inline void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
                 break;
             
             case VDP_CODE_REG_WRITE:
-                // SMS_log_fatal("writing to vdp io reg: %u\n", value);
+                vdp_io_write(sms, value & 0xF, sms->vdp.control_word & 0xFF);
                 break;
             
             case VDP_CODE_CRAM_WRITE:
@@ -268,6 +267,7 @@ static inline void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
     }
     else
     {
+        sms->vdp.addr = (sms->vdp.addr & 0x3F00) | value;
         sms->vdp.control_word = value;
         sms->vdp.control_latch = true;
     }

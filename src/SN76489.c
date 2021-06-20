@@ -7,6 +7,7 @@
 */
 
 #include "internal.h"
+#include <string.h>
 
 
 #define APU sms->apu
@@ -36,32 +37,25 @@ static inline void latch_reg_write(struct SMS_Core* sms, uint8_t value)
 
     const uint8_t data = value & 0xF;
 
-    switch (APU.latched_channel)
+    if (APU.latched_type == LATCH_TYPE_VOL)
     {
-        case 0: case 1: case 2:
-            if (APU.latched_type == LATCH_TYPE_TONE)
-            {
+        APU.volume[APU.latched_channel] = data & 0xF;
+    }
+    else
+    {
+        switch (APU.latched_channel)
+        {
+            case 0: case 1: case 2:
                 APU.tone[APU.latched_channel].tone &= 0x3F0;
                 APU.tone[APU.latched_channel].tone |= data;
-            }
-            else
-            {
-                APU.tone[APU.latched_channel].volume = data;
-            }
-            break;
+                break;
 
-        case 3:
-            if (APU.latched_type == LATCH_TYPE_NOISE)
-            {
+            case 3:
                 APU.noise.lfsr = LFSR_RESET_VALUE;
                 APU.noise.shift_rate = data & 0x3;
                 APU.noise.mode = (data >> 2) & 0x1;
-            }
-            else
-            {
-                APU.noise.volume = data;
-            }
-            break;
+                break;
+        }
     }
 }
 
@@ -69,30 +63,23 @@ static inline void data_reg_write(struct SMS_Core* sms, uint8_t value)
 {
     const uint8_t data = value & 0x3F;
 
-    switch (APU.latched_channel)
+    if (APU.latched_type == LATCH_TYPE_VOL)
     {
-        case 0: case 1: case 2:
-            if (APU.latched_type == LATCH_TYPE_TONE)
-            {
+        APU.volume[APU.latched_channel] = data & 0xF;
+    }
+    else
+    {
+        switch (APU.latched_channel)
+        {
+            case 0: case 1: case 2:
                 APU.tone[APU.latched_channel].tone &= 0xF;
                 APU.tone[APU.latched_channel].tone |= data << 4;
-            }
-            else
-            {
-                APU.tone[APU.latched_channel].volume = data & 0xF;
-            }
-            break;
+                break;
 
-        case 3:
-            if (APU.latched_type == LATCH_TYPE_NOISE)
-            {
+            case 3:
                 APU.noise.lfsr = LFSR_RESET_VALUE;
-            }
-            else
-            {
-                APU.noise.volume = data & 0xF;
-            }
-            break;
+                break;
+        }
     }
 }
 
@@ -125,7 +112,7 @@ static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_
         {
             APU.tone[index].counter = APU.tone[index].tone * 16;
             // change the polarity
-            APU.tone[index].polarity *= -1;
+            APU.polarity[index] *= -1;
         }
     }
 }
@@ -154,7 +141,7 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
         if (APU.noise.flip_flop == true)
         {
             // this is the bit used for the mixer
-            APU.noise.shifted_bit = APU.noise.lfsr & 0x1 ? 1 : -1;
+            APU.polarity[3] = APU.noise.lfsr & 0x1 ? +1 : -1;
 
             if (APU.noise.mode == WHITE_NOISE)
             {
@@ -169,29 +156,24 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 }
 
 // the volume is inverted, so that 0xF = OFF, 0x0 = MAX
-static const int8_t VOLUME_INVERT_TABLE[] =
+static const int8_t VOLUME_INVERT_TABLE[0x10] =
 {
     0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0
 };
 
-static inline int8_t SN76489_sample_tone(struct SMS_Core* sms, uint8_t index)
+static inline int8_t SN76489_sample_channel(struct SMS_Core* sms, uint8_t index)
 {
-    return APU.tone[index].polarity * VOLUME_INVERT_TABLE[APU.tone[index].volume];
-}
-
-static inline int8_t SN76489_sample_noise(struct SMS_Core* sms)
-{
-    return APU.noise.shifted_bit * VOLUME_INVERT_TABLE[APU.noise.volume];
+    return APU.polarity[index] * VOLUME_INVERT_TABLE[APU.volume[index]];
 }
 
 static void SN76489_sample(struct SMS_Core* sms)
 {
     struct SMS_ApuCallbackData data =
     {
-        .tone0 = SN76489_sample_tone(sms, 0),
-        .tone1 = SN76489_sample_tone(sms, 1),
-        .tone2 = SN76489_sample_tone(sms, 2),
-        .noise = SN76489_sample_noise(sms),
+        .tone0 = SN76489_sample_channel(sms, 0),
+        .tone1 = SN76489_sample_channel(sms, 1),
+        .tone2 = SN76489_sample_channel(sms, 2),
+        .noise = SN76489_sample_channel(sms, 3),
     };
 
     APU.callback(APU.callback_user, &data);
@@ -218,20 +200,13 @@ void SN76489_run(struct SMS_Core* sms, uint8_t cycles)
 
 void SN76489_init(struct SMS_Core* sms)
 {
-    APU.tone[0].polarity = +1;
-    APU.tone[1].polarity = +1;
-    APU.tone[2].polarity = +1;
-
-    APU.tone[0].volume = 0xF;
-    APU.tone[1].volume = 0xF;
-    APU.tone[2].volume = 0xF;
+    memset(APU.polarity, 1, sizeof(APU.polarity));
+    memset(APU.volume, 0xF, sizeof(APU.volume));
 
     APU.noise.lfsr = LFSR_RESET_VALUE;
     APU.noise.mode = 0;
     APU.noise.shift_rate = 0;
-    APU.noise.shifted_bit = 0;
     APU.noise.flip_flop = false;
-    APU.noise.volume = 0xF;
 
     APU.latched_channel = 0;
 }

@@ -15,6 +15,7 @@ SMSAPI void SMS_step(struct SMS_Core* sms);
 SMSAPI void SMS_run_frame(struct SMS_Core* sms);
 
 SMSAPI void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, void* user, uint32_t freq);
+SMSAPI void SMS_set_vblank_callback(struct SMS_Core* sms, sms_vblank_callback_t cb, void* user);
 
 // [INPUT]
 SMSAPI void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down);

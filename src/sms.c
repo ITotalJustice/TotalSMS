@@ -124,6 +124,7 @@ bool SMS_init(struct SMS_Core* sms)
 static void SMS_reset(struct SMS_Core* sms)
 {
     SN76489_init(sms);
+    memset(sms->vdp.registers, 0xFF, sizeof(sms->vdp.registers));
 
     // setup cpu regs
     sms->cpu.PC = 0x0000; // i think?
@@ -182,6 +183,12 @@ void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, void* use
     sms->apu.callback = cb;
     sms->apu.callback_user = user;
     sms->apu.freq = freq;
+}
+
+void SMS_set_vblank_callback(struct SMS_Core* sms, sms_vblank_callback_t cb, void* user)
+{
+    sms->vdp.vblank_callback = cb;
+    sms->vdp.vblank_callback_user = user;
 }
 
 bool SMS_parity(unsigned value)

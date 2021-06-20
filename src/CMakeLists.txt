@@ -53,11 +53,11 @@ if (SMS_DEV)
     )
 
     list(APPEND _sanitizers
-        -fsanitize=address
-        -fsanitize=leak
+        # -fsanitize=address
+        # -fsanitize=leak
         -fsanitize=undefined
-        -fsanitize=pointer-compare
-        -fsanitize=pointer-subtract
+        # -fsanitize=pointer-compare
+        # -fsanitize=pointer-subtract
         -fstack-protector-all
     )
 

@@ -31,6 +31,24 @@ extern "C" {
 #include <stddef.h>
 
 
+// fwd
+struct SMS_Ports;
+struct SMS_ApuCallbackData;
+struct SMS_MemoryControlRegister;
+struct SMS_Core;
+
+
+// callback types
+typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuCallbackData* data);
+typedef void (*sms_vblank_callback_t)(void* user);
+
+
+enum
+{
+    SMS_SCREEN_WIDTH = 342,
+    SMS_SCREEN_HEIGHT = 262,
+};
+
 enum Z80_RegisterSet
 {
     REGISTER_SET_MAIN = 0,
@@ -202,6 +220,11 @@ enum VDP_Code
 
 struct SMS_Vdp
 {
+    sms_vblank_callback_t vblank_callback;
+    void* vblank_callback_user;
+
+    uint16_t pixels[262][342];
+
     // this is used for vram r/w and cram writes.
     uint16_t addr;
     // see [enum VDP_Code] 
@@ -214,6 +237,9 @@ struct SMS_Vdp
     // the second half of the cram.
     uint8_t cram[32];
 
+    // not sure if i should split this into structs...
+    uint8_t registers[0x10];
+
     uint16_t hcount;
     uint16_t vcount;
 
@@ -225,6 +251,9 @@ struct SMS_Vdp
     // previous value, for example, on ntsc, it'll jump from value
     // 218 back to 213, though i am unsure if it keeps jumping...
     uint8_t vcount_port;
+
+    // used for interrupts, reloaded at 0
+    uint8_t line_counter;
 
     // reads are buffered
     uint8_t buffer_read_data;
@@ -280,8 +309,6 @@ struct SMS_ApuCallbackData
     int8_t noise;
 };
 
-typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuCallbackData* data);
-
 struct SN76489
 {
     sms_apu_callback_t callback;
@@ -295,20 +322,19 @@ struct SN76489
     {
         int32_t counter; // 10-bits
         uint16_t tone; // 10-bits
-        uint8_t volume; // 4-bits
-        int8_t polarity; // +1 or -1
     } tone[3];
 
     struct
     {
         int32_t counter; // 10-bits
         uint16_t lfsr; // can be either 16-bit or 15-bit...
-        uint8_t volume; // 4-bits
         uint8_t mode; // 1-bits
         uint8_t shift_rate; // 2-bits
-        int8_t shifted_bit;
         bool flip_flop;
     } noise;
+
+    uint8_t volume[4];
+    int8_t polarity[4];
 
     // which of the 4 channels are latched.
     uint8_t latched_channel;

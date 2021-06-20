@@ -24,3 +24,12 @@ if (SMS_TEST_AUDIO)
     target_include_directories(test_audio PRIVATE ${SDL2_INCLUDE_DIRS})
     target_link_libraries(test_audio PRIVATE ${SDL2_LIBRARIES})
 endif()
+
+if (SMS_TEST_GFX)
+    add_executable(test_gfx test_gfx.c)
+    target_link_libraries(test_gfx LINK_PRIVATE TotalSMS)
+
+    find_package(SDL2 REQUIRED)
+    target_include_directories(test_gfx PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(test_gfx PRIVATE ${SDL2_LIBRARIES})
+endif()
