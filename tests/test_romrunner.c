@@ -1,5 +1,6 @@
 #include <sms.h>
 #include <stdio.h>
+#include <assert.h>
 
 
 static struct SMS_Core sms = {0};
@@ -39,9 +40,15 @@ int main(int argc, char const *argv[])
     }
 
     size_t rom_size = 0;
+
     if (!read_file(argv[1], ROM, &rom_size))
     {
         printf("failed to read file %s\n", argv[1]);
+        return -1;
+    }
+
+    if (!SMS_init(&sms))
+    {
         return -1;
     }
 
@@ -51,8 +58,10 @@ int main(int argc, char const *argv[])
         return -1;
     }
 
-    // todo: run forever...
-    SMS_run_frame(&sms);
+    for (;;)
+    {
+        SMS_run_frame(&sms);
+    }
 
     return 0;
 }

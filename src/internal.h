@@ -6,6 +6,9 @@ extern "C" {
 
 #include "types.h"
 
+#define CPU_CLOCK (3579545)
+#define CYCLES_PER_FRAME (CPU_CLOCK / 60)
+
 #define SMS_MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define SMS_MAX(x, y) (((x) > (y)) ? (x) : (y))
 
@@ -57,6 +60,9 @@ extern "C" {
 // [CPU]
 void Z80_run(struct SMS_Core* sms);
 
+void Z80_nmi(struct SMS_Core* sms);
+void Z80_irq(struct SMS_Core* sms);
+
 // [BUS]
 uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);
 void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value);
@@ -71,6 +77,12 @@ void codemaster_mapper_setup(struct SMS_Core* sms);
 
 // [APU]
 void SN76489_reg_write(struct SMS_Core* sms, uint8_t value);
+void SN76489_run(struct SMS_Core* sms, uint8_t cycles);
+void SN76489_init(struct SMS_Core* sms);
+
+uint8_t vdp_status_flag_read(struct SMS_Core* sms);
+void vdp_run(struct SMS_Core* sms, uint8_t cycles);
+
 
 #ifdef __cplusplus
 }

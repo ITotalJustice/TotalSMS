@@ -15,6 +15,7 @@ option(SMS_DEV "enables debug and sanitizers" OFF)
 
 # option(SMS_TEST_SANITY "build test that ensures the lib can be built" OFF)
 # option(SMS_TEST_BENCH "" OFF)
+option(SMS_TEST_AUDIO "" OFF)
 option(SMS_TEST_ROMRUNNER "" OFF)
 option(SMS_TEST_ALL "build all tests" OFF)
 
@@ -26,6 +27,7 @@ endif()
 if (SMS_TEST_ALL)
     # set(SMS_TEST_SANITY ON)
     # set(SMS_TEST_BENCH ON)
+    set(SMS_TEST_AUDIO ON)
     set(SMS_TEST_ROMRUNNER ON)
 endif()
 
