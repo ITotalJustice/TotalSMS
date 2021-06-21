@@ -170,19 +170,30 @@ static inline void vdp_render_background(struct SMS_Core* sms)
     const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
     
     const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
-    const uint8_t row = line >> 3; // div 8, but avoid div by 0
+    const uint8_t fine_line = line & 0x7;
+    const uint8_t row = line >> 3;
 
-    // fetch the base.
-    uint16_t nametable_addr = vdp_get_nametable_base_addr(sms);
-    // 
-    nametable_addr += row * 64;
+    const uint8_t starting_col = (32 - (VDP.registers[0x8] >> 3)) & 31;
+    const uint8_t fine_scrollx = VDP.registers[0x8] & 0x7;
 
-    for (uint8_t i = 0; i < 32; ++i)
+    const uint8_t starting_row = VDP.vertical_scroll >> 3;
+    const uint8_t fine_scrolly = VDP.vertical_scroll & 0x7;
+
+    (void)fine_scrolly; // todo:
+
+    const uint16_t nametable_base_addr = vdp_get_nametable_base_addr(sms);
+    // the 28 depends on the mode(?) of vdp, it can also be 32
+    const uint16_t vertical_offset = ((row + starting_row) % 28) * 64;
+
+    for (uint8_t col = 0; col < 32; ++col)
     {
+        const uint16_t horizontal_offset = ((starting_col + col) & 31) * 2;
+        const uint16_t nametable_addr = nametable_base_addr + vertical_offset + horizontal_offset;
+
         uint16_t tile = 0;
 
-        tile |= VDP.vram[nametable_addr++] << 0;
-        tile |= VDP.vram[nametable_addr++] << 8;
+        tile |= VDP.vram[nametable_addr + 0] << 0;
+        tile |= VDP.vram[nametable_addr + 1] << 8;
 
         // if set, background will display over sprites
         const bool priority = IS_BIT_SET(tile, 12);
@@ -197,11 +208,11 @@ static inline void vdp_render_background(struct SMS_Core* sms)
 
         if (vertical_flip)
         {
-            pattern_index += (7 - (line & 0x7)) * 4;
+            pattern_index += (7 - fine_line) * 4;
         }
         else
         {
-            pattern_index += (line & 0x7) * 4;
+            pattern_index += fine_line * 4;
         }
         
         // todo: keep an array of priority bits (like the gb)
@@ -215,8 +226,11 @@ static inline void vdp_render_background(struct SMS_Core* sms)
 
         for (uint8_t x = 0; x < 8; ++x)
         {
+            const uint8_t x_index = ((col * 8) + x + fine_scrollx) & 0xFF;
+
             const uint8_t bit = horizontal_flip ? x : 7 - x;
 
+            // if set, we load from the tile index instead!
             uint8_t palette_index = palette_select ? 16 : 0;
 
             palette_index |= IS_BIT_SET(tile_def0, bit) << 0;
@@ -224,7 +238,7 @@ static inline void vdp_render_background(struct SMS_Core* sms)
             palette_index |= IS_BIT_SET(tile_def2, bit) << 2;
             palette_index |= IS_BIT_SET(tile_def3, bit) << 3;
 
-            VDP.pixels[pixely][pixelx + x + (i * 8)] = convert_colour(VDP.cram[palette_index]);
+            VDP.pixels[pixely][pixelx + x_index] = convert_colour(VDP.cram[palette_index]);
         }
     }
 }
@@ -253,6 +267,7 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
         }
         else
         {
+            VDP.vertical_scroll = VDP.registers[0x9];
             VDP.line_counter = VDP.registers[0xA];
         }
 

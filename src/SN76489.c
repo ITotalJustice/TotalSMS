@@ -2,10 +2,6 @@
 // SOURCE: https://www.smspower.org/uploads/Development/richard.txt
 // SOURCE: https://www.smspower.org/uploads/Development/SN76489-20030421.txt
 
-/* TODO:
-    check what the noise counter reload should be (is it * 16?)
-*/
-
 #include "internal.h"
 #include <string.h>
 
@@ -78,6 +74,8 @@ static inline void data_reg_write(struct SMS_Core* sms, uint8_t value)
 
             case 3:
                 APU.noise.lfsr = LFSR_RESET_VALUE;
+                APU.noise.shift_rate = data & 0x3;
+                APU.noise.mode = (data >> 2) & 0x1;
                 break;
         }
     }
@@ -110,6 +108,7 @@ static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_
 
         if (APU.tone[index].counter <= 0)
         {
+            // the apu runs x16 slower than cpu!
             APU.tone[index].counter = APU.tone[index].tone * 16;
             // change the polarity
             APU.polarity[index] *= -1;
@@ -123,15 +122,18 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
 
     if (APU.noise.counter <= 0)
     {
+        // the drums sound much better in basically every game if
+        // the timer is 16, 32, 64.
+        // however, the correct sound is at 256, 512, 1024.
+        const uint8_t multi = APU.noise.better_drums ? 1 : 16;
+
+        // the apu runs x16 slower than cpu!
         switch (APU.noise.shift_rate)
         {
-            // i found that (freq * 8) or more sounds best for golden axe
-            // when the lightning move is used, though this is probably a bug
-            // with how my noise is implemented!
-            case 0x0: APU.noise.counter = 0x10; break;
-            case 0x1: APU.noise.counter = 0x20; break;
-            case 0x2: APU.noise.counter = 0x40; break;
-            case 0x3: APU.noise.counter = APU.tone[2].tone; break;
+            case 0x0: APU.noise.counter = 1 * 16 * multi; break;
+            case 0x1: APU.noise.counter = 2 * 16 * multi; break;
+            case 0x2: APU.noise.counter = 4 * 16 * multi; break;
+            case 0x3: APU.noise.counter = APU.tone[2].tone * 16; break;
         }
 
         // change the polarity
@@ -207,6 +209,7 @@ void SN76489_init(struct SMS_Core* sms)
     APU.noise.mode = 0;
     APU.noise.shift_rate = 0;
     APU.noise.flip_flop = false;
+    APU.noise.better_drums = false;
 
     APU.latched_channel = 0;
 }

@@ -240,6 +240,10 @@ struct SMS_Vdp
     // not sure if i should split this into structs...
     uint8_t registers[0x10];
 
+    // vertical scroll is updated when the display is not active,
+    // not when the register is updated!
+    uint8_t vertical_scroll;
+
     uint16_t hcount;
     uint16_t vcount;
 
@@ -331,6 +335,8 @@ struct SN76489
         uint8_t mode; // 1-bits
         uint8_t shift_rate; // 2-bits
         bool flip_flop;
+        // enable to have better sounding drums in most games!
+        bool better_drums;
     } noise;
 
     uint8_t volume[4];
