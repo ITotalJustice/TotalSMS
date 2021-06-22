@@ -20,11 +20,8 @@ to build a simple SDL2 based example, you will need
 
 ```sh
 git clone https://github.com/ITotalJustice/TotalSMS.git
-
 cd TotalSMS
-
 cmake -S . -B build -DSMS_EXAMPLE_SDL=ON -DCMAKE_BUILD_TYPE=Release
-
 cmake --build build -j 2
 ```
 this will build the binary in `build/examples/example_sdl`
