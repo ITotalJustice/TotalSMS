@@ -31,6 +31,19 @@ this will build the binary in `build/examples/example_sdl`
 
 so to load a rom, you can do `build/examples/example_sdl path/to/rom.sms`
 
+## Controls
+
+- KEY_X     : A
+- KEY_Z     : B
+- KEY_UP    : UP
+- KEY_DOWN  : DOWN
+- KEY_LEFT  : LEFT
+- KEY_RIGHT : RIGHT
+
+- CTRL + KEY_num  : scale the screen * number
+- CTRL + KEY_S    : savestate
+- CTRL + KEY_L  : loadstate
+
 ## Reporting bugs
 
 if you find any issues, please open an issue.
