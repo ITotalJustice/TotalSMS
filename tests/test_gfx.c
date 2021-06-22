@@ -17,6 +17,7 @@ static SDL_Texture* texture = NULL;
 static struct SMS_Core sms = {0};
 static uint8_t ROM[SMS_ROM_SIZE_MAX] = {0};
 static uint8_t scale = 2;
+static uint16_t core_pixels[SMS_SCREEN_HEIGHT][SMS_SCREEN_WIDTH];
 
 
 static bool read_file(const char* path, uint8_t* out_buf, size_t* out_size)
@@ -43,14 +44,25 @@ static bool read_file(const char* path, uint8_t* out_buf, size_t* out_size)
     return true;
 }
 
-static void core_on_vblank(void* user)
+static uint32_t core_on_colour(void* user, uint8_t c)
 {
     (void)user;
 
+    const uint8_t r = (c >> 0) & 0x3;
+    const uint8_t g = (c >> 2) & 0x3;
+    const uint8_t b = (c >> 4) & 0x3;
+
+    return (r << 13) | (g << 8) | (b << 3);
+}
+
+static void core_on_vblank(void* user)
+{
+    (void)user;
+    
     void* pixels; int pitch;
 
     SDL_LockTexture(texture, NULL, &pixels, &pitch);
-    memcpy(pixels, sms.vdp.pixels, sizeof(sms.vdp.pixels));
+    memcpy(pixels, core_pixels, sizeof(core_pixels));
     SDL_UnlockTexture(texture);
 }
 
@@ -85,6 +97,8 @@ int main(int argc, char** argv)
     }
 
     SMS_set_vblank_callback(&sms, core_on_vblank, NULL);
+    SMS_set_colour_callback(&sms, core_on_colour, NULL);
+    SMS_set_pixels(&sms, core_pixels, SMS_SCREEN_WIDTH, 16);
 
     if (!SMS_loadrom(&sms, ROM, rom_size))
     {

@@ -67,12 +67,12 @@ if (SMS_DEV)
     # for some reason. example -Werror fails, even though its valid for gcc...
     
     foreach (flag IN LISTS _flags)
-        target_compile_options(TotalSMS PUBLIC ${flag})
+        target_compile_options(TotalSMS PRIVATE ${flag})
     endforeach()
 
     foreach (flag IN LISTS _sanitizers)
-        target_compile_options(TotalSMS PUBLIC ${flag})
-        target_link_options(TotalSMS PUBLIC ${flag})
+        target_compile_options(TotalSMS PRIVATE ${flag})
+        target_link_options(TotalSMS INTERFACE ${flag})
     endforeach()
 
 endif()

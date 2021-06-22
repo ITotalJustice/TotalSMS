@@ -41,12 +41,15 @@ struct SMS_Core;
 // callback types
 typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuCallbackData* data);
 typedef void (*sms_vblank_callback_t)(void* user);
+typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t colour_b2g2r2);
 
 
 enum
 {
     SMS_SCREEN_WIDTH = 342,
     SMS_SCREEN_HEIGHT = 262,
+
+    SMS_ROM_SIZE_MAX = 0x80000, // 512KiB
 };
 
 enum Z80_RegisterSet
@@ -123,7 +126,7 @@ struct Z80
 
     // [special purpose registers]
     uint16_t PC; // program counter
-    uint16_t SP; // stak pointer
+    uint16_t SP; // stack pointer
 
     // these are actually mainly 16-bit registers, however, some instructions
     // split these into lo / hi bytes, similar to the general_reg_set.
@@ -149,11 +152,6 @@ struct Z80
     bool interrupt_requested;
 };
 
-enum
-{
-    SMS_ROM_SIZE_MAX = 0x80000 // 512KiB
-};
-
 enum SMS_MapperType
 {
     MAPPER_TYPE_NONE,
@@ -162,8 +160,7 @@ enum SMS_MapperType
 
 struct SMS_SegaMapper
 {
-    // mapped every 0x400
-    uint8_t* banks[48];
+    const uint8_t* banks[48]; // mapped every 0x400
 
     struct // control
     {
@@ -181,23 +178,18 @@ struct SMS_SegaMapper
 
 struct SMS_CodemastersMapper
 {
-    // mapped every 0x4000
-    uint8_t* banks[3];
+    const uint8_t* banks[3]; // mapped every 0x4000
 };
 
 struct SMS_Cart
 {
-    uint8_t rom[SMS_ROM_SIZE_MAX];
-    uint32_t rom_size;
-    uint32_t rom_mask;
+    enum SMS_MapperType mapper_type;
 
     union
     {
         struct SMS_SegaMapper sega;
         struct SMS_CodemastersMapper codemasters;
     } mappers;
-
-    enum SMS_MapperType mapper_type;
 };
 
 struct SMS_RomHeader
@@ -220,11 +212,6 @@ enum VDP_Code
 
 struct SMS_Vdp
 {
-    sms_vblank_callback_t vblank_callback;
-    void* vblank_callback_user;
-
-    uint16_t pixels[262][342];
-
     // this is used for vram r/w and cram writes.
     uint16_t addr;
     // see [enum VDP_Code] 
@@ -232,10 +219,12 @@ struct SMS_Vdp
 
     uint8_t vram[1024 * 16];
 
-    // colour ram, BGR555 format.
     // bg can use either palette, while sprites can only use
     // the second half of the cram.
     uint8_t cram[32];
+
+    // the actual colour set to the pixels
+    uint32_t colour[32];
 
     // not sure if i should split this into structs...
     uint8_t registers[0x10];
@@ -315,13 +304,6 @@ struct SMS_ApuCallbackData
 
 struct SN76489
 {
-    sms_apu_callback_t callback;
-    void* callback_user;
-
-    // todo: prefix these vars with "callback"
-    uint32_t freq;
-    int32_t counter;
-
     struct
     {
         int32_t counter; // 10-bits
@@ -360,7 +342,39 @@ struct SMS_MemoryControlRegister
 
 struct SMS_Core
 {
-    size_t ticks; // for debuging
+    struct Z80 cpu;
+    struct SMS_Vdp vdp;
+    struct SN76489 apu;
+    struct SMS_Cart cart;
+    struct SMS_Ports port;
+    struct SMS_MemoryControlRegister memory_control;
+    uint8_t system_ram[0x2000];
+
+    const uint8_t* rom;
+    size_t rom_size;
+    uint32_t rom_mask;
+
+    void* pixels;
+    uint32_t pixels_stride;
+    uint8_t bpp;
+
+    sms_vblank_callback_t vblank_callback;
+    void* vblank_callback_user;
+
+    sms_colour_callback_t colour_callback;
+    void* colour_callback_user;
+
+    sms_apu_callback_t apu_callback;
+    void* apu_callback_user;
+
+    uint32_t apu_callback_freq;
+    int32_t apu_callback_counter;
+};
+
+struct SMS_State
+{
+    uint16_t magic;
+    uint16_t padding;
 
     struct Z80 cpu;
     struct SMS_Vdp vdp;
@@ -368,7 +382,6 @@ struct SMS_Core
     struct SMS_Cart cart;
     struct SMS_Ports port;
     struct SMS_MemoryControlRegister memory_control;
-
     uint8_t system_ram[0x2000];
 };
 

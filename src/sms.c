@@ -16,7 +16,7 @@ static const bool valid_rom_size_values[0x10] =
     [0x1] = true, // 512KiB
 };
 
-static const char* valid_rom_size_string[0x10] =
+static const char* const valid_rom_size_string[0x10] =
 {
     [0xC] = "32KiB",
     [0xE] = "64KiB",
@@ -25,7 +25,7 @@ static const char* valid_rom_size_string[0x10] =
     [0x1] = "512KiB",
 };
 
-static const char* region_code_string[0x10] =
+static const char* const region_code_string[0x10] =
 {
     [0x3] = "SMS Japan",
     [0x4] = "SMS Export",
@@ -165,9 +165,9 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
     }
 
     // save the rom, setup the size and mask
-    memcpy(sms->cart.rom, rom, size);
-    sms->cart.rom_size = size;
-    sms->cart.rom_mask = size - 1; // this works because size is always pow2
+    sms->rom = rom;
+    sms->rom_size = size;
+    sms->rom_mask = size - 1; // this works because size is always pow2
     
     // this assumes the game is always sega mapper
     // which (for testing at least), it always will be
@@ -178,17 +178,66 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
     return true;
 }
 
+void SMS_set_pixels(struct SMS_Core* sms, void* pixels, uint32_t stride, uint8_t bpp)
+{
+    sms->pixels = pixels;
+    sms->pixels_stride = stride;
+    sms->bpp = bpp;
+}
+
 void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, void* user, uint32_t freq)
 {
-    sms->apu.callback = cb;
-    sms->apu.callback_user = user;
-    sms->apu.freq = freq;
+    sms->apu_callback = cb;
+    sms->apu_callback_user = user;
+    sms->apu_callback_freq = freq;
 }
 
 void SMS_set_vblank_callback(struct SMS_Core* sms, sms_vblank_callback_t cb, void* user)
 {
-    sms->vdp.vblank_callback = cb;
-    sms->vdp.vblank_callback_user = user;
+    sms->vblank_callback = cb;
+    sms->vblank_callback_user = user;
+}
+
+void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb, void* user)
+{
+    sms->colour_callback = cb;
+    sms->colour_callback_user = user;
+}
+
+enum { STATE_MAGIC = 0x5E6A };
+
+bool SMS_savestate(const struct SMS_Core* sms, struct SMS_State* state)
+{
+    state->magic = STATE_MAGIC;
+    state->padding = 0;
+
+    memcpy(&state->cpu, &sms->cpu, sizeof(sms->cpu));
+    memcpy(&state->vdp, &sms->vdp, sizeof(sms->vdp));
+    memcpy(&state->apu, &sms->apu, sizeof(sms->apu));
+    memcpy(&state->cart, &sms->cart, sizeof(sms->cart));
+    memcpy(&state->port, &sms->port, sizeof(sms->port));
+    memcpy(&state->memory_control, &sms->memory_control, sizeof(sms->memory_control));
+    memcpy(&state->system_ram, &sms->system_ram, sizeof(sms->system_ram));
+
+    return true;
+}
+
+bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state)
+{
+    if (state->magic != STATE_MAGIC)
+    {
+        return false;
+    }
+
+    memcpy(&sms->cpu, &state->cpu, sizeof(sms->cpu));
+    memcpy(&sms->vdp, &state->vdp, sizeof(sms->vdp));
+    memcpy(&sms->apu, &state->apu, sizeof(sms->apu));
+    memcpy(&sms->cart, &state->cart, sizeof(sms->cart));
+    memcpy(&sms->port, &state->port, sizeof(sms->port));
+    memcpy(&sms->memory_control, &state->memory_control, sizeof(sms->memory_control));
+    memcpy(&sms->system_ram, &state->system_ram, sizeof(sms->system_ram));
+
+    return true;
 }
 
 bool SMS_parity(unsigned value)

@@ -9,12 +9,12 @@ static inline void sega_mapper_update_slot0(struct SMS_Core* sms)
     const size_t offset = 0x4000 * sms->cart.mappers.sega.fffd;
 
     // this is fixed, never updated!
-    sms->cart.mappers.sega.banks[0x00] = sms->cart.rom;
+    sms->cart.mappers.sega.banks[0x00] = sms->rom;
 
     for (size_t i = 1; i < 0x10; ++i)
     {
         // only the first 15 banks are saved
-        sms->cart.mappers.sega.banks[i] = sms->cart.rom + offset + (0x0400 * i);
+        sms->cart.mappers.sega.banks[i] = sms->rom + offset + (0x0400 * i);
     }
 }
 
@@ -24,7 +24,7 @@ static inline void sega_mapper_update_slot1(struct SMS_Core* sms)
 
     for (size_t i = 0; i < 0x10; ++i)
     {
-        sms->cart.mappers.sega.banks[i + 0x10] = sms->cart.rom + offset + (0x0400 * i);
+        sms->cart.mappers.sega.banks[i + 0x10] = sms->rom + offset + (0x0400 * i);
     }
 }
 
@@ -34,7 +34,7 @@ static inline void sega_mapper_update_slot2(struct SMS_Core* sms)
 
     for (size_t i = 0; i < 0x10; ++i)
     {
-        sms->cart.mappers.sega.banks[i + 0x20] = sms->cart.rom + offset + (0x0400 * i);
+        sms->cart.mappers.sega.banks[i + 0x20] = sms->rom + offset + (0x0400 * i);
     }
 }
 
@@ -42,6 +42,7 @@ void sega_mapper_setup(struct SMS_Core* sms)
 {
     // control is reset to zero
     memset(&sms->cart.mappers.sega.fffc, 0, sizeof(sms->cart.mappers.sega.fffc));
+    
     sms->cart.mappers.sega.fffd = 0;
     sms->cart.mappers.sega.fffe = 1;
     sms->cart.mappers.sega.ffff = 2;
@@ -60,7 +61,7 @@ void codemaster_mapper_setup(struct SMS_Core* sms)
 
 static FORCE_INLINE uint8_t none_mapper_read(struct SMS_Core* sms, uint16_t addr)
 {
-    return sms->cart.rom[addr & sms->cart.rom_mask];
+    return sms->rom[addr & sms->rom_mask];
 }
 
 static FORCE_INLINE uint8_t sega_mapper_read(struct SMS_Core* sms, uint16_t addr)
@@ -104,8 +105,6 @@ uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr)
 // this is okay though because i use a switch here to check the addr!
 static FORCE_INLINE void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 {
-    // SMS_log("[SEGA-MAPPER-W] addr: 0x%04X value: 0x%02X\n", addr, value);
-
     switch (addr)
     {
         case 0xFFFC: // Cartridge RAM mapper control
@@ -229,6 +228,16 @@ static inline void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
             break;
         
         case VDP_CODE_CRAM_WRITE:
+            // todo: have a bool array and mark entries dirty on change!
+            if (sms->colour_callback)
+            {
+                sms->vdp.colour[sms->vdp.addr & 0x1F] = sms->colour_callback(sms->colour_callback_user, value);
+            }
+            else
+            {
+                sms->vdp.colour[sms->vdp.addr & 0x1F] = value;
+            }
+
             sms->vdp.cram[sms->vdp.addr & 0x1F] = value;
             sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
             break;
@@ -273,8 +282,6 @@ static inline void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
     }
 }
 
-
-// [IO]
 uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 {
     switch (addr)
@@ -306,7 +313,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0x68: case 0x6A: case 0x6C: case 0x6E:
         case 0x70: case 0x72: case 0x74: case 0x76:
         case 0x78: case 0x7A: case 0x7C: case 0x7E:
-            // SMS_log("[PORT-READ] 0x%02X V counter\n", addr);
             return IO_read_vcounter(sms);
 
         case 0x41: case 0x43: case 0x45: case 0x47:
@@ -317,7 +323,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0x69: case 0x6B: case 0x6D: case 0x6F:
         case 0x71: case 0x73: case 0x75: case 0x77:
         case 0x79: case 0x7B: case 0x7D: case 0x7F:
-            SMS_log_fatal("[PORT-READ] 0x%02X H counter\n", addr);
             return IO_read_hcounter(sms);
 
         case 0x80: case 0x82: case 0x84: case 0x86:
@@ -328,7 +333,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0xA8: case 0xAA: case 0xAC: case 0xAE:
         case 0xB0: case 0xB2: case 0xB4: case 0xB6:
         case 0xB8: case 0xBA: case 0xBC: case 0xBE:
-            // SMS_log_fatal("[PORT-READ] 0x%02X VDP data\n", addr);
             return IO_vdp_data_read(sms);
 
         case 0x81: case 0x83: case 0x85: case 0x87:
@@ -339,7 +343,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0xA9: case 0xAB: case 0xAD: case 0xAF:
         case 0xB1: case 0xB3: case 0xB5: case 0xB7:
         case 0xB9: case 0xBB: case 0xBD: case 0xBF:
-            // SMS_log("[PORT-READ] 0x%02X VDP status flags\n", addr);
             return IO_vdp_status_read(sms);
 
         case 0xC0: case 0xC2: case 0xC4: case 0xC6:
@@ -350,7 +353,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0xE8: case 0xEA: case 0xEC: case 0xEE:
         case 0xF0: case 0xF2: case 0xF4: case 0xF6:
         case 0xF8: case 0xFA: case 0xFC: case 0xFE:
-            // SMS_log("[PORT-READ] 0x%02X A\n", addr);
             return sms->port.a;
 
         case 0xC1: case 0xC3: case 0xC5: case 0xC7:
@@ -361,7 +363,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0xE9: case 0xEB: case 0xED: case 0xEF:
         case 0xF1: case 0xF3: case 0xF5: case 0xF7:
         case 0xF9: case 0xFB: case 0xFD: case 0xFF:
-            // SMS_log("[PORT-READ] 0x%02X B\n", addr);
             return sms->port.b;
     }
 
@@ -380,7 +381,6 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
         case 0x28: case 0x2A: case 0x2C: case 0x2E:
         case 0x30: case 0x32: case 0x34: case 0x36:
         case 0x38: case 0x3A: case 0x3C: case 0x3E:
-            SMS_log("[PORT-WRITE] Memory Control addr: 0x%02X v: 0x%02X \n", addr, value);
             IO_memory_control_write(sms, value);
             break;
 
@@ -392,7 +392,6 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
         case 0x29: case 0x2B: case 0x2D: case 0x2F:
         case 0x31: case 0x33: case 0x35: case 0x37:
         case 0x39: case 0x3B: case 0x3D: case 0x3F:
-            SMS_log("[PORT-WRITE] IO Control addr: 0x%02X v: 0x%02X \n", addr, value);
             IO_control_write(sms, value);
             break;
 
@@ -412,7 +411,6 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
         case 0x74: case 0x75: case 0x76: case 0x77:
         case 0x78: case 0x79: case 0x7A: case 0x7B:
         case 0x7C: case 0x7D: case 0x7E: case 0x7F:
-            // SMS_log("[PORT-WRITE] SN76489 PSG addr: 0x%02X v: 0x%02X \n", addr, value);
             SN76489_reg_write(sms, value);
             break;
 
@@ -424,7 +422,6 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
         case 0xA8: case 0xAA: case 0xAC: case 0xAE:
         case 0xB0: case 0xB2: case 0xB4: case 0xB6:
         case 0xB8: case 0xBA: case 0xBC: case 0xBE:
-            // SMS_log("[PORT-WRITE] VDP data addr: 0x%02X v: 0x%02X \n", addr, value);
             IO_vdp_data_write(sms, value);
             break;
 
@@ -436,7 +433,6 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
         case 0xA9: case 0xAB: case 0xAD: case 0xAF:
         case 0xB1: case 0xB3: case 0xB5: case 0xB7:
         case 0xB9: case 0xBB: case 0xBD: case 0xBF:
-            // SMS_log("[PORT-WRITE] VDP control flags addr: 0x%02X v: 0x%02X \n", addr, value);
             IO_vdp_control_write(sms, value);
             break;
     }

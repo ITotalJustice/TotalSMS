@@ -178,7 +178,7 @@ static void SN76489_sample(struct SMS_Core* sms)
         .noise = SN76489_sample_channel(sms, 3),
     };
 
-    APU.callback(APU.callback_user, &data);
+    sms->apu_callback(sms->apu_callback_user, &data);
 }
 
 void SN76489_run(struct SMS_Core* sms, uint8_t cycles)
@@ -188,13 +188,13 @@ void SN76489_run(struct SMS_Core* sms, uint8_t cycles)
     SN76489_tick_tone(sms, 2, cycles);
     SN76489_tick_noise(sms, cycles);
 
-    if (APU.callback)
+    if (sms->apu_callback)
     {
-        APU.counter -= cycles;
+        sms->apu_callback_counter -= cycles;
 
-        if (APU.counter <= 0)
+        if (sms->apu_callback_counter <= 0)
         {
-            APU.counter += (CPU_CLOCK / APU.freq);
+            sms->apu_callback_counter += (CPU_CLOCK / sms->apu_callback_freq);
             SN76489_sample(sms);
         }
     }

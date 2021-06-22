@@ -1,4 +1,5 @@
 #include "internal.h"
+#include <assert.h>
 
 
 #define VDP sms->vdp
@@ -100,6 +101,26 @@ static uint8_t vdp_get_overscan_colour(const struct SMS_Core* sms)
     return VDP.registers[0x7] & 0xF;
 }
 
+static FORCE_INLINE void vdp_write_pixel(struct SMS_Core* sms, uint32_t c, uint16_t x, uint16_t y)
+{
+    switch (sms->bpp)
+    {
+        case 8:
+            ((uint8_t*)sms->pixels)[sms->pixels_stride * y + x] = c;
+            break;
+
+        case 15:
+        case 16:
+            ((uint16_t*)sms->pixels)[sms->pixels_stride * y + x] = c;
+            break;
+
+        case 24:
+        case 32:
+            ((uint32_t*)sms->pixels)[sms->pixels_stride * y + x] = c;
+            break;
+    }
+}
+
 uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 {
     uint8_t v = 0;
@@ -119,17 +140,6 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 {
     VDP.registers[addr & 0xF] = value;
-}
-
-// this is just for testing.
-// converts colour to bgr555.
-static uint16_t convert_colour(uint8_t v)
-{
-    const uint8_t r = (v >> 0) & 0x3;
-    const uint8_t g = (v >> 2) & 0x3;
-    const uint8_t b = (v >> 4) & 0x3;
-
-    return (r << 13) | (g << 8) | (b << 3);
 }
 
 // same as i used in dmg / gbc rendering for gb
@@ -251,7 +261,7 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
             // used when sprite rendering, will skip if prio set and not pal0
             prio->array[x_index] = priority && palette_index != 0;
 
-            VDP.pixels[pixely][pixelx + x_index] = convert_colour(VDP.cram[palette_index]);
+            vdp_write_pixel(sms, VDP.colour[palette_index], pixelx + x_index, pixely);
         }
     }
 }
@@ -403,7 +413,7 @@ static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* p
             drawn_sprites[x_index] = true;
 
             // sprite cram index is the upper 16-bytes!
-            VDP.pixels[pixely][pixelx + x_index] = convert_colour(VDP.cram[palette_index + 16]);
+            vdp_write_pixel(sms, VDP.colour[palette_index + 16], pixelx + x_index, pixely);
         }
     }
 }
@@ -429,7 +439,8 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
                 VDP.line_counter = VDP.registers[0xA];
             }
 
-            if (vdp_is_display_enabled(sms))
+            // only render if enabled and we have pixels
+            if (vdp_is_display_enabled(sms) && sms->pixels)
             {
                 struct PriorityBuf prio = {0};
 
@@ -459,9 +470,9 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
 
                 VDP.frame_interrupt_pending = true;
 
-                if (VDP.vblank_callback)
+                if (sms->vblank_callback)
                 {
-                    VDP.vblank_callback(VDP.vblank_callback_user);
+                    sms->vblank_callback(sms->vblank_callback_user);
                 }
                 break;
 
