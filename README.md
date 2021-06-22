@@ -4,12 +4,11 @@ Simple Sega Master System emulator!
 
 ## Showcase
 
-![Img](res/Screenshot_2021-06-22_20.44.24.png)
-![Img](res/Screenshot_2021-06-22_20.45.17.png)
-![Img](res/Screenshot_2021-06-22_20.45.41.png)
-![Img](res/Screenshot_2021-06-22_20.46.31.png)
-![Img](res/Screenshot_2021-06-22_20.47.21.png)
-![Img](res/Screenshot_2021-06-22_20.51.02.png)
+|                          |                          |
+:-------------------------:|:-------------------------:
+![Img](res/Screenshot_2021-06-22_20.44.24.png) | ![Img](res/Screenshot_2021-06-22_20.45.17.png)
+![Img](res/Screenshot_2021-06-22_20.45.41.png) | ![Img](res/Screenshot_2021-06-22_20.46.31.png)
+![Img](res/Screenshot_2021-06-22_20.47.21.png) | ![Img](res/Screenshot_2021-06-22_20.51.02.png)
 
 ## Building
 
@@ -30,7 +29,7 @@ cmake --build build -j 2
 ```
 this will build the binary in `build/examples/example_sdl`
 
-so to load a rom, you can do `build/examples/example_sdl/ path/to/rom.sms`
+so to load a rom, you can do `build/examples/example_sdl path/to/rom.sms`
 
 ## Reporting bugs
 
