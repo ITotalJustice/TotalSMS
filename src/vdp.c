@@ -41,6 +41,8 @@ enum
 
     NTSC_VBLANK_START = NTSC_VBLANK_TOP + NTSC_BORDER_TOP + NTSC_ACTIVE_DISPLAY_VERTICAL + NTSC_BORDER_BOTTOM,
     NTSC_VBLANK_END = NTSC_VBLANK_TOP,
+
+    SPRITE_EOF = 208,
 };
 
 // there are always 342 pixels across, but each scanline is either
@@ -49,74 +51,18 @@ enum
 #define NTSC_HCOUNT_MULT ((float)NTSC_HCOUNT_MAX / (float)NTSC_CYCLES_PER_FRAME)
 #define PAL_HCOUNT_MULT ((float)PAL_HCOUNT_MAX / (float)PAL_CYCLES_PER_FRAME)
 
-// to be used for logging
-static const char* const VDP_REG_STR[0x10] =
-{
-    [0x0] = "mode control 0",
-    [0x1] = "mode control 1",
-    [0x2] = "name table base addr",
-    [0x3] = "colour table base addr",
-    [0x4] = "background pattern generator addr",
-    [0x5] = "sprite attribute table base addr",
-    [0x6] = "sprite generator base addr",
-    [0x7] = "overscan / background colour",
-    [0x8] = "background x scroll",
-    [0x9] = "background y scroll",
-    [0xA] = "line counter",
-    [0xB] = "--UNKNOWN--",
-    [0xC] = "--UNKNOWN--",
-    [0xD] = "--UNKNOWN--",
-    [0xE] = "--UNKNOWN--",
-    [0xF] = "--UNKNOWN--",
-};
 
-static const char* const VDP_MODE_STR[0x10] =
+static bool vdp_is_display_active(const struct SMS_Core* sms)
 {
-    [0x0] = "graphic 1",
-    [0x1] = "text",
-    [0x2] = "graphic 2",
-    [0x3] = "mode 1+2",
-    [0x4] = "multicolour",
-    [0x5] = "mode 1+3",
-    [0x6] = "mode 2+3",
-    [0x7] = "mode 1+2+3",
-    [0x8] = "mode 4",
-    [0x9] = "invalid text mode",
-    [0xA] = "mode 4",
-    [0xB] = "invalid text mode",
-    [0xC] = "mode 4",
-    [0xD] = "invalid text mode",
-    [0xE] = "mode 4",
-    [0xF] = "invalid text mode",
-};
-
-static inline bool vdp_is_display_active(const struct SMS_Core* sms)
-{
-    if (VDP.vcount >= NTSC_DISPLAY_VERTICAL_START &&
-        VDP.vcount <= NTSC_DISPLAY_VERTICAL_END
-    ){
-        return true;
-    }
-
-    return false;
+    return VDP.vcount >= NTSC_DISPLAY_VERTICAL_START && VDP.vcount < NTSC_DISPLAY_VERTICAL_END;
 }
 
-static inline uint8_t vdp_get_display_mode(const struct SMS_Core* sms)
-{
-    uint8_t v = 0;
-    v |= (IS_BIT_SET(VDP.registers[0], 2)) << 3;
-    v |= (IS_BIT_SET(VDP.registers[0], 1)) << 1;
-    v |= (IS_BIT_SET(VDP.registers[1], 4)) << 0;
-    v |= (IS_BIT_SET(VDP.registers[1], 3)) << 2;
-    return v;
-}
-
-static inline bool vdp_is_line_irq_wanted(const struct SMS_Core* sms)
+static bool vdp_is_line_irq_wanted(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x0], 4);
 }
 
-static inline bool vdp_is_vblank_irq_wanted(const struct SMS_Core* sms)
+static bool vdp_is_vblank_irq_wanted(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x1], 5);
 }
@@ -124,6 +70,34 @@ static inline bool vdp_is_vblank_irq_wanted(const struct SMS_Core* sms)
 static uint16_t vdp_get_nametable_base_addr(const struct SMS_Core* sms)
 {
     return ((VDP.registers[0x2] >> 1) & 0x7) << 11;
+}
+
+static uint16_t vdp_get_sprite_attribute_base_addr(const struct SMS_Core* sms)
+{
+    return ((VDP.registers[0x5] >> 1) & 0x3F) << 8;
+}
+
+static bool vdp_get_sprite_pattern_select(const struct SMS_Core* sms)
+{
+    return IS_BIT_SET(VDP.registers[0x6], 2);
+}
+
+static bool vdp_is_display_enabled(const struct SMS_Core* sms)
+{
+    return IS_BIT_SET(VDP.registers[0x1], 6);
+}
+
+static uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
+{
+    const bool doubled_sprites = IS_BIT_SET(VDP.registers[0x1], 0);
+    const uint8_t sprite_size = IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
+
+    return sprite_size << doubled_sprites;
+}
+
+static uint8_t vdp_get_overscan_colour(const struct SMS_Core* sms)
+{
+    return VDP.registers[0x7] & 0xF;
 }
 
 uint8_t vdp_status_flag_read(struct SMS_Core* sms)
@@ -144,18 +118,12 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 
 void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 {
-    // NOTE: this is a mode-4 only impl!
-    // the regs have different meanings based on the mode, which is out
-    // of scope for this emu.
     VDP.registers[addr & 0xF] = value;
-
-    (void)VDP_MODE_STR;
-    (void)VDP_REG_STR;
 }
 
 // this is just for testing.
 // converts colour to bgr555.
-static inline uint16_t convert_colour(uint8_t v)
+static uint16_t convert_colour(uint8_t v)
 {
     const uint8_t r = (v >> 0) & 0x3;
     const uint8_t g = (v >> 2) & 0x3;
@@ -164,7 +132,13 @@ static inline uint16_t convert_colour(uint8_t v)
     return (r << 13) | (g << 8) | (b << 3);
 }
 
-static inline void vdp_render_background(struct SMS_Core* sms)
+// same as i used in dmg / gbc rendering for gb
+struct PriorityBuf
+{
+    bool array[NTSC_ACTIVE_DISPLAY_HORIZONTAL];
+};
+
+static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio)
 {
     const uint16_t pixely = VDP.vcount;
     const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
@@ -174,20 +148,48 @@ static inline void vdp_render_background(struct SMS_Core* sms)
     const uint8_t row = line >> 3;
 
     const uint8_t starting_col = (32 - (VDP.registers[0x8] >> 3)) & 31;
-    const uint8_t fine_scrollx = VDP.registers[0x8] & 0x7;
+    uint8_t fine_scrollx = VDP.registers[0x8] & 0x7;
 
     const uint8_t starting_row = VDP.vertical_scroll >> 3;
     const uint8_t fine_scrolly = VDP.vertical_scroll & 0x7;
 
-    (void)fine_scrolly; // todo:
-
     const uint16_t nametable_base_addr = vdp_get_nametable_base_addr(sms);
-    // the 28 depends on the mode(?) of vdp, it can also be 32
-    const uint16_t vertical_offset = ((row + starting_row) % 28) * 64;
+
 
     for (uint8_t col = 0; col < 32; ++col)
     {
-        const uint16_t horizontal_offset = ((starting_col + col) & 31) * 2;
+        uint16_t horizontal_offset = 0;
+
+        // check if horizontal scrolling should be disabled
+        if (IS_BIT_SET(VDP.registers[0x0], 6) && line <= 15)
+        {
+            horizontal_offset = (col & 31) * 2;
+            fine_scrollx = 0;
+        }
+        else
+        {
+            horizontal_offset = ((starting_col + col) & 31) * 2;
+            fine_scrollx = VDP.registers[0x8] & 0x7;
+        }
+
+        uint16_t vertical_offset = 0;
+        uint8_t palette_index_offset = 0;
+
+        // check if vertical scrolling should be disabled
+        if (IS_BIT_SET(VDP.registers[0x0], 7) && col >= 24)
+        {
+            vertical_offset = (row % 28) * 64;
+            palette_index_offset = fine_line;
+        }
+        else
+        {
+            // we need to check if we cross the next row
+            const bool next_row = (fine_line + fine_scrolly) > 7;
+
+            vertical_offset = ((row + starting_row + next_row) % 28) * 64;
+            palette_index_offset = (fine_line + fine_scrolly) & 0x7;
+        }
+        
         const uint16_t nametable_addr = nametable_base_addr + vertical_offset + horizontal_offset;
 
         uint16_t tile = 0;
@@ -208,37 +210,200 @@ static inline void vdp_render_background(struct SMS_Core* sms)
 
         if (vertical_flip)
         {
-            pattern_index += (7 - fine_line) * 4;
+            pattern_index += (7 - palette_index_offset) * 4;
         }
         else
         {
-            pattern_index += fine_line * 4;
+            pattern_index += palette_index_offset * 4;
         }
-        
-        // todo: keep an array of priority bits (like the gb)
-        // and pass it to the sprite render function
-        (void)priority;
 
-        const uint8_t tile_def0 = VDP.vram[pattern_index + 0];
-        const uint8_t tile_def1 = VDP.vram[pattern_index + 1];
-        const uint8_t tile_def2 = VDP.vram[pattern_index + 2];
-        const uint8_t tile_def3 = VDP.vram[pattern_index + 3];
+        const uint8_t bit_plane0 = VDP.vram[pattern_index + 0];
+        const uint8_t bit_plane1 = VDP.vram[pattern_index + 1];
+        const uint8_t bit_plane2 = VDP.vram[pattern_index + 2];
+        const uint8_t bit_plane3 = VDP.vram[pattern_index + 3];
 
         for (uint8_t x = 0; x < 8; ++x)
         {
-            const uint8_t x_index = ((col * 8) + x + fine_scrollx) & 0xFF;
+            const uint16_t x_index = (col * 8) + x + fine_scrollx;
+
+            if (x_index >= NTSC_ACTIVE_DISPLAY_HORIZONTAL)
+            {
+                break;
+            }
 
             const uint8_t bit = horizontal_flip ? x : 7 - x;
 
             // if set, we load from the tile index instead!
             uint8_t palette_index = palette_select ? 16 : 0;
 
-            palette_index |= IS_BIT_SET(tile_def0, bit) << 0;
-            palette_index |= IS_BIT_SET(tile_def1, bit) << 1;
-            palette_index |= IS_BIT_SET(tile_def2, bit) << 2;
-            palette_index |= IS_BIT_SET(tile_def3, bit) << 3;
+            palette_index |= IS_BIT_SET(bit_plane0, bit) << 0;
+            palette_index |= IS_BIT_SET(bit_plane1, bit) << 1;
+            palette_index |= IS_BIT_SET(bit_plane2, bit) << 2;
+            palette_index |= IS_BIT_SET(bit_plane3, bit) << 3;
+
+            // if we are on column 0, we use a special palette instead!
+            if (x_index < 8)
+            {
+                // the colour is taken from the sprite index!
+                palette_index = 16 + vdp_get_overscan_colour(sms);
+            }
+
+            // used when sprite rendering, will skip if prio set and not pal0
+            prio->array[x_index] = priority && palette_index != 0;
 
             VDP.pixels[pixely][pixelx + x_index] = convert_colour(VDP.cram[palette_index]);
+        }
+    }
+}
+
+struct SpriteEntry
+{
+    uint8_t y;
+    uint8_t xn_index;
+};
+
+struct SpriteEntries
+{
+    struct SpriteEntry entry[8];
+    uint8_t count;
+};
+
+static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
+{
+    assert(IS_BIT_SET(VDP.registers[0x5], 0) && "needs lower index for oam");
+
+    struct SpriteEntries sprites = {0};
+
+    const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
+    const uint16_t sprite_attribute_base_addr = vdp_get_sprite_attribute_base_addr(sms);
+    const uint8_t sprite_size = vdp_get_sprite_height(sms);
+
+    for (uint8_t i = 0; i < 64; ++i)
+    {
+        // u16 as the sprite value could be 0xFF, which would overflow :)
+        uint16_t y = VDP.vram[sprite_attribute_base_addr + i] + 1;
+    
+        // special number used to stop sprite parsing!
+        if (y == SPRITE_EOF + 1)
+        {
+            break;
+        }
+
+        if (line >= y && line < (y + sprite_size))
+        {
+            if (sprites.count < 8)
+            {
+                sprites.entry[sprites.count].y = y;
+                // xn values start at + 0x80 in the SAT
+                sprites.entry[sprites.count].xn_index = 0x80 + (i * 2);
+                sprites.count++;
+            }
+
+            // if we have filled the sprite array, we need to keep checking further
+            // entries just in case another sprite falls on the same line, in which
+            // case, the sprite overflow flag is set for stat.
+            else
+            {
+                VDP.sprite_overflow = true;
+                break;
+            }
+        }
+    }
+
+    return sprites;
+}
+
+static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* prio)
+{
+    const uint16_t pixely = VDP.vcount;
+    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
+    
+    const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
+    const uint16_t attr_addr = vdp_get_sprite_attribute_base_addr(sms);
+    // if set, we fetch patterns from upper table
+    const uint16_t pattern_select = vdp_get_sprite_pattern_select(sms) ? 256 : 0;
+    // if set, sprites start 8 to the left
+    const int8_t sprite_x_offset = IS_BIT_SET(VDP.registers[0x0], 3) ? -8 : 0;
+
+    const struct SpriteEntries sprites = vdp_parse_sprites(sms);
+
+    bool drawn_sprites[NTSC_ACTIVE_DISPLAY_HORIZONTAL] = {0};
+
+    for (uint8_t i = 0; i < sprites.count; ++i)
+    {
+        const struct SpriteEntry* sprite = &sprites.entry[i];
+
+        // signed because the sprite can be negative if -8!
+        const int16_t sprite_x = VDP.vram[attr_addr + sprite->xn_index + 0] + sprite_x_offset;
+
+        uint16_t pattern_index = (VDP.vram[attr_addr + sprite->xn_index + 1] + pattern_select);
+
+        // docs state that is bit1 of reg1 is set (should always), bit0 is ignored
+        // i am not sure if this is applied to the final value of the value
+        // initial value however...
+        if (IS_BIT_SET(VDP.registers[0x1], 1))
+        {
+            pattern_index &= ~0x1;
+        }
+
+        pattern_index *= 32;
+        
+        // this has already taken into account of sprite size when parsing
+        // sprites, so for example:
+        // - line = 3,
+        // - sprite->y = 1,
+        // - sprite_size = 8,
+        // then y will be accepted for this line, but needs to be offset from
+        // the current line we are on, so line-sprite->y = 2
+        pattern_index += (line - sprite->y) * 4;
+
+        const uint8_t bit_plane0 = VDP.vram[pattern_index + 0];
+        const uint8_t bit_plane1 = VDP.vram[pattern_index + 1];
+        const uint8_t bit_plane2 = VDP.vram[pattern_index + 2];
+        const uint8_t bit_plane3 = VDP.vram[pattern_index + 3];
+
+        for (uint8_t x = 0; x < 8; ++x)
+        {
+            const int16_t x_index = x + sprite_x;
+
+            // skip if column0 or offscreen
+            if (x_index < 8 || x_index >= NTSC_ACTIVE_DISPLAY_HORIZONTAL)
+            {
+                continue;
+            }
+
+            // skip if we already rendered a sprite!
+            if (drawn_sprites[x_index])
+            {
+                VDP.sprite_collision = true;
+                continue;
+            }
+
+            // skip is bg has priority
+            if (prio->array[x_index])
+            {
+                continue;
+            }
+
+            // if set, we load from the tile index instead!
+            uint8_t palette_index = 0;
+
+            palette_index |= IS_BIT_SET(bit_plane0, 7 - x) << 0;
+            palette_index |= IS_BIT_SET(bit_plane1, 7 - x) << 1;
+            palette_index |= IS_BIT_SET(bit_plane2, 7 - x) << 2;
+            palette_index |= IS_BIT_SET(bit_plane3, 7 - x) << 3;
+
+            // for sprites, pal0 is transparent
+            if (palette_index == 0)
+            {
+                continue;
+            }
+
+            // keep track of this sprite already being rendered
+            drawn_sprites[x_index] = true;
+
+            // sprite cram index is the upper 16-bytes!
+            VDP.pixels[pixely][pixelx + x_index] = convert_colour(VDP.cram[palette_index + 16]);
         }
     }
 }
@@ -253,6 +418,7 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
         {
             VDP.line_counter--;
 
+            // reloads / fires irq (if enabled) on underflow
             if (VDP.line_counter == 0xFF)
             {
                 if (vdp_is_line_irq_wanted(sms))
@@ -263,7 +429,13 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
                 VDP.line_counter = VDP.registers[0xA];
             }
 
-            vdp_render_background(sms);
+            if (vdp_is_display_enabled(sms))
+            {
+                struct PriorityBuf prio = {0};
+
+                vdp_render_background(sms, &prio);
+                vdp_render_sprites(sms, &prio);
+            }
         }
         else
         {
@@ -284,6 +456,7 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
                 {
                     Z80_irq(sms);                    
                 }
+
                 VDP.frame_interrupt_pending = true;
 
                 if (VDP.vblank_callback)
