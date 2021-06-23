@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <title>TotalSMS</title>
+
+  <meta name="theme-color" content="#ffffff">
+
+  <!-- STYLE.css -->
+  <style type="text/css">
+      .button {
+      background-color: #230437;
+      border: none;
+      color: white;
+      padding: 10px 10px;
+      text-align: center;
+      text-decoration: none;
+      font: 1rem 'Fira Sans', sans-serif;
+      display: inline-block;
+      font-size: 18px;
+      margin: 8px 8px;
+      cursor: pointer;
+    }
+
+    label {
+        font: 1rem 'Fira Sans', sans-serif;
+    }
+  </style>
+
+
+  <!-- EM.css -->
+  <style type="text/css">
+      .emscripten { padding-right: 0; margin-left: auto; margin-right: auto; display: block; }
+    textarea.emscripten { font-family: monospace; width: 80%; }
+    div.emscripten { text-align: center; }
+    div.emscripten_border { border: 1px solid black; }
+    /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+    canvas.emscripten { border: 0px none; background-color: black; }
+
+    .spinner {
+      height: 50px;
+      width: 50px;
+      margin: 0px auto;
+      -webkit-animation: rotation .8s linear infinite;
+      -moz-animation: rotation .8s linear infinite;
+      -o-animation: rotation .8s linear infinite;
+      animation: rotation 0.8s linear infinite;
+      border-left: 10px solid rgb(0,150,240);
+      border-right: 10px solid rgb(0,150,240);
+      border-bottom: 10px solid rgb(0,150,240);
+      border-top: 10px solid rgb(100,0,200);
+      border-radius: 100%;
+      background-color: rgb(200,100,250);
+    }
+    @-webkit-keyframes rotation {
+      from {-webkit-transform: rotate(0deg);}
+      to {-webkit-transform: rotate(360deg);}
+    }
+    @-moz-keyframes rotation {
+      from {-moz-transform: rotate(0deg);}
+      to {-moz-transform: rotate(360deg);}
+    }
+    @-o-keyframes rotation {
+      from {-o-transform: rotate(0deg);}
+      to {-o-transform: rotate(360deg);}
+    }
+    @keyframes rotation {
+      from {transform: rotate(0deg);}
+      to {transform: rotate(360deg);}
+    }
+  </style>
+</head>
+
+<body style="background-color: #1f081f;">
+
+  <!-- emscripten stuff -->
+  <figure style="overflow:visible;" id="spinner"><div class="spinner"></div><center style="margin-top:0.5em"><strong>emscripten</strong></center></figure>
+  <div class="emscripten" id="status">Downloading...</div>
+  <div class="emscripten">
+    <progress value="0" max="100" id="progress" hidden=1></progress>  
+  </div>
+  <div class="emscripten_border">
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+  </div>
+
+  <label for="RomFilePicker" class="button">Load Rom</label>
+  <input type="file" id="RomFilePicker" name="LoadRom" accept=".sms" style="display: none;">
+
+  <!-- uncomment this to have textbox! -->
+  <!-- <hr/><textarea class="emscripten" id="output" rows="8"></textarea><hr> -->
+
+
+  <!-- ROMLOADER.js -->
+  <script type="text/javascript">
+    let rom_input = document.getElementById("RomFilePicker");
+
+    // sanity check to make sure we still have the ID (we might've renamed it!)
+    if (rom_input) {
+      rom_input.addEventListener("input", OnInput);
+    }
+    else {
+      console.log("[JS] couldn't rom_input get element by ID!");
+    }
+
+
+    function OnInput() {
+      const MAX_SIZE = 0x80000; // 512KiB
+
+      if (rom_input.files.length == 1 && rom_input.files[0].size <= MAX_SIZE) {
+        console.log(
+          "name:", rom_input.files[0].name,
+          "num files:", rom_input.files.length, 
+          "file_size:", rom_input.files[0].size
+        );
+
+        let reader = new FileReader();
+
+        reader.addEventListener("load", () => {
+          let data = new Uint8Array(reader.result);
+
+          // the js string needs to be converted to an int_array
+          // however, setting the heapu8 data with that int array
+          // seems to do very strange things.
+          // printf() prints the string fine, but the string itself
+          // is all wrong, the chars are messed up and repeat.
+          // idk why this is, but creating a u8 array and copying the data
+          // to that instead seems to work...again, no idea why.
+          let name_array = new Uint8Array(intArrayFromString(rom_input.files[0].name));
+
+          let data_ptr = _malloc(data.length * data.BYTES_PER_ELEMENT);
+          let name_ptr = _malloc(name_array.length * name_array.BYTES_PER_ELEMENT);
+          HEAPU8.set(data, data_ptr);
+          HEAPU8.set(name_array, name_ptr);
+
+          // call out rom load function
+          _em_load_rom_data(name_ptr, data_ptr, data.length);
+
+          // Free memory
+          _free(data_ptr);
+          _free(name_ptr);
+        });
+
+        reader.readAsArrayBuffer(rom_input.files[0]);
+      }
+
+      else {
+        console.log("something wrong with the file!");
+      }
+    }
+  </script>
+
+
+
+  <!-- EM.js -->
+  <script type="text/javascript">
+    var statusElement = document.getElementById('status');
+    var progressElement = document.getElementById('progress');
+    var spinnerElement = document.getElementById('spinner');
+
+    var Module = {
+      preRun: [],
+      postRun: [],
+      // print: (function() {
+      //   var element = document.getElementById('output');
+      //   if (element) element.value = ''; // clear browser cache
+      //   return function(text) {
+      //     if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+      //     console.log(text);
+      //     if (element) {
+      //       element.value += text + "\n";
+      //       element.scrollTop = element.scrollHeight; // focus on bottom
+      //     }
+      //   };
+      // })(),
+      printErr: function(text) {
+        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+        console.error(text);
+      },
+      canvas: (function() {
+        var canvas = document.getElementById('canvas');
+
+        // As a default initial behavior, pop up an alert when webgl context is lost. To make your
+        // application robust, you may want to override this behavior before shipping!
+        // See http://www.khronos.org/registry/webgl/specs/latest/1.0/#5.15.2
+        canvas.addEventListener("webglcontextlost", function(e) { alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
+
+        return canvas;
+      })(),
+      setStatus: function(text) {
+        if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+        if (text === Module.setStatus.last.text) return;
+        var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+        var now = Date.now();
+        if (m && now - Module.setStatus.last.time < 30) return; // if this is a progress update, skip it if too soon
+        Module.setStatus.last.time = now;
+        Module.setStatus.last.text = text;
+        if (m) {
+          text = m[1];
+          progressElement.value = parseInt(m[2])*100;
+          progressElement.max = parseInt(m[4])*100;
+          progressElement.hidden = false;
+          spinnerElement.hidden = false;
+        } else {
+          progressElement.value = null;
+          progressElement.max = null;
+          progressElement.hidden = true;
+          if (!text) spinnerElement.hidden = true;
+        }
+        statusElement.innerHTML = text;
+      },
+      totalDependencies: 0,
+      monitorRunDependencies: function(left) {
+        this.totalDependencies = Math.max(this.totalDependencies, left);
+        Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+      }
+    };
+    Module.setStatus('Downloading...');
+    window.onerror = function() {
+      Module.setStatus('Exception thrown, see JavaScript console');
+      spinnerElement.style.display = 'none';
+      Module.setStatus = function(text) {
+        if (text) Module.printErr('[post-exception status] ' + text);
+      };
+    };
+  </script>
+
+  <!-- this include emscripten js stuff (i think) -->
+  {{{ SCRIPT }}}
+</body>
+</html>

@@ -13,6 +13,8 @@ SMSAPI bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size);
 
 SMSAPI void SMS_step(struct SMS_Core* sms);
 SMSAPI void SMS_run_frame(struct SMS_Core* sms);
+SMSAPI void SMS_run_frame_cycles(struct SMS_Core* sms, size_t cycles);
+SMSAPI void SMS_run_frame_delta(struct SMS_Core* sms, double delta);
 
 SMSAPI void SMS_set_pixels(struct SMS_Core* sms, void* pixels, uint32_t stride, uint8_t bpp);
 

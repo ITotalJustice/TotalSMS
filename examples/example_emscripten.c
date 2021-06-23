@@ -4,7 +4,10 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <SDL.h>
+#include <SDL2/SDL.h>
+
+#include <emscripten.h>
+
 
 enum
 {
@@ -12,21 +15,24 @@ enum
     HEIGHT = SMS_SCREEN_HEIGHT,
 
     VOLUME = SDL_MIX_MAXVOLUME / 2,
-    SAMPLES = 1024,
-    SDL_AUDIO_FREQ = 48000,
-    SMS_AUDIO_FREQ = SDL_AUDIO_FREQ,
+    SAMPLES = 2048, // theres latency but not too bad for web
+    // SAMPLES = 4096, // too much latency, but otherwise perfect
+    SDL_AUDIO_FREQ = 96000,
 };
 
 
 static struct SMS_Core sms;
 static uint32_t core_pixels[HEIGHT][WIDTH];
-static const char* rom_path = NULL;
-static uint8_t* rom_data = NULL;
+
+static uint8_t rom_data[SMS_ROM_SIZE_MAX] = {0};
 static size_t rom_size = 0;
-static bool running = true;
+static bool has_rom = false;
+
 static int scale = 2;
 static int speed = 1;
 static int frameskip_counter = 0;
+
+static const char* rom_path = NULL;
 
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
@@ -37,11 +43,41 @@ static SDL_PixelFormat* pixel_format = NULL;
 static SDL_GameController* game_controller = NULL;
 
 
-static void run()
+static void syncfs()
 {
-    for (int i = 0; i < speed; ++i)
+    EM_ASM(
+        FS.syncfs(function (err) {
+            if (err) {
+                console.log(err);
+            }
+        });
+    );
+}
+
+EMSCRIPTEN_KEEPALIVE
+void em_load_rom_data(const char* name, const uint8_t* data, int len)
+{
+    printf("[EM] loading rom! name: %s len: %d\n", name, len);
+
+    if (len <= 0 || len > sizeof(rom_data))
     {
-        SMS_run_frame(&sms);
+        return;
+    }
+
+    // this is a nice race condition :)
+    memcpy(rom_data, data, len);
+
+    rom_size = (size_t)len;
+
+    if (SMS_loadrom(&sms, rom_data, rom_size))
+    {
+        rom_path = name;
+        has_rom = true;
+    }
+    else
+    {
+        printf("failed to loadrom\n");
+        has_rom = false;
     }
 }
 
@@ -71,7 +107,7 @@ static bool get_state_path(char path_out[0x304])
 static void savestate()
 {
     struct SMS_State state;
-    char path[0x304] = {0};
+    char path[0x304] = {"/states/"};
 
     if (!get_state_path(path))
     {
@@ -85,13 +121,15 @@ static void savestate()
         SMS_savestate(&sms, &state);
         fwrite(&state, 1, sizeof(state), f);
         fclose(f);
+
+        syncfs();
     }
 }
 
 static void loadstate()
 {
     struct SMS_State state;
-    char path[0x304] = {0};
+    char path[0x304] = {"/states/"};
 
     if (!get_state_path(path))
     {
@@ -107,6 +145,27 @@ static void loadstate()
 
         SMS_loadstate(&sms, &state);
     }
+}
+
+static void run()
+{
+    if (!has_rom)
+    {
+        return;
+    }
+
+    for (int i = 0; i < speed; ++i)
+    {
+        SMS_run_frame(&sms);
+    }
+}
+
+static void filedialog()
+{
+    EM_ASM(
+        let rom_input = document.getElementById("RomFilePicker");
+        rom_input.click();
+    );
 }
 
 static bool is_fullscreen()
@@ -209,6 +268,10 @@ static void on_ctrl_key_event(const SDL_KeyboardEvent* e, bool down)
                 savestate();
                 break;
 
+            case SDL_SCANCODE_O:
+                filedialog();
+                break;
+
             default: break; // silence enum warning
         }
     }
@@ -226,6 +289,11 @@ static void on_key_event(const SDL_KeyboardEvent* e)
         return;
     }
 
+    if (!has_rom)
+    {
+        return;
+    }
+
     switch (e->keysym.scancode)
     {
         case SDL_SCANCODE_X:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
@@ -236,10 +304,6 @@ static void on_key_event(const SDL_KeyboardEvent* e)
         case SDL_SCANCODE_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
         case SDL_SCANCODE_R:        SMS_set_port_b(&sms, RESET_BUTTON, down);       break;
         case SDL_SCANCODE_P:        SMS_set_port_b(&sms, PAUSE_BUTTON, down);       break;
-    
-        case SDL_SCANCODE_ESCAPE:
-            running = false;
-            break;
 
         default: break; // silence enum warning
     }
@@ -310,9 +374,9 @@ static void on_controller_event(const SDL_ControllerButtonEvent* e)
         case SDL_CONTROLLER_BUTTON_BACK:            SMS_set_port_b(&sms, RESET_BUTTON, down);       break;
         case SDL_CONTROLLER_BUTTON_GUIDE:           break;
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:    break;
-        case SDL_CONTROLLER_BUTTON_LEFTSTICK:       break;
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK:       if (down) { filedialog(); } break;
         case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:   break;
-        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:      break;
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:      if (down) { filedialog(); } break;
         case SDL_CONTROLLER_BUTTON_DPAD_UP:         SMS_set_port_a(&sms, JOY1_UP_BUTTON, down);     break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:       SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:       SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
@@ -336,6 +400,7 @@ static void on_controller_device_event(const SDL_ControllerDeviceEvent* e)
             break;
     }
 }
+
 static void on_window_event(const SDL_WindowEvent* e)
 {
     switch (e->event)
@@ -355,7 +420,6 @@ static void events()
         switch (e.type)
         {
             case SDL_QUIT:
-                running = false;
                 return;
         
             case SDL_KEYDOWN:
@@ -372,7 +436,7 @@ static void events()
             case SDL_CONTROLLERDEVICEREMOVED:
                 on_controller_device_event(&e.cdevice);
                 break;
-            
+
             case SDL_CONTROLLERAXISMOTION:
                 on_controller_axis_event(&e.caxis);
                 break;
@@ -388,6 +452,17 @@ static void events()
                 break;
         }
     } 
+}
+
+static uint32_t core_on_colour(void* user, uint8_t c)
+{
+    (void)user;
+
+    const uint8_t r = ((c >> 0) & 0x3) << 6;
+    const uint8_t g = ((c >> 2) & 0x3) << 6;
+    const uint8_t b = ((c >> 4) & 0x3) << 6;
+
+    return SDL_MapRGB(pixel_format, r, g, b);
 }
 
 static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
@@ -414,6 +489,11 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
         skipped_samples = 0;   
     }
 
+    if (SDL_GetQueuedAudioSize(audio_device) > sizeof(buffer) * 6)
+    {
+        return;
+    }
+
     buffer[buffer_count++] = data->tone0 + data->tone1 + data->tone2 + data->noise;
 
     if (buffer_count == sizeof(buffer))
@@ -424,25 +504,8 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
 
         SDL_MixAudioFormat(samples, (const uint8_t*)buffer, AUDIO_S8, sizeof(buffer), VOLUME);
 
-        // enable this if sync with audio
-        while (SDL_GetQueuedAudioSize(audio_device) > (sizeof(buffer) * 4))
-        {
-            SDL_Delay(4);
-        }
-
         SDL_QueueAudio(audio_device, samples, sizeof(samples));
     }
-}
-
-static uint32_t core_on_colour(void* user, uint8_t c)
-{
-    (void)user;
-
-    const uint8_t r = ((c >> 0) & 0x3) << 6;
-    const uint8_t g = ((c >> 2) & 0x3) << 6;
-    const uint8_t b = ((c >> 4) & 0x3) << 6;
-
-    return SDL_MapRGB(pixel_format, r, g, b);
 }
 
 static void core_on_vblank(void* user)
@@ -466,15 +529,17 @@ static void core_on_vblank(void* user)
 static void render()
 {
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, NULL, &rect);
+    if (has_rom)
+    {
+        SDL_RenderCopy(renderer, texture, NULL, &rect);
+    }
     SDL_RenderPresent(renderer);
 }
 
 static void cleanup()
 {
-    if (pixel_format)   { SDL_free(pixel_format); }
     if (audio_device)   { SDL_CloseAudioDevice(audio_device); }
-    if (rom_data)       { SDL_free(rom_data); }
+    if (pixel_format)   { SDL_free(pixel_format); }
     if (texture)        { SDL_DestroyTexture(texture); }
     if (renderer)       { SDL_DestroyRenderer(renderer); }
     if (window)         { SDL_DestroyWindow(window); }
@@ -482,29 +547,42 @@ static void cleanup()
     SDL_Quit();
 }
 
+static void em_loop()
+{
+    events();
+    run();
+    render();
+}
+
 int main(int argc, char** argv)
 {
-    if (argc < 2)
-    {
-        goto fail;
-    }
+    EM_ASM(
+        FS.mkdir("/saves"); FS.mount(IDBFS, {}, "/saves");
+        FS.mkdir("/states"); FS.mount(IDBFS, {}, "/states");
 
-    rom_path = argv[1];
-
-    // enable to record audio
-    #if 0
-        SDL_setenv("SDL_AUDIODRIVER", "disk", 1);
-    #endif
+        FS.syncfs(true, function (err) {
+            if (err) {
+                console.log(err);
+            }
+        });
+    );
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER))
     {
+        printf("fail to init sdl\n");
         goto fail;
+    }
+
+    if (SDL_GameControllerAddMappingsFromFile("res/gamecontrollerdb.txt"))
+    {
+        printf("failed to open controllerdb file!\n");
     }
 
     window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
 
     if (!window)
     {
+        printf("fail to init window\n");
         goto fail;
     }
 
@@ -524,6 +602,7 @@ int main(int argc, char** argv)
 
     if (!renderer)
     {
+        printf("fail to init renderer\n");
         goto fail;
     }
 
@@ -531,10 +610,9 @@ int main(int argc, char** argv)
 
     if (!texture)
     {
+        printf("fail to init texture\n");
         goto fail;
     }
-
-    setup_rect(WIDTH * scale, HEIGHT * scale);
 
     const SDL_AudioSpec wanted =
     {
@@ -551,43 +629,35 @@ int main(int argc, char** argv)
 
     SDL_AudioSpec aspec_got = {0};
 
-    audio_device = SDL_OpenAudioDevice(NULL, 0, &wanted, &aspec_got, 0);
+    audio_device = SDL_OpenAudioDevice(NULL, 0, &wanted, &aspec_got, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
 
-    if (audio_device == 0)
+     if (audio_device == 0)
     {
         goto fail;
     }
+
+    printf("[SDL-AUDIO] freq: %d\n", aspec_got.freq);
+    printf("[SDL-AUDIO] channels: %d\n", aspec_got.channels);
+    printf("[SDL-AUDIO] samples: %d\n", aspec_got.samples);
+    printf("[SDL-AUDIO] size: %d\n", aspec_got.size);
+
 
     SDL_PauseAudioDevice(audio_device, 0);
 
+    setup_rect(WIDTH * scale, HEIGHT * scale);
+
     if (!SMS_init(&sms))
     {
+        printf("fail to init sms\n");
         goto fail;
     }
 
-    SMS_set_apu_callback(&sms, core_on_apu, NULL, SMS_AUDIO_FREQ);
+    SMS_set_apu_callback(&sms, core_on_apu, NULL, aspec_got.freq + 512);
     SMS_set_vblank_callback(&sms, core_on_vblank, NULL);
     SMS_set_colour_callback(&sms, core_on_colour, NULL);
     SMS_set_pixels(&sms, core_pixels, SMS_SCREEN_WIDTH, pixel_format->BitsPerPixel);
 
-    rom_data = (uint8_t*)SDL_LoadFile(rom_path, &rom_size);
-
-    if (!rom_data)
-    {
-        goto fail;
-    }
-    if (!SMS_loadrom(&sms, rom_data, rom_size))
-    {
-        printf("failed to loadrom\n");
-        goto fail;
-    }
-
-    while (running)
-    {
-        events();
-        run();
-        render();
-    }
+    emscripten_set_main_loop(em_loop, 0, true);
 
     cleanup();
 
@@ -599,3 +669,4 @@ fail:
 
     return -1;
 }
+

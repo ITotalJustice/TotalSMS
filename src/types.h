@@ -286,6 +286,7 @@ enum SMS_PortB
     JOY2_A_BUTTON       = 1 << 2,
     JOY2_B_BUTTON       = 1 << 3,
     RESET_BUTTON        = 1 << 4,
+    PAUSE_BUTTON        = 1 << 5,
 };
 
 struct SMS_Ports
@@ -374,13 +375,12 @@ struct SMS_Core
 struct SMS_State
 {
     uint16_t magic;
-    uint16_t padding;
+    uint16_t reserved;
 
     struct Z80 cpu;
     struct SMS_Vdp vdp;
     struct SN76489 apu;
     struct SMS_Cart cart;
-    struct SMS_Ports port;
     struct SMS_MemoryControlRegister memory_control;
     uint8_t system_ram[0x2000];
 };

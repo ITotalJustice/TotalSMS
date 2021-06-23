@@ -16,17 +16,23 @@ void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down)
 
 void SMS_set_port_b(struct SMS_Core* sms, enum SMS_PortB pin, bool down)
 {
-   if (down)
+    if (pin == PAUSE_BUTTON)
     {
-        sms->port.b &= ~pin;
+        if (down)
+        {
+            Z80_nmi(sms);
+        }
     }
     else
     {
-        sms->port.b |= pin;
-    }
+        if (down)
+        {
+            sms->port.b &= ~pin;
+        }
+        else
+        {
+            sms->port.b |= pin;
+        }
 
-    if (pin == RESET_BUTTON && down)
-    {
-        Z80_nmi(sms);
     }
 }

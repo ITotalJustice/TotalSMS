@@ -52,7 +52,7 @@ Mkfile.old
 dkms.conf
 
 # my ignores
-build/
+build*/
 TotalSMS
 roms/
 *.zip

@@ -16,8 +16,8 @@ enum
     NTSC_FPS = 60,
     PAL_FPS = 50,
 
-    NTSC_CYCLES_PER_FRAME = CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
-    PAL_CYCLES_PER_FRAME = CPU_CLOCK / PAL_VCOUNT_MAX / PAL_FPS, // ~230
+    NTSC_CYCLES_PER_LINE = CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
+    PAL_CYCLES_PER_LINE = CPU_CLOCK / PAL_VCOUNT_MAX / PAL_FPS, // ~230
 
     NTSC_VBLANK_TOP = 16,
     NTSC_VBLANK_BOTTOM = 3,
@@ -40,7 +40,7 @@ enum
     NTSC_DISPLAY_HORIZONTAL_START = NTSC_HBLANK_LEFT + NTSC_BORDER_LEFT,
     NTSC_DISPLAY_HORIZONTAL_END = NTSC_DISPLAY_HORIZONTAL_START + NTSC_ACTIVE_DISPLAY_HORIZONTAL,
 
-    NTSC_VBLANK_START = NTSC_VBLANK_TOP + NTSC_BORDER_TOP + NTSC_ACTIVE_DISPLAY_VERTICAL + NTSC_BORDER_BOTTOM,
+    NTSC_VBLANK_START = NTSC_DISPLAY_VERTICAL_END + NTSC_BORDER_BOTTOM,
     NTSC_VBLANK_END = NTSC_VBLANK_TOP,
 
     SPRITE_EOF = 208,
@@ -49,8 +49,8 @@ enum
 // there are always 342 pixels across, but each scanline is either
 // 228 or 230 cycles, so, we need to mult the cpu cycles by a %
 // (this will be a decimal, so it cannot be an enum, aka an int)
-#define NTSC_HCOUNT_MULT ((float)NTSC_HCOUNT_MAX / (float)NTSC_CYCLES_PER_FRAME)
-#define PAL_HCOUNT_MULT ((float)PAL_HCOUNT_MAX / (float)PAL_CYCLES_PER_FRAME)
+#define NTSC_HCOUNT_MULT ((float)NTSC_HCOUNT_MAX / (float)NTSC_CYCLES_PER_LINE)
+#define PAL_HCOUNT_MULT ((float)PAL_HCOUNT_MAX / (float)PAL_CYCLES_PER_LINE)
 
 
 static bool vdp_is_display_active(const struct SMS_Core* sms)
@@ -148,6 +148,16 @@ struct PriorityBuf
     bool array[NTSC_ACTIVE_DISPLAY_HORIZONTAL];
 };
 
+static inline void vdp_render_overscan(struct SMS_Core* sms, uint16_t from, uint16_t until)
+{
+    const uint32_t overscan_col = VDP.colour[16 + vdp_get_overscan_colour(sms)];
+
+    for (uint16_t i = 0; i < until; ++i)
+    {
+        vdp_write_pixel(sms, overscan_col, from + i, VDP.vcount);
+    }
+}
+
 static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio)
 {
     const uint16_t pixely = VDP.vcount;
@@ -165,6 +175,11 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
 
     const uint16_t nametable_base_addr = vdp_get_nametable_base_addr(sms);
 
+    // render overscan left
+    vdp_render_overscan(sms, NTSC_HBLANK_LEFT, NTSC_BORDER_LEFT + 8);
+    // render overscan right
+    vdp_render_overscan(sms, NTSC_DISPLAY_HORIZONTAL_END, NTSC_BORDER_RIGHT);
+
 
     for (uint8_t col = 0; col < 32; ++col)
     {
@@ -173,7 +188,7 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
         // check if horizontal scrolling should be disabled
         if (IS_BIT_SET(VDP.registers[0x0], 6) && line <= 15)
         {
-            horizontal_offset = (col & 31) * 2;
+            horizontal_offset = col * 2;
             fine_scrollx = 0;
         }
         else
@@ -236,6 +251,11 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
         {
             const uint16_t x_index = (col * 8) + x + fine_scrollx;
 
+            if (x_index < 8)
+            {
+                continue;
+            }
+
             if (x_index >= NTSC_ACTIVE_DISPLAY_HORIZONTAL)
             {
                 break;
@@ -250,13 +270,6 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
             palette_index |= IS_BIT_SET(bit_plane1, bit) << 1;
             palette_index |= IS_BIT_SET(bit_plane2, bit) << 2;
             palette_index |= IS_BIT_SET(bit_plane3, bit) << 3;
-
-            // if we are on column 0, we use a special palette instead!
-            if (x_index < 8)
-            {
-                // the colour is taken from the sprite index!
-                palette_index = 16 + vdp_get_overscan_colour(sms);
-            }
 
             // used when sprite rendering, will skip if prio set and not pal0
             prio->array[x_index] = priority && palette_index != 0;
@@ -418,12 +431,22 @@ static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* p
     }
 }
 
+static bool vdp_is_vertcal_border(const struct SMS_Core* sms)
+{
+    return (VDP.vcount >= NTSC_VBLANK_TOP && VDP.vcount < (NTSC_VBLANK_TOP + NTSC_BORDER_TOP)) || (VDP.vcount >= NTSC_DISPLAY_VERTICAL_END && VDP.vcount < (NTSC_DISPLAY_VERTICAL_END + NTSC_BORDER_BOTTOM));
+}
+
 void vdp_run(struct SMS_Core* sms, uint8_t cycles)
 {
     VDP.hcount += cycles * NTSC_HCOUNT_MULT;
 
     if (VDP.hcount >= NTSC_HCOUNT_MAX)
     {
+        if (vdp_is_vertcal_border(sms) && vdp_is_display_enabled(sms) && sms->pixels)
+        {
+            vdp_render_overscan(sms, NTSC_HBLANK_LEFT, NTSC_ACTIVE_DISPLAY_HORIZONTAL + NTSC_BORDER_RIGHT + NTSC_BORDER_LEFT);
+        }
+
         if (vdp_is_display_active(sms))
         {
             VDP.line_counter--;
@@ -454,12 +477,6 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
             VDP.line_counter = VDP.registers[0xA];
         }
 
-        // -= because we don't want to drift too far
-        // only the lightgun reads hcount so accuracy of this isn't important!
-        VDP.hcount -= NTSC_HCOUNT_MAX;
-        VDP.vcount++;
-        VDP.vcount_port++;
-
         switch (VDP.vcount)
         {
             case NTSC_VBLANK_START:
@@ -476,18 +493,22 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
                 }
                 break;
 
-            case NTSC_VBLANK_END:
-                VDP.frame_interrupt_pending = false;
-                break;
-
             case 218: // see description in types.h for the jump back value
                 VDP.vcount_port = 213;
                 break;
-
-            case NTSC_VCOUNT_MAX:
-                VDP.vcount = 0;
-                VDP.vcount_port = 0;
-                break;
         }
+
+        if (VDP.vcount == NTSC_VCOUNT_MAX)
+        {
+            VDP.vcount = 0;
+            VDP.vcount_port = 0;
+        }
+        else
+        {
+            VDP.vcount++;
+            VDP.vcount_port++;
+        }
+
+        VDP.hcount -= NTSC_HCOUNT_MAX;
     }
 }

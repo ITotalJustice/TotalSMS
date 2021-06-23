@@ -255,7 +255,7 @@ static FORCE_INLINE void set_r16(struct SMS_Core* sms, uint16_t value, uint8_t i
     }
 }
 
-static FORCE_INLINE inline bool calc_vflag_8(const uint8_t a, const uint8_t b, const uint8_t r)
+static FORCE_INLINE bool calc_vflag_8(const uint8_t a, const uint8_t b, const uint8_t r)
 {
     return ((a & 0x80) == (b & 0x80)) && ((a & 0x80) != (r & 0x80));
 }

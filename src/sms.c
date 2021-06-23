@@ -206,25 +206,25 @@ void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb, voi
 
 enum { STATE_MAGIC = 0x5E6A };
 
+// for savestates, we don't save the port
 bool SMS_savestate(const struct SMS_Core* sms, struct SMS_State* state)
 {
     state->magic = STATE_MAGIC;
-    state->padding = 0;
+    state->reserved = 0;
 
     memcpy(&state->cpu, &sms->cpu, sizeof(sms->cpu));
     memcpy(&state->vdp, &sms->vdp, sizeof(sms->vdp));
     memcpy(&state->apu, &sms->apu, sizeof(sms->apu));
     memcpy(&state->cart, &sms->cart, sizeof(sms->cart));
-    memcpy(&state->port, &sms->port, sizeof(sms->port));
     memcpy(&state->memory_control, &sms->memory_control, sizeof(sms->memory_control));
-    memcpy(&state->system_ram, &sms->system_ram, sizeof(sms->system_ram));
+    memcpy(state->system_ram, sms->system_ram, sizeof(sms->system_ram));
 
     return true;
 }
 
 bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state)
 {
-    if (state->magic != STATE_MAGIC)
+    if (state->magic != STATE_MAGIC || state->reserved != 0)
     {
         return false;
     }
@@ -233,9 +233,8 @@ bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state)
     memcpy(&sms->vdp, &state->vdp, sizeof(sms->vdp));
     memcpy(&sms->apu, &state->apu, sizeof(sms->apu));
     memcpy(&sms->cart, &state->cart, sizeof(sms->cart));
-    memcpy(&sms->port, &state->port, sizeof(sms->port));
     memcpy(&sms->memory_control, &state->memory_control, sizeof(sms->memory_control));
-    memcpy(&sms->system_ram, &state->system_ram, sizeof(sms->system_ram));
+    memcpy(sms->system_ram, state->system_ram, sizeof(sms->system_ram));
 
     return true;
 }
@@ -263,10 +262,22 @@ void SMS_step(struct SMS_Core* sms)
     assert(sms->cpu.cycles != 0);
 }
 
-void SMS_run_frame(struct SMS_Core* sms)
+void SMS_run_frame_cycles(struct SMS_Core* sms, size_t cycles)
 {
-    for (size_t i = 0; i < CYCLES_PER_FRAME; i += sms->cpu.cycles)
+    for (size_t i = 0; i < cycles; i += sms->cpu.cycles)
     {
         SMS_step(sms);
     }
+}
+
+void SMS_run_frame_delta(struct SMS_Core* sms, double delta)
+{
+    const size_t cycles = (size_t)(delta * (double)(CYCLES_PER_FRAME));
+
+    SMS_run_frame_cycles(sms, cycles);
+}
+
+void SMS_run_frame(struct SMS_Core* sms)
+{
+    SMS_run_frame_cycles(sms, CYCLES_PER_FRAME);
 }
