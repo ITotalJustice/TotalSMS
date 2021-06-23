@@ -1,0 +1,30 @@
+name: Build Web & Deploy to GH
+on: [push,pull_request]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v2.3.1
+        
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
+
+      - name: Setup emsdk                 
+        uses: mymindstorm/setup-emsdk@v10
+        with:
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Install and Build 🔧 # This example project is built using npm and outputs the result to the 'build' folder. Replace with the commands required to build your project, or remove this step entirely if your site is pre-built.
+        run: |
+          emcmake cmake -S . -B build -DSMS_SINGLE_FILE=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j 2
+
+          # need to cleanup the cmake files
+          rm -rf build/examples/CMakeFiles build/examples/cmake_install.cmake build/examples/Makefile
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@4.1.4
+        with:
+          branch: gh-pages # The branch the action should deploy to.
+          folder: build/examples # The folder the action should deploy.

@@ -5,6 +5,8 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Emscripten")
     add_executable(index example_emscripten.c)
     target_link_libraries(index PRIVATE TotalSMS)
 
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s USE_SDL=2")
+    
     set_target_properties(index PROPERTIES LINK_FLAGS
         "-s USE_SDL=2 \
         -s WASM=1 \
