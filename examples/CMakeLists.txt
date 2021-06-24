@@ -16,6 +16,7 @@ if (SMS_EXAMPLE_SDL OR ${CMAKE_SYSTEM_NAME} STREQUAL "Emscripten")
             -s EXPORTED_FUNCTIONS=[_main,_malloc,_free] \
             -s --shell-file ${PROJECT_SOURCE_DIR}/examples/example_emscripten.html \
             --preload-file res \
+            -O0 \
             "
         )
     else()
@@ -38,4 +39,6 @@ if (SMS_EXAMPLE_SDL OR ${CMAKE_SYSTEM_NAME} STREQUAL "Emscripten")
     configure_file("${CMAKE_SOURCE_DIR}/res/touch_buttons/down.bmp" "${CMAKE_BINARY_DIR}/examples/res/touch_buttons/down.bmp" COPYONLY)
     configure_file("${CMAKE_SOURCE_DIR}/res/touch_buttons/left.bmp" "${CMAKE_BINARY_DIR}/examples/res/touch_buttons/left.bmp" COPYONLY)
     configure_file("${CMAKE_SOURCE_DIR}/res/touch_buttons/right.bmp" "${CMAKE_BINARY_DIR}/examples/res/touch_buttons/right.bmp" COPYONLY)
+    configure_file("${CMAKE_SOURCE_DIR}/res/touch_buttons/fullscreen.bmp" "${CMAKE_BINARY_DIR}/examples/res/touch_buttons/fullscreen.bmp" COPYONLY)
+    configure_file("${CMAKE_SOURCE_DIR}/res/touch_buttons/file.bmp" "${CMAKE_BINARY_DIR}/examples/res/touch_buttons/file.bmp" COPYONLY)
 endif()

@@ -24,6 +24,7 @@ jobs:
           rm -rf build/examples/CMakeFiles
           rm -rf build/examples/cmake_install.cmake
           rm -rf build/examples/Makefile
+          rm -rf build/examples/res
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@4.1.4

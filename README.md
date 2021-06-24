@@ -46,3 +46,9 @@ so to load a rom, you can do `build/examples/example_sdl path/to/rom.sms`
 if you find any issues, please open an issue.
 
 if it is a graphical bug, if possible, include a screenshot or video.
+
+## Credits
+
+<https://www.kenney.nl/assets/onscreen-controls>
+
+<https://www.smspower.org/>

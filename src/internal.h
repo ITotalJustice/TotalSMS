@@ -104,6 +104,7 @@ SMS_INLINE void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 
 SMS_STATIC void sega_mapper_setup(struct SMS_Core* sms);
 SMS_STATIC void codemaster_mapper_setup(struct SMS_Core* sms);
+SMS_STATIC void SMS_mapper_update(struct SMS_Core* sms);
 
 // [APU]
 SMS_INLINE void SN76489_reg_write(struct SMS_Core* sms, uint8_t value);

@@ -46,8 +46,11 @@ typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t colour_b2g2r2);
 
 enum
 {
-    SMS_SCREEN_WIDTH = 342,
-    SMS_SCREEN_HEIGHT = 262,
+    // SMS_SCREEN_WIDTH = 342,
+    // SMS_SCREEN_HEIGHT = 262,
+
+    SMS_SCREEN_WIDTH = 256+13+15,
+    SMS_SCREEN_HEIGHT = 192 + 27 + 24,
 
     SMS_ROM_SIZE_MAX = 0x80000, // 512KiB
 };

@@ -38,6 +38,21 @@ static inline void sega_mapper_update_slot2(struct SMS_Core* sms)
     }
 }
 
+void SMS_mapper_update(struct SMS_Core* sms)
+{
+    switch (sms->cart.mapper_type)
+    {
+        case MAPPER_TYPE_NONE:
+            break;
+
+        case MAPPER_TYPE_SEGA:
+            sega_mapper_update_slot0(sms);
+            sega_mapper_update_slot1(sms);
+            sega_mapper_update_slot2(sms);
+            break;
+    }
+}
+
 void sega_mapper_setup(struct SMS_Core* sms)
 {
     // control is reset to zero
@@ -47,9 +62,7 @@ void sega_mapper_setup(struct SMS_Core* sms)
     sms->cart.mappers.sega.fffe = 1;
     sms->cart.mappers.sega.ffff = 2;
 
-    sega_mapper_update_slot0(sms);
-    sega_mapper_update_slot1(sms);
-    sega_mapper_update_slot2(sms);
+    SMS_mapper_update(sms);
 }
 
 // TODO:

@@ -154,14 +154,14 @@ static inline void vdp_render_overscan(struct SMS_Core* sms, uint16_t from, uint
 
     for (uint16_t i = 0; i < until; ++i)
     {
-        vdp_write_pixel(sms, overscan_col, from + i, VDP.vcount);
+        vdp_write_pixel(sms, overscan_col, from + i - NTSC_HBLANK_LEFT, VDP.vcount - NTSC_VBLANK_TOP);
     }
 }
 
 static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio)
 {
-    const uint16_t pixely = VDP.vcount;
-    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
+    const uint16_t pixely = VDP.vcount - NTSC_VBLANK_TOP;
+    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START - NTSC_HBLANK_LEFT;
     
     const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
     const uint8_t fine_line = line & 0x7;
@@ -338,8 +338,8 @@ static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
 
 static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* prio)
 {
-    const uint16_t pixely = VDP.vcount;
-    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
+    const uint16_t pixely = VDP.vcount - NTSC_VBLANK_TOP;
+    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START - NTSC_HBLANK_LEFT;
     
     const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
     const uint16_t attr_addr = vdp_get_sprite_attribute_base_addr(sms);

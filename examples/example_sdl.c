@@ -29,6 +29,8 @@ enum TouchButtonID
     TouchButtonID_DOWN,
     TouchButtonID_LEFT,
     TouchButtonID_RIGHT,
+    TouchButtonID_FULLSCREEN,
+    TouchButtonID_FILE,
 };
 
 static struct TouchButton
@@ -75,12 +77,24 @@ static struct TouchButton
         .w = 38,
         .h = 30,
     },
+    [TouchButtonID_FULLSCREEN] =
+    {
+        .path = "res/touch_buttons/fullscreen.bmp",
+        .w = 48,
+        .h = 48,
+    },
+    [TouchButtonID_FILE] =
+    {
+        .path = "res/touch_buttons/file.bmp",
+        .w = 48,
+        .h = 48,
+    },
 };
 
 // bad name, basically it just keeps tracks of the multi touches
 struct TouchCacheEntry
 {
-    int id;
+    SDL_FingerID id;
     enum TouchButtonID touch_id;
     bool down;
 };
@@ -90,7 +104,7 @@ struct TouchCacheEntry
 
 
 static struct TouchCacheEntry touch_entries[8] = {0}; // max of 8 touches at once
-static struct TouchCacheEntry mouse_entries[8] = {0}; // max of 8 touches at once
+static struct TouchCacheEntry mouse_entries[1] = {0}; // max of 1 mouse clicks at once
 
 static struct SMS_Core sms;
 static uint32_t core_pixels[HEIGHT][WIDTH];
@@ -100,8 +114,14 @@ static uint8_t rom_data[SMS_ROM_SIZE_MAX] = {0};
 static size_t rom_size = 0;
 static bool has_rom = false;
 
+static bool is_mobile = false;
 static bool running = true;
-static int scale = 2;
+// for now, scale web version slightly larger, this is until i learn html css :)
+#ifdef EMSCRIPTEN
+    static int scale = 3;
+#else
+    static int scale = 2;
+#endif
 static int speed = 1;
 static int frameskip_counter = 0;
 
@@ -113,6 +133,8 @@ static SDL_Rect rect = {0};
 static SDL_PixelFormat* pixel_format = NULL;
 static SDL_GameController* game_controller = NULL;
 
+
+static void toggle_fullscreen();
 
 #ifdef EMSCRIPTEN
 static void syncfs()
@@ -126,12 +148,10 @@ static void syncfs()
     );
 }
 
-static void filedialog()
+EMSCRIPTEN_KEEPALIVE
+void em_set_browser_type(bool _is_mobile)
 {
-    EM_ASM(
-        let rom_input = document.getElementById("RomFilePicker");
-        rom_input.click();
-    );
+    is_mobile = _is_mobile;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -162,6 +182,24 @@ void em_load_rom_data(const char* name, const uint8_t* data, int len)
 }
 #endif // #ifdef EMSCRIPTEN
 
+static void filedialog()
+{
+    #ifdef EMSCRIPTEN
+    EM_ASM(
+        let rom_input = document.getElementById("RomFilePicker");
+        rom_input.click();
+    );
+    #endif
+}
+
+static int get_scale(int w, int h)
+{
+    const int scale_w = w / WIDTH;
+    const int scale_h = h / HEIGHT;
+
+    return scale_w < scale_h ? scale_w : scale_h;
+}
+
 static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
 {
     switch (touch_id)
@@ -172,6 +210,9 @@ static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
         case TouchButtonID_DOWN:     SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
         case TouchButtonID_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
         case TouchButtonID_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
+        
+        case TouchButtonID_FULLSCREEN:  if (down) { toggle_fullscreen(); }  break;
+        case TouchButtonID_FILE:        if (down) { filedialog(); }  break;
     }
 }
 
@@ -193,7 +234,7 @@ static int is_touch_in_range(int x, int y)
     return -1;
 }
 
-static void on_touch_up(struct TouchCacheEntry* cache, size_t size, int id)
+static void on_touch_up(struct TouchCacheEntry* cache, size_t size, SDL_FingerID id)
 {
     for (size_t i = 0; i < size; ++i)
     {
@@ -201,11 +242,13 @@ static void on_touch_up(struct TouchCacheEntry* cache, size_t size, int id)
         {
             cache[i].down = false;
             on_touch_button_change(cache[i].touch_id, false);
+
+            break;
         }
     }
 }
 
-static void on_touch_down(struct TouchCacheEntry* cache, size_t size, int id, int x, int y)
+static void on_touch_down(struct TouchCacheEntry* cache, size_t size, SDL_FingerID id, int x, int y)
 {
     // check that the button press maps to a texture coord
     const int touch_id = is_touch_in_range(x, y);
@@ -226,11 +269,13 @@ static void on_touch_down(struct TouchCacheEntry* cache, size_t size, int id, in
             cache[i].down = true;
 
             on_touch_button_change(cache[i].touch_id, true);
+
+            break;
         }
     }
 }
 
-static void on_touch_motion(struct TouchCacheEntry* cache, size_t size, int id, int x, int y)
+static void on_touch_motion(struct TouchCacheEntry* cache, size_t size, SDL_FingerID id, int x, int y)
 {
     // check that the button press maps to a texture coord
     const int touch_id = is_touch_in_range(x, y);
@@ -356,56 +401,72 @@ static bool is_fullscreen()
     }
 }
 
-static void resize_touch_buttons()
+static void resize_touch_buttons(int w, int h)
 {
-    #ifdef EMSCRIPTEN
-        int w = 0, h = 0;
-        SDL_GetWindowSize(window, &w, &h);
+    const int min_scale = get_scale(w, h);
 
-        touch_buttons[TouchButtonID_A].rect.x = w - 100 * scale;
-        touch_buttons[TouchButtonID_A].rect.y = h - 50 * scale;
-        touch_buttons[TouchButtonID_A].rect.w = touch_buttons[TouchButtonID_A].w * scale;
-        touch_buttons[TouchButtonID_A].rect.h = touch_buttons[TouchButtonID_A].h * scale;
+    if (is_mobile)
+    {
+        touch_buttons[TouchButtonID_A].rect.x = w - 100 * min_scale;
+        touch_buttons[TouchButtonID_A].rect.y = h - 50 * min_scale;
+        touch_buttons[TouchButtonID_A].rect.w = touch_buttons[TouchButtonID_A].w * min_scale;
+        touch_buttons[TouchButtonID_A].rect.h = touch_buttons[TouchButtonID_A].h * min_scale;
 
-        touch_buttons[TouchButtonID_B].rect.x = w - 50 * scale;
-        touch_buttons[TouchButtonID_B].rect.y = h - 50 * scale;
-        touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * scale;
-        touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * scale;
+        touch_buttons[TouchButtonID_B].rect.x = w - 50 * min_scale;
+        touch_buttons[TouchButtonID_B].rect.y = h - 50 * min_scale;
+        touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * min_scale;
+        touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * min_scale;
 
-        touch_buttons[TouchButtonID_UP].rect.x = 35 * scale;
-        touch_buttons[TouchButtonID_UP].rect.y = h - 90 * scale;
-        touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * scale;
-        touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * scale;
+        touch_buttons[TouchButtonID_UP].rect.x = 35 * min_scale;
+        touch_buttons[TouchButtonID_UP].rect.y = h - 90 * min_scale;
+        touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * min_scale;
+        touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * min_scale;
 
-        touch_buttons[TouchButtonID_DOWN].rect.x = 35 * scale;
-        touch_buttons[TouchButtonID_DOWN].rect.y = h - 50 * scale;
-        touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * scale;
-        touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * scale;
+        touch_buttons[TouchButtonID_DOWN].rect.x = 35 * min_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.y = h - 50 * min_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * min_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * min_scale;
 
-        touch_buttons[TouchButtonID_LEFT].rect.x = 5 * scale;
-        touch_buttons[TouchButtonID_LEFT].rect.y = h - 68 * scale;
-        touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * scale;
-        touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * scale;
+        touch_buttons[TouchButtonID_LEFT].rect.x = 5 * min_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.y = h - 68 * min_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * min_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * min_scale;
 
-        touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 68 * scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * scale;
-    #endif // #ifdef EMSCRIPTEN
+        touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * min_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 68 * min_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * min_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * min_scale;
+    }
+    else
+    {
+        touch_buttons[TouchButtonID_A].rect.x = -8000;
+        touch_buttons[TouchButtonID_A].rect.y = -8000;
+        touch_buttons[TouchButtonID_B].rect.x = -8000;
+        touch_buttons[TouchButtonID_B].rect.y = -8000;
+        touch_buttons[TouchButtonID_UP].rect.x = -8000;
+        touch_buttons[TouchButtonID_UP].rect.y = -8000;
+        touch_buttons[TouchButtonID_DOWN].rect.x = -8000;
+        touch_buttons[TouchButtonID_DOWN].rect.y = -8000;
+        touch_buttons[TouchButtonID_LEFT].rect.x = -8000;
+        touch_buttons[TouchButtonID_LEFT].rect.y = -8000;
+        touch_buttons[TouchButtonID_RIGHT].rect.x = -8000;
+        touch_buttons[TouchButtonID_RIGHT].rect.y = -8000;
+    }
+
+    touch_buttons[TouchButtonID_FULLSCREEN].rect.x = w - 56 * min_scale;
+    touch_buttons[TouchButtonID_FULLSCREEN].rect.y = 5 * min_scale;
+    touch_buttons[TouchButtonID_FULLSCREEN].rect.w = touch_buttons[TouchButtonID_FULLSCREEN].w * min_scale;
+    touch_buttons[TouchButtonID_FULLSCREEN].rect.h = touch_buttons[TouchButtonID_FULLSCREEN].h * min_scale;
+
+    touch_buttons[TouchButtonID_FILE].rect.x = 5 * min_scale;
+    touch_buttons[TouchButtonID_FILE].rect.y = 5 * min_scale;
+    touch_buttons[TouchButtonID_FILE].rect.w = touch_buttons[TouchButtonID_FILE].w * min_scale;
+    touch_buttons[TouchButtonID_FILE].rect.h = touch_buttons[TouchButtonID_FILE].h * min_scale;
 }
 
 static void setup_rect(int w, int h)
 {
-    if (!w || !h)
-    {
-        return;
-    }
-    
-    const int scale_w = w / WIDTH;
-    const int scale_h = h / HEIGHT;
-
-    // get the min scale
-    const int min_scale = scale_w < scale_h ? scale_w : scale_h;
+    const int min_scale = get_scale(w, h);
 
     rect.w = WIDTH * min_scale;
     rect.h = HEIGHT * min_scale;
@@ -432,7 +493,15 @@ static void toggle_fullscreen()
     }
     else
     {
-        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        // iirc fullscreen option only works on ios
+        if (is_mobile)
+        {
+            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+        }
+        else
+        {
+            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        }
     }
 }
 
@@ -624,7 +693,7 @@ static void on_touch_event(const SDL_TouchFingerEvent* e)
 {
     int win_w = 0, win_h = 0;
 
-    SDL_GetWindowSize(window, &win_w, &win_h);
+    SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
 
     // we need to un-normalise x, y
     const int x = e->x * win_w;
@@ -686,9 +755,15 @@ static void on_window_event(const SDL_WindowEvent* e)
     switch (e->event)
     {
         case SDL_WINDOWEVENT_SIZE_CHANGED:
-            setup_rect(e->data1, e->data2);
-            resize_touch_buttons();
-            break;
+        {
+            // use this rather than window size because iirc i had issues with
+            // hi-dpi screens.
+            int w = 0, h = 0;
+            SDL_GetRendererOutputSize(renderer, &w, &h);
+
+            setup_rect(w, h);
+            resize_touch_buttons(w, h);
+        }   break;
     }
 }
 
@@ -723,7 +798,6 @@ static void events()
                 on_controller_axis_event(&e.caxis);
                 break;
 
-        #ifdef EMSCRIPTEN
             case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
                 on_mouse_button_event(&e.button);
                 break;
@@ -737,7 +811,6 @@ static void events()
             case SDL_FINGERMOTION:
                 on_touch_event(&e.tfinger);
                 break;
-        #endif // #ifdef EMSCRIPTEN
         
             case SDL_WINDOWEVENT:
                 on_window_event(&e.window);
@@ -829,27 +902,33 @@ static void core_on_vblank(void* user)
 
 static void load_touch_buttons()
 {
-    #ifdef EMSCRIPTEN
-        for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+    #ifndef EMSCRIPTEN
+        return;
+    #endif
+
+    for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+    {
+        // only load the controller buttons on mobile
+        if (!is_mobile && (i != TouchButtonID_FULLSCREEN && i != TouchButtonID_FILE))
         {
-            SDL_Surface* surface = SDL_LoadBMP(touch_buttons[i].path);
-
-            if (surface)
-            {
-                touch_buttons[i].texture = SDL_CreateTextureFromSurface(renderer, surface);
-                touch_buttons[i].rect.w = touch_buttons[i].w;
-                touch_buttons[i].rect.h = touch_buttons[i].h;
-
-                SDL_FreeSurface(surface);
-            }
-            else
-            {
-                printf("failed to load: %s\n", SDL_GetError());
-            }
+            continue;
         }
 
-        resize_touch_buttons();
-    #endif
+        SDL_Surface* surface = SDL_LoadBMP(touch_buttons[i].path);
+
+        if (surface)
+        {
+            touch_buttons[i].texture = SDL_CreateTextureFromSurface(renderer, surface);
+            touch_buttons[i].rect.w = touch_buttons[i].w;
+            touch_buttons[i].rect.h = touch_buttons[i].h;
+
+            SDL_FreeSurface(surface);
+        }
+        else
+        {
+            printf("failed to load: %s\n", SDL_GetError());
+        }
+    }
 }
 
 static void render()
@@ -857,12 +936,13 @@ static void render()
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, &rect);
 
-    #ifdef EMSCRIPTEN
-        for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+    for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+    {
+        if (touch_buttons[i].texture)
         {
             SDL_RenderCopy(renderer, touch_buttons[i].texture, NULL, &touch_buttons[i].rect);
         }
-    #endif
+    }
 
     SDL_RenderPresent(renderer);
 }
@@ -904,6 +984,14 @@ int main(int argc, char** argv)
                     console.log(err);
                 }
             });
+
+            if (IsMobileBrowser()) {
+                console.log("is a mobile browser");
+                _em_set_browser_type(true);
+            } else {
+                console.log("is NOT a mobile browser");
+                _em_set_browser_type(false);
+            }
         );
     #else
         if (argc < 2)
@@ -948,7 +1036,7 @@ int main(int argc, char** argv)
         printf("failed to open controllerdb file! %s\n", SDL_GetError());
     }
 
-    window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_RESIZABLE);
+    window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
 
     if (!window)
     {
@@ -976,9 +1064,15 @@ int main(int argc, char** argv)
         goto fail;
     }
 
-    setup_rect(WIDTH * scale, HEIGHT * scale);
-
     load_touch_buttons();
+
+    {
+        int w = 0, h = 0;
+        SDL_GetRendererOutputSize(renderer, &w, &h);
+
+        setup_rect(w, h);
+        resize_touch_buttons(w, h);
+    }
 
     const SDL_AudioSpec wanted =
     {

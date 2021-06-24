@@ -236,6 +236,9 @@ bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state)
     memcpy(&sms->memory_control, &state->memory_control, sizeof(sms->memory_control));
     memcpy(sms->system_ram, state->system_ram, sizeof(sms->system_ram));
 
+    // we need to reload the mapper pointers!
+    SMS_mapper_update(sms);
+
     return true;
 }
 
