@@ -92,6 +92,19 @@
   <!-- uncomment this to have textbox! -->
   <!-- <hr/><textarea class="emscripten" id="output" rows="8"></textarea><hr> -->
 
+  <button class="button" id="Dummy">Dummy</button>
+
+    <script type="text/javascript">
+        let dummy = document.getElementById("Dummy");
+        dummy.addEventListener("click", OnClick);
+
+        function OnClick() {
+            console.log("ayyy we got a button click");
+            // try trigger file picker event
+            document.getElementById('RomFilePicker').click();
+        }
+    </script>
+    
   <!-- ISMOBILE.js -->
   <script type="text/javascript">
       function IsMobileBrowser() {
@@ -101,6 +114,12 @@
       }
   </script>
 
+  <script type="text/javascript">
+    function PleaseWork() {
+        document.getElementById('RomFilePicker').click();
+    }
+    </script>
+  
   <!-- ROMLOADER.js -->
   <script type="text/javascript">
     let rom_input = document.getElementById("RomFilePicker");
