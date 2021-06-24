@@ -148,6 +148,14 @@ static void syncfs()
     );
 }
 
+static void filedialog()
+{
+    EM_ASM(
+        let rom_input = document.getElementById("RomFilePicker");
+        rom_input.click();
+    );
+}
+
 EMSCRIPTEN_KEEPALIVE
 void em_set_browser_type(bool _is_mobile)
 {
