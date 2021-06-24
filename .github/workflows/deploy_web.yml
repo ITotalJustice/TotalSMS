@@ -21,7 +21,9 @@ jobs:
           cmake --build build -j 2
 
           # need to cleanup the cmake files
-          rm -rf build/examples/CMakeFiles build/examples/cmake_install.cmake build/examples/Makefile
+          rm -rf build/examples/CMakeFiles
+          rm -rf build/examples/cmake_install.cmake
+          rm -rf build/examples/Makefile
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@4.1.4

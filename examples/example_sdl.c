@@ -6,23 +6,100 @@
 #include <stdint.h>
 #include <SDL.h>
 
+#ifdef EMSCRIPTEN
+    #include <emscripten.h>
+#endif
+
+
 enum
 {
     WIDTH = SMS_SCREEN_WIDTH,
     HEIGHT = SMS_SCREEN_HEIGHT,
 
     VOLUME = SDL_MIX_MAXVOLUME / 2,
-    SAMPLES = 1024,
-    SDL_AUDIO_FREQ = 48000,
-    SMS_AUDIO_FREQ = SDL_AUDIO_FREQ,
+    SAMPLES = 2048,
+    SDL_AUDIO_FREQ = 96000,
+};
+
+enum TouchButtonID
+{
+    TouchButtonID_A,
+    TouchButtonID_B,
+    TouchButtonID_UP,
+    TouchButtonID_DOWN,
+    TouchButtonID_LEFT,
+    TouchButtonID_RIGHT,
+};
+
+static struct TouchButton
+{
+    const char* path;
+    SDL_Texture* texture;
+    int w, h;
+    SDL_Rect rect;
+} touch_buttons[] =
+{
+    [TouchButtonID_A] =
+    {
+        .path = "res/touch_buttons/a.bmp",
+        .w = 40,
+        .h = 40,
+    },
+    [TouchButtonID_B] =
+    {
+        .path = "res/touch_buttons/b.bmp",
+        .w = 40,
+        .h = 40,
+    },
+    [TouchButtonID_UP] =
+    {
+        .path = "res/touch_buttons/up.bmp",
+        .w = 30,
+        .h = 38,
+    },
+    [TouchButtonID_DOWN] =
+    {
+        .path = "res/touch_buttons/down.bmp",
+        .w = 30,
+        .h = 38,
+    },
+    [TouchButtonID_LEFT] =
+    {
+        .path = "res/touch_buttons/left.bmp",
+        .w = 38,
+        .h = 30,
+    },
+    [TouchButtonID_RIGHT] =
+    {
+        .path = "res/touch_buttons/right.bmp",
+        .w = 38,
+        .h = 30,
+    },
+};
+
+// bad name, basically it just keeps tracks of the multi touches
+struct TouchCacheEntry
+{
+    int id;
+    enum TouchButtonID touch_id;
+    bool down;
 };
 
 
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+
+
+static struct TouchCacheEntry touch_entries[8] = {0}; // max of 8 touches at once
+static struct TouchCacheEntry mouse_entries[8] = {0}; // max of 8 touches at once
+
 static struct SMS_Core sms;
 static uint32_t core_pixels[HEIGHT][WIDTH];
+
 static const char* rom_path = NULL;
-static uint8_t* rom_data = NULL;
+static uint8_t rom_data[SMS_ROM_SIZE_MAX] = {0};
 static size_t rom_size = 0;
+static bool has_rom = false;
+
 static bool running = true;
 static int scale = 2;
 static int speed = 1;
@@ -36,6 +113,137 @@ static SDL_Rect rect = {0};
 static SDL_PixelFormat* pixel_format = NULL;
 static SDL_GameController* game_controller = NULL;
 
+
+#ifdef EMSCRIPTEN
+static void syncfs()
+{
+    EM_ASM(
+        FS.syncfs(function (err) {
+            if (err) {
+                console.log(err);
+            }
+        });
+    );
+}
+
+static void filedialog()
+{
+    EM_ASM(
+        let rom_input = document.getElementById("RomFilePicker");
+        rom_input.click();
+    );
+}
+
+EMSCRIPTEN_KEEPALIVE
+void em_load_rom_data(const char* name, const uint8_t* data, int len)
+{
+    printf("[EM] loading rom! name: %s len: %d\n", name, len);
+
+    if (len <= 0 || len > sizeof(rom_data))
+    {
+        return;
+    }
+
+    // this is a nice race condition :)
+    memcpy(rom_data, data, len);
+
+    rom_size = (size_t)len;
+
+    if (SMS_loadrom(&sms, rom_data, rom_size))
+    {
+        rom_path = name;
+        has_rom = true;
+    }
+    else
+    {
+        printf("failed to loadrom\n");
+        has_rom = false;
+    }
+}
+#endif // #ifdef EMSCRIPTEN
+
+static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
+{
+    switch (touch_id)
+    {
+        case TouchButtonID_A:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
+        case TouchButtonID_B:        SMS_set_port_a(&sms, JOY1_B_BUTTON, down);      break;
+        case TouchButtonID_UP:       SMS_set_port_a(&sms, JOY1_UP_BUTTON, down);     break;
+        case TouchButtonID_DOWN:     SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
+        case TouchButtonID_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
+        case TouchButtonID_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
+    }
+}
+
+static int is_touch_in_range(int x, int y)
+{
+    for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+    {
+        const struct TouchButton* e = (const struct TouchButton*)&touch_buttons[i];
+
+        if (x >= e->rect.x && x <= (e->rect.x + e->rect.w))
+        {
+            if (y >= e->rect.y && y <= (e->rect.y + e->rect.h))
+            {
+                return (int)i;
+            }
+        }
+    }
+
+    return -1;
+}
+
+static void on_touch_up(struct TouchCacheEntry* cache, size_t size, int id)
+{
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (cache[i].down && cache[i].id == id)
+        {
+            cache[i].down = false;
+            on_touch_button_change(cache[i].touch_id, false);
+        }
+    }
+}
+
+static void on_touch_down(struct TouchCacheEntry* cache, size_t size, int id, int x, int y)
+{
+    // check that the button press maps to a texture coord
+    const int touch_id = is_touch_in_range(x, y);
+
+    if (touch_id == -1)
+    {
+        return;
+    }
+
+    // find the first free entry and add it to it
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (cache[i].down == false)
+        {
+            cache[i].id = id;
+            cache[i].touch_id = touch_id;
+            cache[i].down = true;
+
+            on_touch_button_change(cache[i].touch_id, true);
+        }
+    }
+}
+
+static void on_touch_motion(struct TouchCacheEntry* cache, size_t size, int id, int x, int y)
+{
+    // check that the button press maps to a texture coord
+    const int touch_id = is_touch_in_range(x, y);
+
+    if (touch_id == -1)
+    {
+        return;
+    }
+
+    // this is pretty inefficient, but its simple enough and works.
+    on_touch_up(cache, size, id);
+    on_touch_down(cache, size, id, x, y);
+}
 
 static void run()
 {
@@ -70,8 +278,18 @@ static bool get_state_path(char path_out[0x304])
 
 static void savestate()
 {
+    if (!has_rom)
+    {
+        return;
+    }
+
     struct SMS_State state;
-    char path[0x304] = {0};
+    
+    #ifdef EMSCRIPTEN
+        char path[0x304] = {"/states/"};
+    #else
+        char path[0x304] = {0};
+    #endif
 
     if (!get_state_path(path))
     {
@@ -85,13 +303,27 @@ static void savestate()
         SMS_savestate(&sms, &state);
         fwrite(&state, 1, sizeof(state), f);
         fclose(f);
+
+        #ifdef EMSCRIPTEN
+            syncfs();
+        #endif
     }
 }
 
 static void loadstate()
 {
+    if (!has_rom)
+    {
+        return;
+    }
+    
     struct SMS_State state;
-    char path[0x304] = {0};
+    
+    #ifdef EMSCRIPTEN
+        char path[0x304] = {"/states/"};
+    #else
+        char path[0x304] = {0};
+    #endif
 
     if (!get_state_path(path))
     {
@@ -122,6 +354,44 @@ static bool is_fullscreen()
     {
         return false;
     }
+}
+
+static void resize_touch_buttons()
+{
+    #ifdef EMSCRIPTEN
+        int w = 0, h = 0;
+        SDL_GetWindowSize(window, &w, &h);
+
+        touch_buttons[TouchButtonID_A].rect.x = w - 100 * scale;
+        touch_buttons[TouchButtonID_A].rect.y = h - 50 * scale;
+        touch_buttons[TouchButtonID_A].rect.w = touch_buttons[TouchButtonID_A].w * scale;
+        touch_buttons[TouchButtonID_A].rect.h = touch_buttons[TouchButtonID_A].h * scale;
+
+        touch_buttons[TouchButtonID_B].rect.x = w - 50 * scale;
+        touch_buttons[TouchButtonID_B].rect.y = h - 50 * scale;
+        touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * scale;
+        touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * scale;
+
+        touch_buttons[TouchButtonID_UP].rect.x = 35 * scale;
+        touch_buttons[TouchButtonID_UP].rect.y = h - 90 * scale;
+        touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * scale;
+        touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * scale;
+
+        touch_buttons[TouchButtonID_DOWN].rect.x = 35 * scale;
+        touch_buttons[TouchButtonID_DOWN].rect.y = h - 50 * scale;
+        touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * scale;
+        touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * scale;
+
+        touch_buttons[TouchButtonID_LEFT].rect.x = 5 * scale;
+        touch_buttons[TouchButtonID_LEFT].rect.y = h - 68 * scale;
+        touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * scale;
+        touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * scale;
+
+        touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 68 * scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * scale;
+    #endif // #ifdef EMSCRIPTEN
 }
 
 static void setup_rect(int w, int h)
@@ -209,6 +479,12 @@ static void on_ctrl_key_event(const SDL_KeyboardEvent* e, bool down)
                 savestate();
                 break;
 
+        #ifdef EMSCRIPTEN
+            case SDL_SCANCODE_O:
+                filedialog();
+                break;
+        #endif
+
             default: break; // silence enum warning
         }
     }
@@ -226,6 +502,11 @@ static void on_key_event(const SDL_KeyboardEvent* e)
         return;
     }
 
+    if (!has_rom)
+    {
+        return;
+    }
+
     switch (e->keysym.scancode)
     {
         case SDL_SCANCODE_X:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
@@ -237,9 +518,11 @@ static void on_key_event(const SDL_KeyboardEvent* e)
         case SDL_SCANCODE_R:        SMS_set_port_b(&sms, RESET_BUTTON, down);       break;
         case SDL_SCANCODE_P:        SMS_set_port_b(&sms, PAUSE_BUTTON, down);       break;
     
+    #ifndef EMSCRIPTEN
         case SDL_SCANCODE_ESCAPE:
             running = false;
             break;
+    #endif // EMSCRIPTEN
 
         default: break; // silence enum warning
     }
@@ -336,12 +619,75 @@ static void on_controller_device_event(const SDL_ControllerDeviceEvent* e)
             break;
     }
 }
+
+static void on_touch_event(const SDL_TouchFingerEvent* e)
+{
+    int win_w = 0, win_h = 0;
+
+    SDL_GetWindowSize(window, &win_w, &win_h);
+
+    // we need to un-normalise x, y
+    const int x = e->x * win_w;
+    const int y = e->y * win_h;
+
+    switch (e->type)
+    {
+        case SDL_FINGERUP:
+            on_touch_up(touch_entries, ARRAY_SIZE(touch_entries), e->fingerId);
+            break;
+
+        case SDL_FINGERDOWN:
+            on_touch_down(touch_entries, ARRAY_SIZE(touch_entries), e->fingerId, x, y);
+            break;
+
+        case SDL_FINGERMOTION:
+            on_touch_motion(touch_entries, ARRAY_SIZE(touch_entries), e->fingerId, x, y);
+            break;
+    }
+}
+
+static void on_mouse_button_event(const SDL_MouseButtonEvent* e)
+{
+    // we already handle touch events...
+    if (e->which == SDL_TOUCH_MOUSEID)
+    {
+        return;
+    }
+
+    switch (e->type)
+    {
+        case SDL_MOUSEBUTTONUP:
+            on_touch_up(mouse_entries, ARRAY_SIZE(mouse_entries), e->which);
+            break;
+
+        case SDL_MOUSEBUTTONDOWN:
+            on_touch_down(mouse_entries, ARRAY_SIZE(mouse_entries), e->which, e->x, e->y);
+            break;
+    }
+}
+
+static void on_mouse_motion_event(const SDL_MouseMotionEvent* e)
+{
+    // we already handle touch events!
+    if (e->which == SDL_TOUCH_MOUSEID)
+    {
+        return;
+    }
+
+    // only handle left clicks!
+    if (e->state & SDL_BUTTON(SDL_BUTTON_LEFT))
+    {
+        on_touch_motion(mouse_entries, ARRAY_SIZE(mouse_entries), e->which, e->x, e->y);
+    }
+}
+
 static void on_window_event(const SDL_WindowEvent* e)
 {
     switch (e->event)
     {
         case SDL_WINDOWEVENT_SIZE_CHANGED:
             setup_rect(e->data1, e->data2);
+            resize_touch_buttons();
             break;
     }
 }
@@ -377,11 +723,21 @@ static void events()
                 on_controller_axis_event(&e.caxis);
                 break;
 
+        #ifdef EMSCRIPTEN
+            case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
+                on_mouse_button_event(&e.button);
+                break;
+
+             case SDL_MOUSEMOTION:
+                on_mouse_motion_event(&e.motion);
+                break;
+
             case SDL_FINGERDOWN:
             case SDL_FINGERUP:
             case SDL_FINGERMOTION:
-                // on_touch_event(&e.tfinger);
+                on_touch_event(&e.tfinger);
                 break;
+        #endif // #ifdef EMSCRIPTEN
         
             case SDL_WINDOWEVENT:
                 on_window_event(&e.window);
@@ -414,6 +770,13 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
         skipped_samples = 0;   
     }
 
+    #ifdef EMSCRIPTEN
+        if (SDL_GetQueuedAudioSize(audio_device) > sizeof(buffer) * 6)
+        {
+            return;
+        }
+    #endif
+
     buffer[buffer_count++] = data->tone0 + data->tone1 + data->tone2 + data->noise;
 
     if (buffer_count == sizeof(buffer))
@@ -424,11 +787,12 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
 
         SDL_MixAudioFormat(samples, (const uint8_t*)buffer, AUDIO_S8, sizeof(buffer), VOLUME);
 
-        // enable this if sync with audio
-        while (SDL_GetQueuedAudioSize(audio_device) > (sizeof(buffer) * 4))
-        {
-            SDL_Delay(4);
-        }
+        #ifndef EMSCRIPTEN
+            while (SDL_GetQueuedAudioSize(audio_device) > (sizeof(buffer) * 4))
+            {
+                SDL_Delay(4);
+            }
+        #endif
 
         SDL_QueueAudio(audio_device, samples, sizeof(samples));
     }
@@ -463,18 +827,59 @@ static void core_on_vblank(void* user)
     }
 }
 
+static void load_touch_buttons()
+{
+    #ifdef EMSCRIPTEN
+        for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+        {
+            SDL_Surface* surface = SDL_LoadBMP(touch_buttons[i].path);
+
+            if (surface)
+            {
+                touch_buttons[i].texture = SDL_CreateTextureFromSurface(renderer, surface);
+                touch_buttons[i].rect.w = touch_buttons[i].w;
+                touch_buttons[i].rect.h = touch_buttons[i].h;
+
+                SDL_FreeSurface(surface);
+            }
+            else
+            {
+                printf("failed to load: %s\n", SDL_GetError());
+            }
+        }
+
+        resize_touch_buttons();
+    #endif
+}
+
 static void render()
 {
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, &rect);
+
+    #ifdef EMSCRIPTEN
+        for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+        {
+            SDL_RenderCopy(renderer, touch_buttons[i].texture, NULL, &touch_buttons[i].rect);
+        }
+    #endif
+
     SDL_RenderPresent(renderer);
 }
+
+#ifdef EMSCRIPTEN
+static void em_loop()
+{
+    events();
+    run();
+    render();
+}
+#endif // #ifdef EMSCRIPTEN
 
 static void cleanup()
 {
     if (pixel_format)   { SDL_free(pixel_format); }
     if (audio_device)   { SDL_CloseAudioDevice(audio_device); }
-    if (rom_data)       { SDL_free(rom_data); }
     if (texture)        { SDL_DestroyTexture(texture); }
     if (renderer)       { SDL_DestroyRenderer(renderer); }
     if (window)         { SDL_DestroyWindow(window); }
@@ -484,16 +889,53 @@ static void cleanup()
 
 int main(int argc, char** argv)
 {
-    if (argc < 2)
+    if (!SMS_init(&sms))
     {
         goto fail;
     }
 
-    rom_path = argv[1];
+    #ifdef EMSCRIPTEN
+        EM_ASM(
+            FS.mkdir("/saves"); FS.mount(IDBFS, {}, "/saves");
+            FS.mkdir("/states"); FS.mount(IDBFS, {}, "/states");
 
-    // enable to record audio
-    #if 0
-        SDL_setenv("SDL_AUDIODRIVER", "disk", 1);
+            FS.syncfs(true, function (err) {
+                if (err) {
+                    console.log(err);
+                }
+            });
+        );
+    #else
+        if (argc < 2)
+        {
+            goto fail;
+        }
+
+        rom_path = argv[1];
+
+        FILE* f = fopen(rom_path, "rb");
+
+        if (!f)
+        {
+            goto fail;
+        }
+
+        rom_size = fread(rom_data, 1, sizeof(rom_data), f);
+
+        fclose(f);
+
+        if (!rom_size)
+        {
+            goto fail;
+        }
+
+        if (!SMS_loadrom(&sms, rom_data, rom_size))
+        {
+            printf("failed to loadrom\n");
+            goto fail;
+        }
+
+        has_rom = true;
     #endif
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER))
@@ -501,7 +943,12 @@ int main(int argc, char** argv)
         goto fail;
     }
 
-    window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
+    if (SDL_GameControllerAddMappingsFromFile("res/controller_mapping/gamecontrollerdb.txt"))
+    {
+        printf("failed to open controllerdb file! %s\n", SDL_GetError());
+    }
+
+    window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_RESIZABLE);
 
     if (!window)
     {
@@ -511,11 +958,6 @@ int main(int argc, char** argv)
     // this doesn't seem to work on chromebook...
     SDL_SetWindowMinimumSize(window, WIDTH, HEIGHT);
 
-    // save the window pixel format, we will use this to create texure
-    // with the native window format so that sdl does not have to do
-    // any converting behind the scenes.
-    // also, this format will be used for setting the dmg palette as well
-    // as the gbc colours.
     const uint32_t pixel_format_enum = SDL_GetWindowPixelFormat(window);
 
     pixel_format = SDL_AllocFormat(pixel_format_enum);
@@ -536,6 +978,8 @@ int main(int argc, char** argv)
 
     setup_rect(WIDTH * scale, HEIGHT * scale);
 
+    load_touch_buttons();
+
     const SDL_AudioSpec wanted =
     {
         .freq = SDL_AUDIO_FREQ,
@@ -551,43 +995,35 @@ int main(int argc, char** argv)
 
     SDL_AudioSpec aspec_got = {0};
 
-    audio_device = SDL_OpenAudioDevice(NULL, 0, &wanted, &aspec_got, 0);
+    audio_device = SDL_OpenAudioDevice(NULL, 0, &wanted, &aspec_got, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
 
     if (audio_device == 0)
     {
         goto fail;
     }
 
+    printf("[SDL-AUDIO] freq: %d\n", aspec_got.freq);
+    printf("[SDL-AUDIO] channels: %d\n", aspec_got.channels);
+    printf("[SDL-AUDIO] samples: %d\n", aspec_got.samples);
+    printf("[SDL-AUDIO] size: %d\n", aspec_got.size);
+
     SDL_PauseAudioDevice(audio_device, 0);
 
-    if (!SMS_init(&sms))
-    {
-        goto fail;
-    }
-
-    SMS_set_apu_callback(&sms, core_on_apu, NULL, SMS_AUDIO_FREQ);
+    SMS_set_apu_callback(&sms, core_on_apu, NULL, aspec_got.freq + 512);
     SMS_set_vblank_callback(&sms, core_on_vblank, NULL);
     SMS_set_colour_callback(&sms, core_on_colour, NULL);
     SMS_set_pixels(&sms, core_pixels, SMS_SCREEN_WIDTH, pixel_format->BitsPerPixel);
 
-    rom_data = (uint8_t*)SDL_LoadFile(rom_path, &rom_size);
-
-    if (!rom_data)
-    {
-        goto fail;
-    }
-    if (!SMS_loadrom(&sms, rom_data, rom_size))
-    {
-        printf("failed to loadrom\n");
-        goto fail;
-    }
-
-    while (running)
-    {
-        events();
-        run();
-        render();
-    }
+    #ifdef EMSCRIPTEN
+        emscripten_set_main_loop(em_loop, 0, true);
+    #else
+        while (running)
+        {
+            events();
+            run();
+            render();
+        }
+    #endif
 
     cleanup();
 
