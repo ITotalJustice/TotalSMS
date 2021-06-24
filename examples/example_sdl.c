@@ -91,6 +91,7 @@ static struct TouchButton
     },
 };
 
+
 // bad name, basically it just keeps tracks of the multi touches
 struct TouchCacheEntry
 {
@@ -98,7 +99,6 @@ struct TouchCacheEntry
     enum TouchButtonID touch_id;
     bool down;
 };
-
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
@@ -182,16 +182,6 @@ void em_load_rom_data(const char* name, const uint8_t* data, int len)
 }
 #endif // #ifdef EMSCRIPTEN
 
-static void filedialog()
-{
-    #ifdef EMSCRIPTEN
-    EM_ASM(
-        let rom_input = document.getElementById("RomFilePicker");
-        rom_input.click();
-    );
-    #endif
-}
-
 static int get_scale(int w, int h)
 {
     const int scale_w = w / WIDTH;
@@ -212,7 +202,7 @@ static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
         case TouchButtonID_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
         
         case TouchButtonID_FULLSCREEN:  if (down) { toggle_fullscreen(); }  break;
-        case TouchButtonID_FILE:        if (down) { filedialog(); }  break;
+        case TouchButtonID_FILE:        break;
     }
 }
 
@@ -224,6 +214,7 @@ static int is_touch_in_range(int x, int y)
 
         if (x >= e->rect.x && x <= (e->rect.x + e->rect.w))
         {
+
             if (y >= e->rect.y && y <= (e->rect.y + e->rect.h))
             {
                 return (int)i;
@@ -259,7 +250,6 @@ static void on_touch_down(struct TouchCacheEntry* cache, size_t size, SDL_Finger
     }
 
     // find the first free entry and add it to it
-
     for (size_t i = 0; i < size; ++i)
     {
         if (cache[i].down == false)

@@ -52,6 +52,13 @@
         overflow: hidden;
         display: block;
     }
+    #HackyButton {
+      position:absolute;
+      left:5px;
+      top:5px;
+      height: 96px;
+      width: 96px;
+    }
 
     .spinner {
       height: 50px;
@@ -99,12 +106,29 @@
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
   </div>
 
+  <button id="HackyButton" name="Load"></button>
+
   <label for="RomFilePicker" class="button">Load Rom</label>
   <input type="file" id="RomFilePicker" name="LoadRom" accept=".sms" style="display: none;">
 
   <!-- uncomment this to have textbox! -->
   <!-- <hr/><textarea class="emscripten" id="output" rows="8"></textarea><hr> -->
 
+  <script type="text/javascript">
+    let my_button = document.getElementById("HackyButton");
+
+    // sanity check to make sure we still have the ID (we might've renamed it!)
+    if (my_button) {
+      my_button.addEventListener("click", OnClick);
+    }
+    else {
+      console.log("[JS] couldn't my_button get element by ID!");
+    }
+
+    function OnClick() {
+        document.getElementById("RomFilePicker").click();
+    }
+  </script>
 
   <!-- ISMOBILE.js -->
   <script type="text/javascript">

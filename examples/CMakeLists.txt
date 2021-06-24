@@ -16,7 +16,6 @@ if (SMS_EXAMPLE_SDL OR ${CMAKE_SYSTEM_NAME} STREQUAL "Emscripten")
             -s EXPORTED_FUNCTIONS=[_main,_malloc,_free] \
             -s --shell-file ${PROJECT_SOURCE_DIR}/examples/example_emscripten.html \
             --preload-file res \
-            -O0 \
             "
         )
     else()
