@@ -123,8 +123,8 @@ var Module = typeof Module !== 'undefined' ? Module : {};
         if (!check) throw msg + new Error().stack;
       }
   Module['FS_createPath']("/", "res", true, true);
-Module['FS_createPath']("/res", "controller_mapping", true, true);
 Module['FS_createPath']("/res", "touch_buttons", true, true);
+Module['FS_createPath']("/res", "controller_mapping", true, true);
 
           /** @constructor */
           function DataRequest(start, end, audio) {
@@ -197,7 +197,7 @@ Module['FS_createPath']("/res", "touch_buttons", true, true);
     }
   
    }
-   loadPackage({"files": [{"filename": "/res/controller_mapping/gamecontrollerdb.txt", "start": 0, "end": 267651, "audio": 0}, {"filename": "/res/touch_buttons/right.bmp", "start": 267651, "end": 286089, "audio": 0}, {"filename": "/res/touch_buttons/down.bmp", "start": 286089, "end": 304527, "audio": 0}, {"filename": "/res/touch_buttons/file.bmp", "start": 304527, "end": 313881, "audio": 0}, {"filename": "/res/touch_buttons/up.bmp", "start": 313881, "end": 332563, "audio": 0}, {"filename": "/res/touch_buttons/left.bmp", "start": 332563, "end": 351245, "audio": 0}, {"filename": "/res/touch_buttons/a.bmp", "start": 351245, "end": 376983, "audio": 0}, {"filename": "/res/touch_buttons/b.bmp", "start": 376983, "end": 402721, "audio": 0}, {"filename": "/res/touch_buttons/fullscreen.bmp", "start": 402721, "end": 412075, "audio": 0}], "remote_package_size": 412075, "package_uuid": "bba98a7e-481f-406a-9c3a-a8fa1e1d9713"});
+   loadPackage({"files": [{"filename": "/res/touch_buttons/left.bmp", "start": 0, "end": 18682, "audio": 0}, {"filename": "/res/touch_buttons/a.bmp", "start": 18682, "end": 44420, "audio": 0}, {"filename": "/res/touch_buttons/fullscreen.bmp", "start": 44420, "end": 53774, "audio": 0}, {"filename": "/res/touch_buttons/b.bmp", "start": 53774, "end": 79512, "audio": 0}, {"filename": "/res/touch_buttons/up.bmp", "start": 79512, "end": 98194, "audio": 0}, {"filename": "/res/touch_buttons/file.bmp", "start": 98194, "end": 107548, "audio": 0}, {"filename": "/res/touch_buttons/right.bmp", "start": 107548, "end": 125986, "audio": 0}, {"filename": "/res/touch_buttons/down.bmp", "start": 125986, "end": 144424, "audio": 0}, {"filename": "/res/controller_mapping/gamecontrollerdb.txt", "start": 144424, "end": 412075, "audio": 0}], "remote_package_size": 412075, "package_uuid": "c8ed7dea-fd43-4a7d-a306-003a54c93a5c"});
   
   })();
   
