@@ -38,6 +38,25 @@
     canvas.emscripten {
         border: 0px none;
         background-color: black;
+        width: 100%;
+        height: 100%;
+    }
+    #canvas {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        margin: 0px;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        display: block;
+    }
+    #HackyButton {
+      position:absolute;
+      left:3px;
+      top:3px;
+      height: 96px;
+      width: 96px;
     }
 
     .spinner {
@@ -86,24 +105,29 @@
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
   </div>
 
+  <button id="HackyButton" name="Load"></button>
+
   <label for="RomFilePicker" class="button">Load Rom</label>
   <input type="file" id="RomFilePicker" name="LoadRom" accept=".sms" style="display: none;">
 
   <!-- uncomment this to have textbox! -->
   <!-- <hr/><textarea class="emscripten" id="output" rows="8"></textarea><hr> -->
 
-  <button class="button" id="Dummy">Dummy</button>
+  <script type="text/javascript">
+    let my_button = document.getElementById("HackyButton");
 
-    <script type="text/javascript">
-        let dummy = document.getElementById("Dummy");
-        dummy.addEventListener("click", OnClick);
+    // sanity check to make sure we still have the ID (we might've renamed it!)
+    if (my_button) {
+      my_button.addEventListener("click", OnClick);
+    }
+    else {
+      console.log("[JS] couldn't my_button get element by ID!");
+    }
 
-        function OnClick() {
-            console.log("ayyy we got a button click");
-            // try trigger file picker event
-            document.getElementById('RomFilePicker').click();
-        }
-    </script>
+    function OnClick() {
+        document.getElementById("RomFilePicker").click();
+    }
+  </script>
 
   <!-- ISMOBILE.js -->
   <script type="text/javascript">
@@ -113,7 +137,7 @@
         return check;
       }
   </script>
-  
+
   <!-- ROMLOADER.js -->
   <script type="text/javascript">
     let rom_input = document.getElementById("RomFilePicker");
