@@ -93,6 +93,8 @@ static uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
     const bool doubled_sprites = IS_BIT_SET(VDP.registers[0x1], 0);
     const uint8_t sprite_size = IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
 
+    // assert(doubled_sprites == 0);
+
     return sprite_size << doubled_sprites;
 }
 
@@ -140,6 +142,12 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 {
     VDP.registers[addr & 0xF] = value;
+
+    if ((addr & 0xF) == 1)
+    {
+        assert(IS_BIT_SET(value, 3) == 0 && "240 height mode set");
+        assert(IS_BIT_SET(value, 4) == 0 && "224 height mode set");
+    }
 }
 
 // same as i used in dmg / gbc rendering for gb
@@ -395,13 +403,6 @@ static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* p
                 continue;
             }
 
-            // skip if we already rendered a sprite!
-            if (drawn_sprites[x_index])
-            {
-                VDP.sprite_collision = true;
-                continue;
-            }
-
             // skip is bg has priority
             if (prio->array[x_index])
             {
@@ -419,6 +420,13 @@ static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* p
             // for sprites, pal0 is transparent
             if (palette_index == 0)
             {
+                continue;
+            }
+
+            // skip if we already rendered a sprite!
+            if (drawn_sprites[x_index])
+            {
+                VDP.sprite_collision = true;
                 continue;
             }
 

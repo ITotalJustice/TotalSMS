@@ -555,8 +555,8 @@ static FORCE_INLINE uint8_t _INC(struct SMS_Core* sms, uint8_t value)
     const uint8_t result = value + 1;
         
     FLAG_N = false;
-    FLAG_V = (value + 1) > 0xFF;
-    FLAG_H = (result & 0xF) == 0;
+    FLAG_V = value == 0xFE;
+    FLAG_H = (value & 0xF) == 0x0;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -568,7 +568,7 @@ static FORCE_INLINE uint8_t _DEC(struct SMS_Core* sms, uint8_t value)
     const uint8_t result = value - 1;
     
     FLAG_N = true;
-    FLAG_V = value == 0;
+    FLAG_V = value == 0x80;
     FLAG_H = (result & 0xF) == 0xF;
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
@@ -704,6 +704,19 @@ static FORCE_INLINE void RET_cc(struct SMS_Core* sms, bool cond)
         RET(sms);
         sms->cpu.cycles += 6;
     }
+}
+
+static FORCE_INLINE void RETI(struct SMS_Core* sms)
+{
+    REG_PC = POP(sms);
+    sms->cpu.IFF1 = true;
+}
+
+static FORCE_INLINE void RETN(struct SMS_Core* sms)
+{
+    REG_PC = POP(sms);
+    sms->cpu.IFF1 = sms->cpu.IFF2;
+    sms->cpu.IFF2 = false;
 }
 
 static FORCE_INLINE void JR(struct SMS_Core* sms)
@@ -959,17 +972,69 @@ static FORCE_INLINE void EX_sp_hl(struct SMS_Core* sms)
     SET_REG_HL(value);
 }
 
-static FORCE_INLINE void LDI(struct SMS_Core* sms)
+static FORCE_INLINE void CPI_CPD(struct SMS_Core* sms, int increment)
+{
+    uint16_t hl = REG_HL;
+    uint16_t bc = REG_BC;
+
+    const uint8_t value = read8(hl);
+    const uint8_t result = REG_A - value;
+    
+    hl += increment; --bc;
+
+    FLAG_N = true;
+    FLAG_H = (REG_A & 0xF) < (value & 0xF);
+    FLAG_Z = result == 0;
+    FLAG_S = result >> 7;
+    FLAG_P = bc != 0;
+
+    SET_REG_BC(bc);
+    SET_REG_HL(hl);
+}
+
+static FORCE_INLINE void CPI(struct SMS_Core* sms)
+{
+    CPI_CPD(sms, +1);
+}
+
+static FORCE_INLINE void CPIR(struct SMS_Core* sms)
+{
+    CPI(sms);
+
+    if (REG_BC != 0 && FLAG_Z == false)
+    {
+        REG_PC -= 2;
+    }
+
+    FLAG_P = false;
+}
+
+static FORCE_INLINE void CPD(struct SMS_Core* sms)
+{
+    CPI_CPD(sms, -1);
+}
+
+static FORCE_INLINE void CPDR(struct SMS_Core* sms)
+{
+    CPD(sms);
+
+    if (REG_BC != 0 && FLAG_Z == false)
+    {
+        REG_PC -= 2;
+    }
+
+    FLAG_P = false;
+}
+
+static FORCE_INLINE void LDI_LDD(struct SMS_Core* sms, int increment)
 {
     uint16_t hl = REG_HL;
     uint16_t de = REG_DE;
     uint16_t bc = REG_BC;
 
-    // [DE] = [HL]
-    // DE++; HL++; BC--;
     write8(de, read8(hl));
 
-    ++hl; ++de; --bc;
+    hl += increment; de += increment; --bc;
 
     FLAG_H = false;
     FLAG_P = bc != 0;
@@ -978,6 +1043,11 @@ static FORCE_INLINE void LDI(struct SMS_Core* sms)
     SET_REG_BC(bc);
     SET_REG_DE(de);
     SET_REG_HL(hl);
+}
+
+static FORCE_INLINE void LDI(struct SMS_Core* sms)
+{
+    LDI_LDD(sms, +1);
 }
 
 static FORCE_INLINE void LDIR(struct SMS_Core* sms)
@@ -988,25 +1058,13 @@ static FORCE_INLINE void LDIR(struct SMS_Core* sms)
     {
         REG_PC -= 2;
     }
+
+    FLAG_P = false;
 }
 
 static FORCE_INLINE void LDD(struct SMS_Core* sms)
 {
-    uint16_t hl = REG_HL;
-    uint16_t de = REG_DE;
-    uint16_t bc = REG_BC;
-
-    write8(de, read8(hl));
-
-    --hl; --de; --bc;
-
-    FLAG_H = false;
-    FLAG_P = bc != 0;
-    FLAG_N = false;
-
-    SET_REG_HL(hl);
-    SET_REG_DE(de);
-    SET_REG_BC(bc);
+    LDI_LDD(sms, -1);
 }
 
 static FORCE_INLINE void LDDR(struct SMS_Core* sms)
@@ -1018,16 +1076,17 @@ static FORCE_INLINE void LDDR(struct SMS_Core* sms)
         REG_PC -= 2;
     }
 
-    FLAG_Z = true;
+    FLAG_P = false;
 }
 
-static FORCE_INLINE void OUTI(struct SMS_Core* sms)
+static FORCE_INLINE void INI_IND(struct SMS_Core* sms, int increment)
 {
     uint16_t hl = REG_HL;
 
-    const uint8_t value = read8(hl);
+    const uint8_t value = readIO(REG_C);
+    write8(hl, value);
 
-    ++hl; --REG_B;
+    hl += increment; --REG_B;
 
     writeIO(REG_C, value);
 
@@ -1035,6 +1094,60 @@ static FORCE_INLINE void OUTI(struct SMS_Core* sms)
     FLAG_N = true;
 
     SET_REG_HL(hl);
+}
+
+static FORCE_INLINE void INI(struct SMS_Core* sms)
+{
+    INI_IND(sms, +1);
+}
+
+static FORCE_INLINE void INIR(struct SMS_Core* sms)
+{
+    INI(sms);
+
+    if (REG_B != 0)
+    {
+        REG_PC -= 2;
+    }
+
+    FLAG_Z = true;
+}
+
+static FORCE_INLINE void IND(struct SMS_Core* sms)
+{
+    INI_IND(sms, -1);
+}
+
+static FORCE_INLINE void INDR(struct SMS_Core* sms)
+{
+    IND(sms);
+
+    if (REG_B != 0)
+    {
+        REG_PC -= 2;
+    }
+
+    FLAG_Z = true;
+}
+
+static FORCE_INLINE void OUTI_OUTD(struct SMS_Core* sms, int increment)
+{
+    uint16_t hl = REG_HL;
+
+    const uint8_t value = read8(hl);
+    writeIO(REG_C, value);
+
+    hl += increment; --REG_B;
+
+    FLAG_Z = REG_B == 0;
+    FLAG_N = true;
+
+    SET_REG_HL(hl);
+}
+
+static FORCE_INLINE void OUTI(struct SMS_Core* sms)
+{
+    OUTI_OUTD(sms, +1);
 }
 
 static FORCE_INLINE void OTIR(struct SMS_Core* sms)
@@ -1051,18 +1164,7 @@ static FORCE_INLINE void OTIR(struct SMS_Core* sms)
 
 static FORCE_INLINE void OUTD(struct SMS_Core* sms)
 {
-    uint16_t hl = REG_HL;
-
-    const uint8_t value = read8(hl);
-
-    --hl; --REG_B;
-
-    writeIO(REG_C, value);
-
-    FLAG_Z = REG_B == 0;
-    FLAG_N = true;
-
-    SET_REG_HL(hl);
+    OUTI_OUTD(sms, -1);
 }
 
 static FORCE_INLINE void OTDR(struct SMS_Core* sms)
@@ -1150,6 +1252,22 @@ static FORCE_INLINE void CPL(struct SMS_Core* sms)
     REG_A = ~REG_A;
     FLAG_H = true;
     FLAG_N = true;
+}
+
+static FORCE_INLINE void RRD(struct SMS_Core* sms)
+{
+    const uint16_t hl = REG_HL;
+    const uint8_t a = REG_A;
+    const uint8_t value = read8(hl);
+
+    write8(hl, (a << 4) | (value >> 4));
+    REG_A = (a & 0xF0) | (value & 0x0F);
+
+    FLAG_N = false;
+    FLAG_P = SMS_parity(REG_A);
+    FLAG_H = false;
+    FLAG_Z = REG_A == 0;
+    FLAG_S = REG_A >> 7;
 }
 
 static FORCE_INLINE void RLD(struct SMS_Core* sms)
@@ -1355,6 +1473,9 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
             *ixy_hi = read8(REG_PC++);
             break;
 
+        case 0x26: *ixy_hi = read8(REG_PC++); break;
+        case 0x2E: *ixy_lo = read8(REG_PC++); break;
+
         case 0x22: LD_imm_r16(sms, pair); break;
 
         case 0x23: ++*ixy_lo; if (*ixy_lo == 0x00) { ++*ixy_hi; } break;
@@ -1394,6 +1515,8 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
         case 0x65: *ixy_hi = *ixy_lo; break;
         case 0x6C: *ixy_lo = *ixy_hi; break;
         case 0x6D: *ixy_lo = *ixy_lo; break;
+        case 0x7C: REG_A = *ixy_hi; break;
+        case 0x7D: REG_A = *ixy_lo; break;
 
         case 0x60: case 0x61: case 0x62: case 0x63: case 0x67:
             *ixy_hi = get_r8(sms, opcode);
@@ -1416,6 +1539,8 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
         case 0xAE: _XOR(sms, read8(pair + DISP())); break;
         case 0xB6: _OR(sms, read8(pair + DISP())); break;
         case 0xBE: _CP(sms, read8(pair + DISP())); break;
+        case 0xE9: REG_PC = pair;
+        case 0xF9: REG_SP = pair;
 
         case 0x46: case 0x4E: case 0x56: case 0x5E:
         case 0x66: case 0x6E: case 0x7E:
@@ -1469,6 +1594,13 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
         case 0x69: OUT(sms, REG_L); break;
         case 0x71: OUT(sms, 0); break;
         case 0x79: OUT(sms, REG_A); break;
+
+        case 0x45: case 0x55: case 0x5D: case 0x65:
+        case 0x6D: case 0x75: case 0x7D:
+            RETN(sms);
+            break;
+
+        case 0x4D: RETI(sms); break;
 
         case 0x43: LD_imm_r16(sms, REG_BC); break;
         case 0x53: LD_imm_r16(sms, REG_DE); break;
@@ -1548,11 +1680,20 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
         case 0x57: LD_A_I(sms); break;
         case 0x5F: LD_A_R(sms); break;
 
+        case 0x67: RRD(sms); break;
         case 0x6F: RLD(sms); break;
         case 0xA0: LDI(sms); break;
         case 0xB0: LDIR(sms); break;
         case 0xA8: LDD(sms); break;
         case 0xB8: LDDR(sms); break;
+        case 0xA1: CPI(sms); break;
+        case 0xB1: CPIR(sms); break;
+        case 0xA9: CPD(sms); break;
+        case 0xB9: CPDR(sms); break;
+        case 0xA2: INI(sms); break;
+        case 0xB2: INIR(sms); break;
+        case 0xAA: IND(sms); break;
+        case 0xBA: INDR(sms); break;
         case 0xA3: OUTI(sms); break;
         case 0xB3: OTIR(sms); break;
         case 0xAB: OUTD(sms); break;
