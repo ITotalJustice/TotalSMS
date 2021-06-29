@@ -53,6 +53,7 @@ dkms.conf
 
 # my ignores
 build*/
+web/
 TotalSMS
 roms/
 *.zip

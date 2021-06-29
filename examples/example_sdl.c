@@ -8,6 +8,7 @@
 
 #ifdef EMSCRIPTEN
     #include <emscripten.h>
+    #include <emscripten/html5.h>
 #endif
 
 
@@ -29,8 +30,6 @@ enum TouchButtonID
     TouchButtonID_DOWN,
     TouchButtonID_LEFT,
     TouchButtonID_RIGHT,
-    TouchButtonID_FULLSCREEN,
-    TouchButtonID_FILE,
 };
 
 static struct TouchButton
@@ -77,18 +76,6 @@ static struct TouchButton
         .w = 38,
         .h = 30,
     },
-    [TouchButtonID_FULLSCREEN] =
-    {
-        .path = "res/touch_buttons/fullscreen.bmp",
-        .w = 48,
-        .h = 48,
-    },
-    [TouchButtonID_FILE] =
-    {
-        .path = "res/touch_buttons/file.bmp",
-        .w = 48,
-        .h = 48,
-    },
 };
 
 
@@ -116,12 +103,8 @@ static bool has_rom = false;
 
 static bool is_mobile = false;
 static bool running = true;
-// for now, scale web version slightly larger, this is until i learn html css :)
-#ifdef EMSCRIPTEN
-    static int scale = 3;
-#else
-    static int scale = 2;
-#endif
+
+static int scale = 2;
 static int speed = 1;
 static int frameskip_counter = 0;
 
@@ -160,6 +143,7 @@ EMSCRIPTEN_KEEPALIVE
 void em_set_browser_type(bool _is_mobile)
 {
     is_mobile = _is_mobile;
+    // is_mobile = true;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -181,6 +165,12 @@ void em_load_rom_data(const char* name, const uint8_t* data, int len)
     {
         rom_path = name;
         has_rom = true;
+
+        EM_ASM({
+            let button = document.getElementById('HackyButton');
+            button.style.visibility = "hidden";
+        });
+
     }
     else
     {
@@ -200,6 +190,13 @@ static int get_scale(int w, int h)
 
 static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
 {
+    if (down)
+    {
+        #ifdef EMSCRIPTEN
+            emscripten_vibrate(16);
+        #endif
+    }
+
     switch (touch_id)
     {
         case TouchButtonID_A:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
@@ -208,9 +205,6 @@ static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
         case TouchButtonID_DOWN:     SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
         case TouchButtonID_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
         case TouchButtonID_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
-        
-        case TouchButtonID_FULLSCREEN:  if (down) { toggle_fullscreen(); }  break;
-        case TouchButtonID_FILE:        break;
     }
 }
 
@@ -401,65 +395,48 @@ static bool is_fullscreen()
 
 static void resize_touch_buttons(int w, int h)
 {
-    const int min_scale = get_scale(w, h);
+    const float min_scale = (float)get_scale(w, h) * 2.f;
 
     if (is_mobile)
     {
-        touch_buttons[TouchButtonID_A].rect.x = w - 100 * min_scale;
-        touch_buttons[TouchButtonID_A].rect.y = h - 50 * min_scale;
+        touch_buttons[TouchButtonID_A].rect.x = w - 90 * min_scale;
+        touch_buttons[TouchButtonID_A].rect.y = h - 45 * min_scale;
         touch_buttons[TouchButtonID_A].rect.w = touch_buttons[TouchButtonID_A].w * min_scale;
         touch_buttons[TouchButtonID_A].rect.h = touch_buttons[TouchButtonID_A].h * min_scale;
 
-        touch_buttons[TouchButtonID_B].rect.x = w - 50 * min_scale;
-        touch_buttons[TouchButtonID_B].rect.y = h - 50 * min_scale;
+        touch_buttons[TouchButtonID_B].rect.x = w - 45 * min_scale;
+        touch_buttons[TouchButtonID_B].rect.y = h - 45 * min_scale;
         touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * min_scale;
         touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * min_scale;
 
         touch_buttons[TouchButtonID_UP].rect.x = 35 * min_scale;
-        touch_buttons[TouchButtonID_UP].rect.y = h - 90 * min_scale;
+        touch_buttons[TouchButtonID_UP].rect.y = h - 85 * min_scale;
         touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * min_scale;
         touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * min_scale;
 
         touch_buttons[TouchButtonID_DOWN].rect.x = 35 * min_scale;
-        touch_buttons[TouchButtonID_DOWN].rect.y = h - 50 * min_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.y = h - 45 * min_scale;
         touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * min_scale;
         touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * min_scale;
 
         touch_buttons[TouchButtonID_LEFT].rect.x = 5 * min_scale;
-        touch_buttons[TouchButtonID_LEFT].rect.y = h - 68 * min_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.y = h - 63 * min_scale;
         touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * min_scale;
         touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * min_scale;
 
         touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * min_scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 68 * min_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 63 * min_scale;
         touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * min_scale;
         touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * min_scale;
     }
     else
     {
-        touch_buttons[TouchButtonID_A].rect.x = -8000;
-        touch_buttons[TouchButtonID_A].rect.y = -8000;
-        touch_buttons[TouchButtonID_B].rect.x = -8000;
-        touch_buttons[TouchButtonID_B].rect.y = -8000;
-        touch_buttons[TouchButtonID_UP].rect.x = -8000;
-        touch_buttons[TouchButtonID_UP].rect.y = -8000;
-        touch_buttons[TouchButtonID_DOWN].rect.x = -8000;
-        touch_buttons[TouchButtonID_DOWN].rect.y = -8000;
-        touch_buttons[TouchButtonID_LEFT].rect.x = -8000;
-        touch_buttons[TouchButtonID_LEFT].rect.y = -8000;
-        touch_buttons[TouchButtonID_RIGHT].rect.x = -8000;
-        touch_buttons[TouchButtonID_RIGHT].rect.y = -8000;
+        for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
+        {
+            touch_buttons[i].rect.x = -8000;
+            touch_buttons[i].rect.y = -8000;
+        }
     }
-
-    touch_buttons[TouchButtonID_FULLSCREEN].rect.x = w - 56 * min_scale;
-    touch_buttons[TouchButtonID_FULLSCREEN].rect.y = 5 * min_scale;
-    touch_buttons[TouchButtonID_FULLSCREEN].rect.w = touch_buttons[TouchButtonID_FULLSCREEN].w * min_scale;
-    touch_buttons[TouchButtonID_FULLSCREEN].rect.h = touch_buttons[TouchButtonID_FULLSCREEN].h * min_scale;
-
-    touch_buttons[TouchButtonID_FILE].rect.x = 5 * min_scale;
-    touch_buttons[TouchButtonID_FILE].rect.y = 5 * min_scale;
-    touch_buttons[TouchButtonID_FILE].rect.w = touch_buttons[TouchButtonID_FILE].w * min_scale;
-    touch_buttons[TouchButtonID_FILE].rect.h = touch_buttons[TouchButtonID_FILE].h * min_scale;
 }
 
 static void setup_rect(int w, int h)
@@ -491,15 +468,7 @@ static void toggle_fullscreen()
     }
     else
     {
-        // iirc fullscreen option only works on ios
-        if (is_mobile)
-        {
-            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
-        }
-        else
-        {
-            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-        }
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
     }
 }
 
@@ -825,6 +794,18 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
     // cause popping sounds (on my chromebook).
     static int8_t buffer[SAMPLES] = {0};
 
+    static bool first = true;
+
+    if (first)
+    {
+        // stops nasty audio pop in the beginning on chromebook
+        SDL_QueueAudio(audio_device, buffer, sizeof(buffer));
+        SDL_QueueAudio(audio_device, buffer, sizeof(buffer));
+        SDL_QueueAudio(audio_device, buffer, sizeof(buffer));
+        SDL_QueueAudio(audio_device, buffer, sizeof(buffer));
+        first = false;
+    }
+
     static size_t buffer_count = 0;
 
     // if speedup is enabled, skip x many samples in order to not fill the audio buffer!
@@ -842,7 +823,7 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
     }
 
     #ifdef EMSCRIPTEN
-        if (SDL_GetQueuedAudioSize(audio_device) > sizeof(buffer) * 6)
+        if (SDL_GetQueuedAudioSize(audio_device) > sizeof(buffer) * 4)
         {
             return;
         }
@@ -906,12 +887,6 @@ static void load_touch_buttons()
 
     for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
     {
-        // only load the controller buttons on mobile
-        if (!is_mobile && (i != TouchButtonID_FULLSCREEN && i != TouchButtonID_FILE))
-        {
-            continue;
-        }
-
         SDL_Surface* surface = SDL_LoadBMP(touch_buttons[i].path);
 
         if (surface)
@@ -1029,12 +1004,33 @@ int main(int argc, char** argv)
         goto fail;
     }
 
+    // SDL_DisplayMode current;
+    // for(int i = 0; i < SDL_GetNumVideoDisplays(); ++i){
+
+    // int should_be_zero = SDL_GetCurrentDisplayMode(i, &current);
+
+    // if(should_be_zero != 0)
+    //   // In case of error...
+    //   printf("Could not get display mode for video display #%d: %s", i, SDL_GetError());
+
+    // else
+    //   // On success, print the current display mode.
+    //   printf("Display #%d: current display mode is %dx%dpx @ %dhz.", i, current.w, current.h, current.refresh_rate);
+
+  // }
+
     if (SDL_GameControllerAddMappingsFromFile("res/controller_mapping/gamecontrollerdb.txt"))
     {
         printf("failed to open controllerdb file! %s\n", SDL_GetError());
     }
 
-    window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
+    #ifdef EMSCRIPTEN
+        SDL_DisplayMode display = {0};
+        SDL_GetCurrentDisplayMode(0, &display);
+        window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, display.w, display.h, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
+    #else
+        window = SDL_CreateWindow("TotalSMS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH * scale, HEIGHT * scale, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
+    #endif
 
     if (!window)
     {
@@ -1049,6 +1045,7 @@ int main(int argc, char** argv)
     pixel_format = SDL_AllocFormat(pixel_format_enum);
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    // renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     if (!renderer)
     {

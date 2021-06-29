@@ -5,29 +5,12 @@
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <title>TotalSMS</title>
 
+  <meta name="apple-mobile-web-app-title" content="TotalSMS">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="viewport-fit=cover, user-scalable=no, width=device-width, initial-scale=1, maximum-scale=1">
+
   <meta name="theme-color" content="#ffffff">
-
-  <!-- STYLE.css -->
-  <style type="text/css">
-      .button {
-      background-color: #230437;
-      border: none;
-      color: white;
-      padding: 10px 10px;
-      text-align: center;
-      text-decoration: none;
-      font: 1rem 'Fira Sans', sans-serif;
-      display: inline-block;
-      font-size: 18px;
-      margin: 8px 8px;
-      cursor: pointer;
-    }
-
-    label {
-        font: 1rem 'Fira Sans', sans-serif;
-    }
-  </style>
-
 
   <!-- EM.css -->
   <style type="text/css">
@@ -36,6 +19,10 @@
     div.emscripten { text-align: center; }
     div.emscripten_border { border: 1px solid black; }
     /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+    canvas.emscripten {
+        border: 0px none;
+        background-color: black;
+    }
     canvas.emscripten {
         border: 0px none;
         background-color: black;
@@ -53,11 +40,25 @@
         display: block;
     }
     #HackyButton {
-      position:absolute;
-      left:5px;
-      top:5px;
-      height: 96px;
-      width: 96px;
+      position: absolute;
+      left: 25%;
+      top: 25%;
+      width: 50%;
+      height: 50%;
+
+      background-color: #230437;
+      border: none;
+      color: white;
+      padding: 10px 10px;
+      text-align: center;
+      text-decoration: none;
+      font: 1rem 'Fira Sans', sans-serif;
+      display: inline-block;
+      font-size: 18px;
+      margin: 8px 8px;
+      cursor: pointer;
+
+      font-size: 48px;
     }
 
     .spinner {
@@ -106,9 +107,8 @@
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
   </div>
 
-  <button id="HackyButton" name="Load"></button>
+  <button id="HackyButton" name="Load">Click Here To LoadRom</button>
 
-  <label for="RomFilePicker" class="button">Load Rom</label>
   <input type="file" id="RomFilePicker" name="LoadRom" accept=".sms" style="display: none;">
 
   <!-- uncomment this to have textbox! -->
@@ -210,18 +210,18 @@
     var Module = {
       preRun: [],
       postRun: [],
-      // print: (function() {
-      //   var element = document.getElementById('output');
-      //   if (element) element.value = ''; // clear browser cache
-      //   return function(text) {
-      //     if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
-      //     console.log(text);
-      //     if (element) {
-      //       element.value += text + "\n";
-      //       element.scrollTop = element.scrollHeight; // focus on bottom
-      //     }
-      //   };
-      // })(),
+      print: (function() {
+        var element = document.getElementById('output');
+        if (element) element.value = ''; // clear browser cache
+        return function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.log(text);
+          if (element) {
+            element.value += text + "\n";
+            element.scrollTop = element.scrollHeight; // focus on bottom
+          }
+        };
+      })(),
       printErr: function(text) {
         if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
         console.error(text);
