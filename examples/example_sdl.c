@@ -395,7 +395,7 @@ static bool is_fullscreen()
 
 static void resize_touch_buttons(int w, int h)
 {
-    const float min_scale = (float)get_scale(w, h) * 2.f;
+    const float min_scale = (float)get_scale(w, h) * 1.5f;
 
     if (is_mobile)
     {
