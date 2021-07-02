@@ -56,7 +56,14 @@ void SMS_mapper_update(struct SMS_Core* sms)
         case MAPPER_TYPE_SEGA:
             sega_mapper_update_slot0(sms);
             sega_mapper_update_slot1(sms);
-            sega_mapper_update_slot2(sms);
+            if (sms->cart.mappers.sega.fffc.ram_enable_80000)
+            {
+                sega_mapper_update_ram0(sms);
+            }
+            else
+            {
+                sega_mapper_update_slot2(sms);
+            }
             break;
     }
 }

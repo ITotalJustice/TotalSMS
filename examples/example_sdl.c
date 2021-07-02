@@ -147,7 +147,7 @@ static struct TouchCacheEntry mouse_entries[1] = {0}; // max of 1 mouse clicks a
 static struct SMS_Core sms;
 static uint32_t core_pixels[HEIGHT][WIDTH];
 
-static const char* rom_path = NULL;
+static char rom_path[0x304] = {0};
 static uint8_t rom_data[SMS_ROM_SIZE_MAX] = {0};
 static size_t rom_size = 0;
 static bool has_rom = false;
@@ -261,8 +261,10 @@ void em_load_rom_data(const char* name, const uint8_t* data, int len)
 
     if (SMS_loadrom(&sms, rom_data, rom_size))
     {
-        rom_path = name;
+        strncpy(rom_path, name, sizeof(rom_path) - 1);
         has_rom = true;
+
+        printf("[EM] loaded rom! name: %s len: %d\n", rom_path, len);
 
         EM_ASM({
             let button = document.getElementById('HackyButton');
@@ -419,7 +421,7 @@ static void run()
 
 static bool get_state_path(char path_out[0x304])
 {
-    if (!rom_path)
+    if (!has_rom)
     {
         return false;
     }
@@ -446,9 +448,9 @@ static void savestate()
     {
         return;
     }
-
-    struct SMS_State state;
     
+    struct SMS_State state;
+
     #ifdef EMSCRIPTEN
         char path[0x304] = {"/states/"};
     #else
@@ -1124,7 +1126,6 @@ int main(int argc, char** argv)
 
     #ifdef EMSCRIPTEN
         EM_ASM(
-            FS.mkdir("/saves"); FS.mount(IDBFS, {}, "/saves");
             FS.mkdir("/states"); FS.mount(IDBFS, {}, "/states");
 
             FS.syncfs(true, function (err) {
@@ -1147,7 +1148,7 @@ int main(int argc, char** argv)
             goto fail;
         }
 
-        rom_path = argv[1];
+        strncpy(rom_path, argv[1], sizeof(rom_path) - 1);
 
         FILE* f = fopen(rom_path, "rb");
 
