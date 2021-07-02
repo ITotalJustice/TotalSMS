@@ -152,7 +152,7 @@ static uint8_t rom_data[SMS_ROM_SIZE_MAX] = {0};
 static size_t rom_size = 0;
 static bool has_rom = false;
 
-static bool is_mobile = false;
+static bool is_mobile = true;
 static bool running = true;
 static enum RunningState running_state = RunningState_GAME;
 
@@ -523,69 +523,70 @@ static bool is_fullscreen()
 
 static void resize_touch_buttons(int w, int h)
 {
-    const float min_scale = (float)get_scale(w, h) * 1.5f;
+    const float big_scale = (float)get_scale(w, h) * 1.5f;
+    const float min_scale = (float)get_scale(w, h) * 1.0f;
 
     if (is_mobile)
     {
-        touch_buttons[TouchButtonID_A].rect.x = w - 90 * min_scale;
-        touch_buttons[TouchButtonID_A].rect.y = h - 45 * min_scale;
-        touch_buttons[TouchButtonID_A].rect.w = touch_buttons[TouchButtonID_A].w * min_scale;
-        touch_buttons[TouchButtonID_A].rect.h = touch_buttons[TouchButtonID_A].h * min_scale;
+        touch_buttons[TouchButtonID_A].rect.x = w - 90 * big_scale;
+        touch_buttons[TouchButtonID_A].rect.y = h - 45 * big_scale;
+        touch_buttons[TouchButtonID_A].rect.w = touch_buttons[TouchButtonID_A].w * big_scale;
+        touch_buttons[TouchButtonID_A].rect.h = touch_buttons[TouchButtonID_A].h * big_scale;
 
-        touch_buttons[TouchButtonID_B].rect.x = w - 45 * min_scale;
-        touch_buttons[TouchButtonID_B].rect.y = h - 45 * min_scale;
-        touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * min_scale;
-        touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * min_scale;
+        touch_buttons[TouchButtonID_B].rect.x = w - 45 * big_scale;
+        touch_buttons[TouchButtonID_B].rect.y = h - 45 * big_scale;
+        touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * big_scale;
+        touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * big_scale;
 
-        touch_buttons[TouchButtonID_UP].rect.x = 35 * min_scale;
-        touch_buttons[TouchButtonID_UP].rect.y = h - 85 * min_scale;
-        touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * min_scale;
-        touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * min_scale;
+        touch_buttons[TouchButtonID_UP].rect.x = 35 * big_scale;
+        touch_buttons[TouchButtonID_UP].rect.y = h - 85 * big_scale;
+        touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * big_scale;
+        touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * big_scale;
 
-        touch_buttons[TouchButtonID_DOWN].rect.x = 35 * min_scale;
-        touch_buttons[TouchButtonID_DOWN].rect.y = h - 45 * min_scale;
-        touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * min_scale;
-        touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * min_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.x = 35 * big_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.y = h - 45 * big_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * big_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * big_scale;
 
-        touch_buttons[TouchButtonID_LEFT].rect.x = 5 * min_scale;
-        touch_buttons[TouchButtonID_LEFT].rect.y = h - 63 * min_scale;
-        touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * min_scale;
-        touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * min_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.x = 5 * big_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.y = h - 63 * big_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * big_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * big_scale;
 
-        touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * min_scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 63 * min_scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * min_scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * min_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * big_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 63 * big_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * big_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * big_scale;
 
-        touch_buttons[TouchButtonID_PAUSE].rect.x = w - 53 * scale;
-        touch_buttons[TouchButtonID_PAUSE].rect.y = 5 * scale;
-        touch_buttons[TouchButtonID_PAUSE].rect.w = touch_buttons[TouchButtonID_PAUSE].w * scale;
-        touch_buttons[TouchButtonID_PAUSE].rect.h = touch_buttons[TouchButtonID_PAUSE].h * scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.x = w - 53 * min_scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.y = 5 * min_scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.w = touch_buttons[TouchButtonID_PAUSE].w * min_scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.h = touch_buttons[TouchButtonID_PAUSE].h * min_scale;
 
-        touch_buttons[TouchButtonID_MENU].rect.x = 5 * scale;
-        touch_buttons[TouchButtonID_MENU].rect.y = 5 * scale;
-        touch_buttons[TouchButtonID_MENU].rect.w = touch_buttons[TouchButtonID_MENU].w * scale;
-        touch_buttons[TouchButtonID_MENU].rect.h = touch_buttons[TouchButtonID_MENU].h * scale;
+        touch_buttons[TouchButtonID_MENU].rect.x = 5 * min_scale;
+        touch_buttons[TouchButtonID_MENU].rect.y = 5 * min_scale;
+        touch_buttons[TouchButtonID_MENU].rect.w = touch_buttons[TouchButtonID_MENU].w * min_scale;
+        touch_buttons[TouchButtonID_MENU].rect.h = touch_buttons[TouchButtonID_MENU].h * min_scale;
 
-        touch_buttons[TouchButtonID_TITLE].rect.x = 10 * scale;
-        touch_buttons[TouchButtonID_TITLE].rect.y = 18 * scale;
-        touch_buttons[TouchButtonID_TITLE].rect.w = touch_buttons[TouchButtonID_TITLE].w * scale;
-        touch_buttons[TouchButtonID_TITLE].rect.h = touch_buttons[TouchButtonID_TITLE].h * scale;
+        touch_buttons[TouchButtonID_TITLE].rect.x = 10 * min_scale;
+        touch_buttons[TouchButtonID_TITLE].rect.y = 18 * min_scale;
+        touch_buttons[TouchButtonID_TITLE].rect.w = touch_buttons[TouchButtonID_TITLE].w * min_scale;
+        touch_buttons[TouchButtonID_TITLE].rect.h = touch_buttons[TouchButtonID_TITLE].h * min_scale;
 
-        touch_buttons[TouchButtonID_SAVE].rect.x = 10 * scale;
-        touch_buttons[TouchButtonID_SAVE].rect.y = 70 * scale;
-        touch_buttons[TouchButtonID_SAVE].rect.w = touch_buttons[TouchButtonID_SAVE].w * scale;
-        touch_buttons[TouchButtonID_SAVE].rect.h = touch_buttons[TouchButtonID_SAVE].h * scale;
+        touch_buttons[TouchButtonID_SAVE].rect.x = 10 * min_scale;
+        touch_buttons[TouchButtonID_SAVE].rect.y = 70 * min_scale;
+        touch_buttons[TouchButtonID_SAVE].rect.w = touch_buttons[TouchButtonID_SAVE].w * min_scale;
+        touch_buttons[TouchButtonID_SAVE].rect.h = touch_buttons[TouchButtonID_SAVE].h * min_scale;
 
-        touch_buttons[TouchButtonID_LOAD].rect.x = 10 * scale;
-        touch_buttons[TouchButtonID_LOAD].rect.y = (70 * scale) + ((45 * 1) * scale);
-        touch_buttons[TouchButtonID_LOAD].rect.w = touch_buttons[TouchButtonID_LOAD].w * scale;
-        touch_buttons[TouchButtonID_LOAD].rect.h = touch_buttons[TouchButtonID_LOAD].h * scale;
+        touch_buttons[TouchButtonID_LOAD].rect.x = 10 * min_scale;
+        touch_buttons[TouchButtonID_LOAD].rect.y = (70 * min_scale) + ((45 * 1) * min_scale);
+        touch_buttons[TouchButtonID_LOAD].rect.w = touch_buttons[TouchButtonID_LOAD].w * min_scale;
+        touch_buttons[TouchButtonID_LOAD].rect.h = touch_buttons[TouchButtonID_LOAD].h * min_scale;
 
-        touch_buttons[TouchButtonID_BACK].rect.x = 10 * scale;
-        touch_buttons[TouchButtonID_BACK].rect.y = (70 * scale) + ((45 * 2) * scale);
-        touch_buttons[TouchButtonID_BACK].rect.w = touch_buttons[TouchButtonID_BACK].w * scale;
-        touch_buttons[TouchButtonID_BACK].rect.h = touch_buttons[TouchButtonID_BACK].h * scale;
+        touch_buttons[TouchButtonID_BACK].rect.x = 10 * min_scale;
+        touch_buttons[TouchButtonID_BACK].rect.y = (70 * min_scale) + ((45 * 2) * min_scale);
+        touch_buttons[TouchButtonID_BACK].rect.w = touch_buttons[TouchButtonID_BACK].w * min_scale;
+        touch_buttons[TouchButtonID_BACK].rect.h = touch_buttons[TouchButtonID_BACK].h * min_scale;
     }
     else
     {
@@ -1041,7 +1042,7 @@ static void core_on_vblank(void* user)
 static void load_touch_buttons()
 {
     #ifndef EMSCRIPTEN
-        return;
+        // return;
     #endif
 
     for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
@@ -1074,7 +1075,9 @@ static void render()
         int w = 0, h = 0;
         SDL_GetRendererOutputSize(renderer, &w, &h);
 
-        SDL_Rect r = { .x = 0, .y = 10 * scale, .w = 130 * scale, .h = h - 20 * scale };
+        const int min_scale = get_scale(w, h);
+
+        SDL_Rect r = { .x = 0, .y = 10 * min_scale, .w = 130 * min_scale, .h = h - 20 * min_scale };
         SDL_SetRenderDrawColor(renderer, 40, 40, 40, 200);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_RenderFillRect(renderer, &r);
