@@ -8,19 +8,11 @@
 enum
 {
     NTSC_HCOUNT_MAX = 342,
-    PAL_HCOUNT_MAX = 342,
-
     NTSC_VCOUNT_MAX = 262,
-    PAL_VCOUNT_MAX = 312,
 
     NTSC_FPS = 60,
-    PAL_FPS = 50,
 
     NTSC_CYCLES_PER_LINE = CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
-    PAL_CYCLES_PER_LINE = CPU_CLOCK / PAL_VCOUNT_MAX / PAL_FPS, // ~230
-
-    NTSC_VBLANK_TOP = 16,
-    NTSC_VBLANK_BOTTOM = 3,
 
     NTSC_HBLANK_LEFT = 29,
     NTSC_HBLANK_RIGHT = 29,
@@ -34,14 +26,11 @@ enum
     NTSC_ACTIVE_DISPLAY_HORIZONTAL = 256,
     NTSC_ACTIVE_DISPLAY_VERTICAL = 192,
 
-    NTSC_DISPLAY_VERTICAL_START = NTSC_VBLANK_TOP + NTSC_BORDER_TOP,
+    NTSC_DISPLAY_VERTICAL_START = NTSC_BORDER_TOP,
     NTSC_DISPLAY_VERTICAL_END = NTSC_DISPLAY_VERTICAL_START + NTSC_ACTIVE_DISPLAY_VERTICAL,
 
-    NTSC_DISPLAY_HORIZONTAL_START = NTSC_HBLANK_LEFT + NTSC_BORDER_LEFT,
+    NTSC_DISPLAY_HORIZONTAL_START = NTSC_BORDER_LEFT,
     NTSC_DISPLAY_HORIZONTAL_END = NTSC_DISPLAY_HORIZONTAL_START + NTSC_ACTIVE_DISPLAY_HORIZONTAL,
-
-    NTSC_VBLANK_START = NTSC_DISPLAY_VERTICAL_END + NTSC_BORDER_BOTTOM,
-    NTSC_VBLANK_END = NTSC_VBLANK_TOP,
 
     SPRITE_EOF = 208,
 };
@@ -50,13 +39,7 @@ enum
 // 228 or 230 cycles, so, we need to mult the cpu cycles by a %
 // (this will be a decimal, so it cannot be an enum, aka an int)
 #define NTSC_HCOUNT_MULT ((float)NTSC_HCOUNT_MAX / (float)NTSC_CYCLES_PER_LINE)
-#define PAL_HCOUNT_MULT ((float)PAL_HCOUNT_MAX / (float)PAL_CYCLES_PER_LINE)
 
-
-static bool vdp_is_display_active(const struct SMS_Core* sms)
-{
-    return VDP.vcount >= NTSC_DISPLAY_VERTICAL_START && VDP.vcount < NTSC_DISPLAY_VERTICAL_END;
-}
 
 static bool vdp_is_line_irq_wanted(const struct SMS_Core* sms)
 {
@@ -93,8 +76,6 @@ static uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
     const bool doubled_sprites = IS_BIT_SET(VDP.registers[0x1], 0);
     const uint8_t sprite_size = IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
 
-    // assert(doubled_sprites == 0);
-
     return sprite_size << doubled_sprites;
 }
 
@@ -125,7 +106,7 @@ static FORCE_INLINE void vdp_write_pixel(struct SMS_Core* sms, uint32_t c, uint1
 
 uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 {
-    uint8_t v = 0;
+    uint8_t v = 31; // unused bits 1,2,3,4
 
     v |= VDP.frame_interrupt_pending << 7;
     v |= VDP.sprite_overflow << 6;
@@ -133,6 +114,7 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
 
     // these are reset on read
     VDP.frame_interrupt_pending = false;
+    VDP.line_interrupt_pending = false;
     VDP.sprite_overflow = false;
     VDP.sprite_collision = false;
     
@@ -143,10 +125,20 @@ void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 {
     VDP.registers[addr & 0xF] = value;
 
-    if ((addr & 0xF) == 1)
+    switch (addr & 0xF)
     {
-        assert(IS_BIT_SET(value, 3) == 0 && "240 height mode set");
-        assert(IS_BIT_SET(value, 4) == 0 && "224 height mode set");
+        case 0x1:
+            assert(IS_BIT_SET(value, 3) == 0 && "240 height mode set");
+            assert(IS_BIT_SET(value, 4) == 0 && "224 height mode set");
+            break;
+
+        case 0x3:
+            assert(value == 0xFF && "colour table bits not all set");
+            break;
+
+        case 0x4:
+            assert((value & 0xF) == 0xF && "Background Pattern Generator Base Address");
+            break;
     }
 }
 
@@ -156,22 +148,22 @@ struct PriorityBuf
     bool array[NTSC_ACTIVE_DISPLAY_HORIZONTAL];
 };
 
-static inline void vdp_render_overscan(struct SMS_Core* sms, uint16_t from, uint16_t until)
+static inline void vdp_render_overscan(struct SMS_Core* sms, uint8_t line, uint16_t from, uint16_t until)
 {
     const uint32_t overscan_col = VDP.colour[16 + vdp_get_overscan_colour(sms)];
 
     for (uint16_t i = 0; i < until; ++i)
     {
-        vdp_write_pixel(sms, overscan_col, from + i - NTSC_HBLANK_LEFT, VDP.vcount - NTSC_VBLANK_TOP);
+        vdp_write_pixel(sms, overscan_col, from + i, line);
     }
 }
 
 static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio)
 {
-    const uint16_t pixely = VDP.vcount - NTSC_VBLANK_TOP;
-    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START - NTSC_HBLANK_LEFT;
+    const uint16_t pixely = VDP.vcount + NTSC_BORDER_TOP;
+    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
     
-    const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
+    const uint8_t line = VDP.vcount;
     const uint8_t fine_line = line & 0x7;
     const uint8_t row = line >> 3;
 
@@ -184,9 +176,9 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
     const uint16_t nametable_base_addr = vdp_get_nametable_base_addr(sms);
 
     // render overscan left
-    vdp_render_overscan(sms, NTSC_HBLANK_LEFT, NTSC_BORDER_LEFT + 8);
+    vdp_render_overscan(sms, pixely, 0, NTSC_BORDER_LEFT + 8);
     // render overscan right
-    vdp_render_overscan(sms, NTSC_DISPLAY_HORIZONTAL_END, NTSC_BORDER_RIGHT);
+    vdp_render_overscan(sms, pixely, NTSC_DISPLAY_HORIZONTAL_END, NTSC_BORDER_RIGHT);
 
 
     for (uint8_t col = 0; col < 32; ++col)
@@ -208,8 +200,20 @@ static void vdp_render_background(struct SMS_Core* sms, struct PriorityBuf* prio
         uint16_t vertical_offset = 0;
         uint8_t palette_index_offset = 0;
 
+        uint8_t check_col = 0;
+
+        // if set, we use the internal col counter, else, the starting_col
+        if (IS_BIT_SET(VDP.registers[0x1], 7))
+        {
+            check_col = col;
+        }
+        else
+        {
+            check_col = (col + starting_col) & 31;
+        }
+
         // check if vertical scrolling should be disabled
-        if (IS_BIT_SET(VDP.registers[0x0], 7) && col >= 24)
+        if (IS_BIT_SET(VDP.registers[0x0], 7) && check_col >= 24)
         {
             vertical_offset = (row % 28) * 64;
             palette_index_offset = fine_line;
@@ -302,10 +306,11 @@ struct SpriteEntries
 static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
 {
     assert(IS_BIT_SET(VDP.registers[0x5], 0) && "needs lower index for oam");
+    assert((VDP.registers[0x6] & 0x3) == 0x3 && "Sprite Pattern Generator Base Address");
 
     struct SpriteEntries sprites = {0};
 
-    const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
+    const uint8_t line = VDP.vcount;
     const uint16_t sprite_attribute_base_addr = vdp_get_sprite_attribute_base_addr(sms);
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
 
@@ -346,10 +351,10 @@ static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
 
 static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* prio)
 {
-    const uint16_t pixely = VDP.vcount - NTSC_VBLANK_TOP;
-    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START - NTSC_HBLANK_LEFT;
+    const uint16_t pixely = VDP.vcount + NTSC_BORDER_TOP;
+    const uint16_t pixelx = NTSC_DISPLAY_HORIZONTAL_START;
     
-    const uint8_t line = VDP.vcount - NTSC_DISPLAY_VERTICAL_START;
+    const uint8_t line = VDP.vcount;
     const uint16_t attr_addr = vdp_get_sprite_attribute_base_addr(sms);
     // if set, we fetch patterns from upper table
     const uint16_t pattern_select = vdp_get_sprite_pattern_select(sms) ? 256 : 0;
@@ -441,7 +446,22 @@ static void vdp_render_sprites(struct SMS_Core* sms, const struct PriorityBuf* p
 
 static bool vdp_is_vertcal_border(const struct SMS_Core* sms)
 {
-    return (VDP.vcount >= NTSC_VBLANK_TOP && VDP.vcount < (NTSC_VBLANK_TOP + NTSC_BORDER_TOP)) || (VDP.vcount >= NTSC_DISPLAY_VERTICAL_END && VDP.vcount < (NTSC_DISPLAY_VERTICAL_END + NTSC_BORDER_BOTTOM));
+    return (VDP.vcount < NTSC_BORDER_TOP) || (VDP.vcount >= NTSC_DISPLAY_VERTICAL_END && VDP.vcount < (NTSC_DISPLAY_VERTICAL_END + NTSC_BORDER_BOTTOM));
+}
+
+bool vdp_has_interrupt(const struct SMS_Core* sms)
+{
+    if (VDP.frame_interrupt_pending && vdp_is_vblank_irq_wanted(sms))
+    {
+        return true;
+    }
+
+    if (VDP.line_interrupt_pending && vdp_is_line_irq_wanted(sms))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 void vdp_run(struct SMS_Core* sms, uint8_t cycles)
@@ -452,21 +472,17 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
     {
         if (vdp_is_vertcal_border(sms) && vdp_is_display_enabled(sms) && sms->pixels)
         {
-            vdp_render_overscan(sms, NTSC_HBLANK_LEFT, NTSC_ACTIVE_DISPLAY_HORIZONTAL + NTSC_BORDER_RIGHT + NTSC_BORDER_LEFT);
+            vdp_render_overscan(sms, VDP.vcount, 0, NTSC_DISPLAY_HORIZONTAL_END + NTSC_BORDER_RIGHT);
         }
 
-        if (vdp_is_display_active(sms))
+        if (VDP.vcount < 192)
         {
             VDP.line_counter--;
 
             // reloads / fires irq (if enabled) on underflow
             if (VDP.line_counter == 0xFF)
             {
-                if (vdp_is_line_irq_wanted(sms))
-                {
-                    Z80_irq(sms);
-                }
-
+                VDP.line_interrupt_pending = true;
                 VDP.line_counter = VDP.registers[0xA];
             }
 
@@ -485,38 +501,30 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
             VDP.line_counter = VDP.registers[0xA];
         }
 
+        VDP.hcount -= NTSC_HCOUNT_MAX;
+        VDP.vcount++;
+        VDP.vcount_port++;
+
         switch (VDP.vcount)
         {
-            case NTSC_VBLANK_START:
-                if (vdp_is_vblank_irq_wanted(sms))
-                {
-                    Z80_irq(sms);                    
-                }
-
+            case 193:
                 VDP.frame_interrupt_pending = true;
-
-                if (sms->vblank_callback)
-                {
-                    sms->vblank_callback(sms->vblank_callback_user);
-                }
                 break;
 
             case 218: // see description in types.h for the jump back value
                 VDP.vcount_port = 213;
                 break;
-        }
 
-        if (VDP.vcount == NTSC_VCOUNT_MAX)
-        {
-            VDP.vcount = 0;
-            VDP.vcount_port = 0;
-        }
-        else
-        {
-            VDP.vcount++;
-            VDP.vcount_port++;
-        }
+            case SMS_SCREEN_HEIGHT: // call the callback here as to account for overscan lines!
+                if (sms->vblank_callback)
+                {
+                    sms->vblank_callback(sms->vblank_callback_user);
+                }
 
-        VDP.hcount -= NTSC_HCOUNT_MAX;
+            case 262:
+                VDP.vcount = 0;
+                VDP.vcount_port = 0;
+                break;
+        }
     }
 }

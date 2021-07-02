@@ -38,6 +38,14 @@ static inline void sega_mapper_update_slot2(struct SMS_Core* sms)
     }
 }
 
+static inline void sega_mapper_update_ram0(struct SMS_Core* sms)
+{
+    for (size_t i = 0; i < 0x10; ++i)
+    {
+        sms->cart.mappers.sega.banks[i + 0x20] = sms->cart.ram[sms->cart.mappers.sega.fffc.ram_bank_select] + (0x0400 * i);
+    }
+}
+
 void SMS_mapper_update(struct SMS_Core* sms)
 {
     switch (sms->cart.mapper_type)
@@ -82,6 +90,14 @@ static FORCE_INLINE uint8_t sega_mapper_read(struct SMS_Core* sms, uint16_t addr
     return sms->cart.mappers.sega.banks[addr >> 10][addr & 0x3FF];
 }
 
+static FORCE_INLINE void sega_mapper_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
+{
+    if (addr >= 0x8000 && addr < 0xC000 && sms->cart.mappers.sega.fffc.ram_enable_80000)
+    {
+        sms->cart.ram[sms->cart.mappers.sega.fffc.ram_bank_select][addr & 0x3FFF] = value;
+    }
+}
+
 static FORCE_INLINE uint8_t cart_read(struct SMS_Core* sms, uint16_t addr)
 {
     switch (sms->cart.mapper_type)
@@ -96,6 +112,12 @@ static FORCE_INLINE uint8_t cart_read(struct SMS_Core* sms, uint16_t addr)
 static FORCE_INLINE void cart_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 {
     UNUSED(sms); UNUSED(addr); UNUSED(value);
+
+    switch (sms->cart.mapper_type)
+    {
+        case MAPPER_TYPE_NONE: break;
+        case MAPPER_TYPE_SEGA: sega_mapper_write(sms, addr, value); break;
+    }
 }
 
 uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr)
@@ -121,26 +143,44 @@ static FORCE_INLINE void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint
     switch (addr)
     {
         case 0xFFFC: // Cartridge RAM mapper control
-            // TODO:
-            if (IS_BIT_SET(value, 3))
+            // TODO: mapping at 0xC000
+            sms->cart.mappers.sega.fffc.rom_write_enable = IS_BIT_SET(value, 7);
+            sms->cart.mappers.sega.fffc.ram_enable_c0000 = IS_BIT_SET(value, 4);
+            sms->cart.mappers.sega.fffc.ram_enable_80000 = IS_BIT_SET(value, 3);
+            sms->cart.mappers.sega.fffc.ram_bank_select = IS_BIT_SET(value, 2);
+            sms->cart.mappers.sega.fffc.bank_shift = value & 0x3;
+
+            assert(!sms->cart.mappers.sega.fffc.ram_enable_c0000 && "unimp ram_enable_c0000");
+            assert(!sms->cart.mappers.sega.fffc.bank_shift && "unimp bank_shift");
+
+            if (sms->cart.mappers.sega.fffc.ram_enable_80000)
             {
-                SMS_log_fatal("game is mapping sram to rom region!\n");
+                sega_mapper_update_ram0(sms);
+                SMS_log("game is mapping sram to rom region 0x8000!\n");
+            }
+            else
+            {
+                // unamp ram
+                sega_mapper_update_slot2(sms);
             }
             break;
 
         case 0xFFFD: // Mapper slot 0 control
-            sms->cart.mappers.sega.fffd = value & 0x1F;
+            sms->cart.mappers.sega.fffd = value & sms->cart.max_bank_mask;
             sega_mapper_update_slot0(sms);
             break;
 
         case 0xFFFE: // Mapper slot 1 control
-            sms->cart.mappers.sega.fffe = value & 0x1F;
+            sms->cart.mappers.sega.fffe = value & sms->cart.max_bank_mask;
             sega_mapper_update_slot1(sms);
             break;
 
         case 0xFFFF: // Mapper slot 2 control
-            sms->cart.mappers.sega.ffff = value & 0x1F;
-            sega_mapper_update_slot2(sms);
+            sms->cart.mappers.sega.ffff = value & sms->cart.max_bank_mask;
+            if (sms->cart.mappers.sega.fffc.ram_enable_80000 == false)
+            {
+                sega_mapper_update_slot2(sms);
+            }
             break;
     }
 }
@@ -188,6 +228,8 @@ static void IO_memory_control_write(struct SMS_Core* sms, uint8_t value)
     sms->memory_control.work_ram_disable     = IS_BIT_SET(value, 4);
     sms->memory_control.bios_rom_disable     = IS_BIT_SET(value, 3);
     sms->memory_control.io_chip_disable      = IS_BIT_SET(value, 2);
+
+    assert(sms->memory_control.work_ram_disable == 0 && "wram disabled!");
 }
 
 static inline void IO_control_write(struct SMS_Core* sms, uint8_t value)

@@ -80,4 +80,9 @@ endif()
 
 if (SMS_DEBUG)
     target_compile_definitions(TotalSMS PRIVATE SMS_DEBUG=1)
+    set(SMS_ENABLE_FORCE_INLINE OFF)
+endif()
+
+if (SMS_ENABLE_FORCE_INLINE)
+    target_compile_definitions(TotalSMS PRIVATE SMS_ENABLE_FORCE_INLINE=1)
 endif()

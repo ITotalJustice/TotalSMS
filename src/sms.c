@@ -126,10 +126,18 @@ static void SMS_reset(struct SMS_Core* sms)
     SN76489_init(sms);
     memset(sms->vdp.registers, 0xFF, sizeof(sms->vdp.registers));
 
-    // setup cpu regs
-    sms->cpu.PC = 0x0000; // i think?
-    sms->cpu.SP = 0xFFFF; // i think?
+    // setup cpu regs, initial values from Sean Young docs.
+    sms->cpu.PC = 0x0000;
+    sms->cpu.SP = 0xFFFF;
     sms->cpu.main.A = 0xFF;
+    sms->cpu.main.flags.C = true;
+    sms->cpu.main.flags.N = true;
+    sms->cpu.main.flags.P = true;
+    sms->cpu.main.flags.H = true;
+    sms->cpu.main.flags.B3 = true;
+    sms->cpu.main.flags.B5 = true;
+    sms->cpu.main.flags.Z = true;
+    sms->cpu.main.flags.S = true;
 
     // port A/B are hi when a button is NOT pressed
     sms->port.a = 0xFF;
@@ -168,6 +176,7 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
     sms->rom = rom;
     sms->rom_size = size;
     sms->rom_mask = size - 1; // this works because size is always pow2
+    sms->cart.max_bank_mask = (size / 0x4000) - 1;
     
     // this assumes the game is always sega mapper
     // which (for testing at least), it always will be
@@ -205,12 +214,13 @@ void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb, voi
 }
 
 enum { STATE_MAGIC = 0x5E6A };
+enum { STATE_VER = 1 };
 
 // for savestates, we don't save the port
 bool SMS_savestate(const struct SMS_Core* sms, struct SMS_State* state)
 {
     state->magic = STATE_MAGIC;
-    state->reserved = 0;
+    state->version = STATE_VER;
 
     memcpy(&state->cpu, &sms->cpu, sizeof(sms->cpu));
     memcpy(&state->vdp, &sms->vdp, sizeof(sms->vdp));
@@ -224,7 +234,7 @@ bool SMS_savestate(const struct SMS_Core* sms, struct SMS_State* state)
 
 bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state)
 {
-    if (state->magic != STATE_MAGIC || state->reserved != 0)
+    if (state->magic != STATE_MAGIC || state->version != STATE_VER)
     {
         return false;
     }
@@ -252,7 +262,7 @@ bool SMS_parity(unsigned value)
         value ^= value >> 8; // 16-bit
         value ^= value >> 4; // 8-bit
         value &= 0xF;
-        return (0x6996 >> value) & 0x1;
+        return !((0x6996 >> value) & 0x1);
     #endif
 }
 

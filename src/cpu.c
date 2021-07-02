@@ -1,3 +1,5 @@
+// for B3 and B5 stuff: http://www.z80.info/z80sflag.htm
+
 #include "internal.h"
 
 #include <string.h>
@@ -66,13 +68,36 @@ static const uint8_t CYC_DDFD[0x100] =
     0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0A, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
 };
 
+// from my gb emu. not accurate for z80, but good enough
+static const uint8_t CYC_CB[0x100] =
+{
+    8,8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,8,
+    8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,8,
+    8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,8,
+    8,8,8,8,8,12,8,8,8,8,8,8,8,12,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,8,
+    8,8,8,8,8,16,8,8,8,8,8,8,8,16,8,
+};
+
 enum
 {
     FLAG_C_MASK = 1 << 0, // set if result is > 255
     FLAG_N_MASK = 1 << 1, // idk, ued for daa
     FLAG_P_MASK = 1 << 2, // parity
     FLAG_V_MASK = 1 << 2, // overflow
+    FLAG_B3_MASK = 1 << 3, //
     FLAG_H_MASK = 1 << 4, // set if carry from bit-3 and bit-4
+    FLAG_B5_MASK = 1 << 5, // 
     FLAG_Z_MASK = 1 << 6, // set if the result is 0
     FLAG_S_MASK = 1 << 7, // set to bit-7 of a result
 };
@@ -108,7 +133,9 @@ enum
 #define FLAG_N sms->cpu.main.flags.N
 #define FLAG_P sms->cpu.main.flags.P // P/V
 #define FLAG_V sms->cpu.main.flags.P // P/V
+#define FLAG_B3 sms->cpu.main.flags.B3
 #define FLAG_H sms->cpu.main.flags.H
+#define FLAG_B5 sms->cpu.main.flags.B5
 #define FLAG_Z sms->cpu.main.flags.Z
 #define FLAG_S sms->cpu.main.flags.S
 
@@ -116,24 +143,28 @@ enum
 #define FLAG_N_ALT sms->cpu.alt.flags.N
 #define FLAG_P_ALT sms->cpu.alt.flags.P // P/V
 #define FLAG_V_ALT sms->cpu.alt.flags.P // P/V
+#define FLAG_B3_ALT sms->cpu.alt.flags.B3
 #define FLAG_H_ALT sms->cpu.alt.flags.H
+#define FLAG_B5_ALT sms->cpu.alt.flags.B5
 #define FLAG_Z_ALT sms->cpu.alt.flags.Z
 #define FLAG_S_ALT sms->cpu.alt.flags.S
 
 // REG_F getter
 #define REG_F_GET() \
-    ((FLAG_S << 7) | (FLAG_Z << 6) | (FLAG_H << 4) | \
-    (FLAG_V << 2) | (FLAG_N << 1) | (FLAG_C << 0))
+    ((FLAG_S << 7) | (FLAG_Z << 6) | (FLAG_B5 << 5) | (FLAG_H << 4) | \
+    (FLAG_B3 << 3) | (FLAG_V << 2) | (FLAG_N << 1) | (FLAG_C << 0))
 
 #define REG_F_GET_ALT() \
-    ((FLAG_S_ALT << 7) | (FLAG_Z_ALT << 6) | (FLAG_H_ALT << 4) | \
-    (FLAG_V_ALT << 2) | (FLAG_N_ALT << 1) | (FLAG_C_ALT << 0))
+    ((FLAG_S_ALT << 7) | (FLAG_Z_ALT << 6) | (FLAG_B5_ALT << 5) | (FLAG_H_ALT << 4) | \
+    (FLAG_B3_ALT << 3) | (FLAG_V_ALT << 2) | (FLAG_N_ALT << 1) | (FLAG_C_ALT << 0))
 
 // REG_F setter
 #define REG_F_SET(v) \
     FLAG_S = (v) & FLAG_S_MASK; \
     FLAG_Z = (v) & FLAG_Z_MASK; \
+    FLAG_B5 = (v) & FLAG_B5_MASK; \
     FLAG_H = (v) & FLAG_H_MASK; \
+    FLAG_B3 = (v) & FLAG_B3_MASK; \
     FLAG_V = (v) & FLAG_V_MASK; \
     FLAG_N = (v) & FLAG_N_MASK; \
     FLAG_C = (v) & FLAG_C_MASK
@@ -142,7 +173,9 @@ enum
 #define REG_F_SET_ALT(v) \
     FLAG_S_ALT = (v) & FLAG_S_MASK; \
     FLAG_Z_ALT = (v) & FLAG_Z_MASK; \
+    FLAG_B5_ALT = (v) & FLAG_B5_MASK; \
     FLAG_H_ALT = (v) & FLAG_H_MASK; \
+    FLAG_B3_ALT = (v) & FLAG_B3_MASK; \
     FLAG_V_ALT = (v) & FLAG_V_MASK; \
     FLAG_N_ALT = (v) & FLAG_N_MASK; \
     FLAG_C_ALT = (v) & FLAG_C_MASK
@@ -260,6 +293,11 @@ static FORCE_INLINE bool calc_vflag_8(const uint8_t a, const uint8_t b, const ui
     return ((a & 0x80) == (b & 0x80)) && ((a & 0x80) != (r & 0x80));
 }
 
+static FORCE_INLINE bool calc_vflag_16(const uint8_t a, const uint8_t b, const uint8_t r)
+{
+    return ((a & 0x8000) == (b & 0x8000)) && ((a & 0x8000) != (r & 0x8000));
+}
+
 static FORCE_INLINE void _ADD(struct SMS_Core* sms, uint16_t value)
 {
     const uint8_t result = REG_A + value;
@@ -268,6 +306,8 @@ static FORCE_INLINE void _ADD(struct SMS_Core* sms, uint16_t value)
     FLAG_N = false;
     FLAG_V = calc_vflag_8(REG_A, value, result);
     FLAG_H = ((REG_A & 0xF) + (value & 0xF)) > 0xF;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -280,8 +320,10 @@ static FORCE_INLINE void _SUB(struct SMS_Core* sms, uint16_t value)
     
     FLAG_C = value > REG_A;
     FLAG_N = true;
-    FLAG_V = calc_vflag_8(REG_A, value, result);
+    FLAG_V = calc_vflag_8(REG_A, ~value + 1, result);
     FLAG_H = (REG_A & 0xF) < (value & 0xF);
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -296,6 +338,8 @@ static FORCE_INLINE void _AND(struct SMS_Core* sms, uint8_t value)
     FLAG_N = false;
     FLAG_P = SMS_parity(result);
     FLAG_H = true;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -310,6 +354,8 @@ static FORCE_INLINE void _XOR(struct SMS_Core* sms, uint8_t value)
     FLAG_N = false;
     FLAG_P = SMS_parity(result);
     FLAG_H = false;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -324,6 +370,8 @@ static FORCE_INLINE void _OR(struct SMS_Core* sms, uint8_t value)
     FLAG_N = false;
     FLAG_P = SMS_parity(result);
     FLAG_H = false;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -336,8 +384,10 @@ static FORCE_INLINE void _CP(struct SMS_Core* sms, uint8_t value)
     
     FLAG_C = value > REG_A;
     FLAG_N = true;
-    FLAG_V = calc_vflag_8(REG_A, value, result);
+    FLAG_V = calc_vflag_8(REG_A, ~value + 1, result);
     FLAG_H = (REG_A & 0xF) < (value & 0xF);
+    FLAG_B3 = IS_BIT_SET(value, 3);
+    FLAG_B5 = IS_BIT_SET(value, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 }
@@ -409,7 +459,8 @@ static FORCE_INLINE void OR_imm(struct SMS_Core* sms)
 
 static FORCE_INLINE void CP_imm(struct SMS_Core* sms)
 {
-    _CP(sms, read8(REG_PC++));
+    uint8_t b = read8(REG_PC++);
+    _CP(sms, b);
 }
 
 static FORCE_INLINE void ADD_imm(struct SMS_Core* sms)
@@ -444,6 +495,8 @@ static FORCE_INLINE uint16_t ADD_DD_16(struct SMS_Core* sms, uint16_t a, uint16_
     FLAG_C = (a + b) > 0xFFFF;
     FLAG_N = false;
     FLAG_H = ((a & 0xFFF) + (b & 0xFFF)) > 0xFFF;
+    FLAG_B3 = IS_BIT_SET(result >> 8, 3);
+    FLAG_B5 = IS_BIT_SET(result >> 8, 5);
 
     return result;
 }
@@ -457,7 +510,10 @@ static FORCE_INLINE void ADC_hl(struct SMS_Core* sms, uint32_t value)
 
     FLAG_C = (value + hl) > 0xFFFF;
     FLAG_N = false;
+    FLAG_V = calc_vflag_16(hl, value, result);
     FLAG_H = ((hl & 0xFFF) + (value & 0xFFF)) > 0xFFF;
+    FLAG_B3 = IS_BIT_SET(result >> 8, 3);
+    FLAG_B5 = IS_BIT_SET(result >> 8, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 15;
 
@@ -473,9 +529,13 @@ static FORCE_INLINE void SBC_hl(struct SMS_Core* sms, uint32_t value)
  
     FLAG_C = value > hl;
     FLAG_N = true;
+    FLAG_V = calc_vflag_16(hl, ~value + 1, result);
     FLAG_H = (hl & 0xFFF) < (value & 0xFFF);
+    FLAG_B3 = IS_BIT_SET(result >> 8, 3);
+    FLAG_B5 = IS_BIT_SET(result >> 8, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 15;
+
 
     SET_REG_HL(result);
 }
@@ -523,6 +583,8 @@ static FORCE_INLINE void shift_left_flags(struct SMS_Core* sms, uint8_t result, 
     FLAG_N = false;
     FLAG_P = SMS_parity(result);
     FLAG_H = false;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 }
@@ -533,6 +595,8 @@ static FORCE_INLINE void shift_right_flags(struct SMS_Core* sms, uint8_t result,
     FLAG_N = false;
     FLAG_P = SMS_parity(result);
     FLAG_H = false;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 }
@@ -546,6 +610,8 @@ static FORCE_INLINE void ADD_HL(struct SMS_Core* sms, uint8_t opcode)
     FLAG_C = HL + value > 0xFFFF;
     FLAG_H = (HL & 0xFFF) + (value & 0xFFF) > 0xFFF;
     FLAG_N = false;
+    FLAG_B3 = IS_BIT_SET(result >> 8, 3);
+    FLAG_B5 = IS_BIT_SET(result >> 8, 5);
     
     SET_REG_HL(result);
 }
@@ -555,8 +621,10 @@ static FORCE_INLINE uint8_t _INC(struct SMS_Core* sms, uint8_t value)
     const uint8_t result = value + 1;
         
     FLAG_N = false;
-    FLAG_V = value == 0xFE;
-    FLAG_H = (value & 0xF) == 0x0;
+    FLAG_V = value == 0x7F;
+    FLAG_H = (value & 0xF) == 0xF;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -569,7 +637,9 @@ static FORCE_INLINE uint8_t _DEC(struct SMS_Core* sms, uint8_t value)
     
     FLAG_N = true;
     FLAG_V = value == 0x80;
-    FLAG_H = (result & 0xF) == 0xF;
+    FLAG_H = (value & 0xF) == 0x0;
+    FLAG_B3 = IS_BIT_SET(result, 3);
+    FLAG_B5 = IS_BIT_SET(result, 5);
     FLAG_Z = result == 0;
     FLAG_S = result >> 7;
 
@@ -893,9 +963,15 @@ static FORCE_INLINE uint8_t SRL(struct SMS_Core* sms, uint8_t value)
 
 static FORCE_INLINE void BIT(struct SMS_Core* sms, uint8_t value, uint8_t bit)
 {
-    const bool result = value & bit;
+    const uint8_t result = value & bit;
 
-    SET_FLAGS_NHZ(false, true, result == 0);
+    FLAG_N = false;
+    FLAG_P = result == 0; // copy of zero flag
+    FLAG_H = true;
+    FLAG_B3 = IS_BIT_SET(value, 3);
+    FLAG_B5 = IS_BIT_SET(value, 5);
+    FLAG_Z = result == 0;
+    FLAG_S = result >> 7;
 }
 
 static FORCE_INLINE uint8_t RES(struct SMS_Core* sms, uint8_t value, uint8_t bit)
@@ -988,6 +1064,11 @@ static FORCE_INLINE void CPI_CPD(struct SMS_Core* sms, int increment)
     FLAG_S = result >> 7;
     FLAG_P = bc != 0;
 
+    const uint8_t b35_value = REG_A - value - FLAG_H;
+
+    FLAG_B3 = IS_BIT_SET(b35_value, 3);
+    FLAG_B5 = IS_BIT_SET(b35_value, 1);
+
     SET_REG_BC(bc);
     SET_REG_HL(hl);
 }
@@ -1004,9 +1085,10 @@ static FORCE_INLINE void CPIR(struct SMS_Core* sms)
     if (REG_BC != 0 && FLAG_Z == false)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_P = false;
+    FLAG_P = false; // bug?
 }
 
 static FORCE_INLINE void CPD(struct SMS_Core* sms)
@@ -1021,9 +1103,10 @@ static FORCE_INLINE void CPDR(struct SMS_Core* sms)
     if (REG_BC != 0 && FLAG_Z == false)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_P = false;
+    FLAG_P = false; // bug?
 }
 
 static FORCE_INLINE void LDI_LDD(struct SMS_Core* sms, int increment)
@@ -1032,13 +1115,16 @@ static FORCE_INLINE void LDI_LDD(struct SMS_Core* sms, int increment)
     uint16_t de = REG_DE;
     uint16_t bc = REG_BC;
 
-    write8(de, read8(hl));
+    const uint8_t value = read8(hl);
+    write8(de, value);
 
     hl += increment; de += increment; --bc;
 
     FLAG_H = false;
     FLAG_P = bc != 0;
     FLAG_N = false;
+    FLAG_B3 = IS_BIT_SET(REG_A + value, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A + value, 1);
 
     SET_REG_BC(bc);
     SET_REG_DE(de);
@@ -1057,9 +1143,10 @@ static FORCE_INLINE void LDIR(struct SMS_Core* sms)
     if (REG_BC != 0)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_P = false;
+    FLAG_P = false; // bug?
 }
 
 static FORCE_INLINE void LDD(struct SMS_Core* sms)
@@ -1074,9 +1161,10 @@ static FORCE_INLINE void LDDR(struct SMS_Core* sms)
     if (REG_BC != 0)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_P = false;
+    FLAG_P = false; // bug?
 }
 
 static FORCE_INLINE void INI_IND(struct SMS_Core* sms, int increment)
@@ -1087,8 +1175,6 @@ static FORCE_INLINE void INI_IND(struct SMS_Core* sms, int increment)
     write8(hl, value);
 
     hl += increment; --REG_B;
-
-    writeIO(REG_C, value);
 
     FLAG_Z = REG_B == 0;
     FLAG_N = true;
@@ -1108,9 +1194,10 @@ static FORCE_INLINE void INIR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_Z = true;
+    FLAG_Z = true; // bug?
 }
 
 static FORCE_INLINE void IND(struct SMS_Core* sms)
@@ -1125,9 +1212,10 @@ static FORCE_INLINE void INDR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_Z = true;
+    FLAG_Z = true; // bug?
 }
 
 static FORCE_INLINE void OUTI_OUTD(struct SMS_Core* sms, int increment)
@@ -1157,9 +1245,10 @@ static FORCE_INLINE void OTIR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_Z = true;
+    FLAG_Z = true; // bug?
 }
 
 static FORCE_INLINE void OUTD(struct SMS_Core* sms)
@@ -1174,9 +1263,10 @@ static FORCE_INLINE void OTDR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
+        sms->cpu.cycles += 5;
     }
 
-    FLAG_Z = true;
+    FLAG_Z = true; // bug?
 }
 
 static FORCE_INLINE uint8_t IN(struct SMS_Core* sms)
@@ -1197,6 +1287,7 @@ static FORCE_INLINE void OUT(struct SMS_Core* sms, uint8_t value)
 
 static FORCE_INLINE void HALT(struct SMS_Core* sms)
 {
+    assert((sms->cpu.ei_delay || sms->cpu.IFF1) && "halt with interrupts disabled!");
     sms->cpu.halt = true;
 }
 
@@ -1231,6 +1322,8 @@ static FORCE_INLINE void DAA(struct SMS_Core* sms)
     FLAG_P = SMS_parity(REG_A);
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
+    FLAG_B3 = IS_BIT_SET(REG_A, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A, 5);
 }
 
 static FORCE_INLINE void CCF(struct SMS_Core* sms)
@@ -1238,6 +1331,8 @@ static FORCE_INLINE void CCF(struct SMS_Core* sms)
     FLAG_H = FLAG_C;
     FLAG_C = !FLAG_C;
     FLAG_N = false;
+    FLAG_B3 = IS_BIT_SET(REG_A, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A, 5);
 }
 
 static FORCE_INLINE void SCF(struct SMS_Core* sms)
@@ -1245,6 +1340,8 @@ static FORCE_INLINE void SCF(struct SMS_Core* sms)
     FLAG_C = true;
     FLAG_H = false;
     FLAG_N = false;
+    FLAG_B3 = IS_BIT_SET(REG_A, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A, 5);
 }
 
 static FORCE_INLINE void CPL(struct SMS_Core* sms)
@@ -1252,6 +1349,8 @@ static FORCE_INLINE void CPL(struct SMS_Core* sms)
     REG_A = ~REG_A;
     FLAG_H = true;
     FLAG_N = true;
+    FLAG_B3 = IS_BIT_SET(REG_A, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A, 5);
 }
 
 static FORCE_INLINE void RRD(struct SMS_Core* sms)
@@ -1266,6 +1365,8 @@ static FORCE_INLINE void RRD(struct SMS_Core* sms)
     FLAG_N = false;
     FLAG_P = SMS_parity(REG_A);
     FLAG_H = false;
+    FLAG_B3 = IS_BIT_SET(REG_A, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A, 5);
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
 }
@@ -1282,6 +1383,8 @@ static FORCE_INLINE void RLD(struct SMS_Core* sms)
     FLAG_N = false;
     FLAG_P = SMS_parity(REG_A);
     FLAG_H = false;
+    FLAG_B3 = IS_BIT_SET(REG_A, 3);
+    FLAG_B5 = IS_BIT_SET(REG_A, 5);
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
 }
@@ -1332,18 +1435,15 @@ static FORCE_INLINE void isr(struct SMS_Core* sms)
         return;
     }
 
-    // interrupts are disabled
-    if (!sms->cpu.interrupt_requested || !sms->cpu.IFF1)
+    if (sms->cpu.IFF1 && vdp_has_interrupt(sms))
     {
-        return;
+        sms->cpu.IFF1 = false;
+        sms->cpu.IFF2 = false;
+        sms->cpu.interrupt_requested = false;
+        sms->cpu.halt = false;
+
+        RST(sms, 0x38);
     }
-
-    sms->cpu.IFF1 = false;
-    sms->cpu.IFF2 = false;
-    sms->cpu.interrupt_requested = false;
-    sms->cpu.halt = false;
-
-    RST(sms, 0x38);
 }
 
 void Z80_nmi(struct SMS_Core* sms)
@@ -1363,7 +1463,7 @@ void Z80_irq(struct SMS_Core* sms)
 // returns true if the result needs to be written back (all except BIT)
 static FORCE_INLINE bool _CB(struct SMS_Core* sms, uint8_t opcode, uint8_t value, uint8_t* result)
 {
-    sms->cpu.cycles += 8; // pretty sure this isn't accurate
+    sms->cpu.cycles += CYC_CB[opcode]; // pretty sure this isn't accurate
 
     switch ((opcode >> 3) & 0x1F)
     {
@@ -1431,6 +1531,14 @@ static FORCE_INLINE void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
             case 0x7: REG_A = result; break;
         }
     }
+    // bit is the only instr that doesn't set the result,
+    // so this this 'else' will be for bit!
+    else
+    {
+        // for IXIY BIT() instr only, the B3 and B5 flags are set differently
+        FLAG_B3 = IS_BIT_SET(addr >> 8, 3);
+        FLAG_B5 = IS_BIT_SET(addr >> 8, 5);
+    }
 }
 
 static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uint8_t* ixy_lo)
@@ -1448,33 +1556,30 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
         {
             const uint16_t result = ADD_DD_16(sms, pair, REG_BC);
             SET_PAIR(*ixy_hi, *ixy_lo, result);
-        } break;
+        }   break;
 
         case 0x19:
         {
             const uint16_t result = ADD_DD_16(sms, pair, REG_DE);
             SET_PAIR(*ixy_hi, *ixy_lo, result);
-        } break;
+        }   break;
 
         case 0x29:
         {
             const uint16_t result = ADD_DD_16(sms, pair, pair);
             SET_PAIR(*ixy_hi, *ixy_lo, result);
-        } break;
+        }   break;
 
         case 0x39:
         {
             const uint16_t result = ADD_DD_16(sms, pair, REG_SP);
             SET_PAIR(*ixy_hi, *ixy_lo, result);
-        } break;
+        }   break;
 
         case 0x21:
             *ixy_lo = read8(REG_PC++);
             *ixy_hi = read8(REG_PC++);
             break;
-
-        case 0x26: *ixy_hi = read8(REG_PC++); break;
-        case 0x2E: *ixy_lo = read8(REG_PC++); break;
 
         case 0x22: LD_imm_r16(sms, pair); break;
 
@@ -1490,26 +1595,26 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
 
             *ixy_hi = r >> 8;
             *ixy_lo = r & 0xFF;
-        } break;
+        }   break;
 
         case 0x34:
         {
             const uint16_t addr = pair + DISP();
             write8(addr, _INC(sms, read8(addr)));
-        } break;
+        }   break;
 
         case 0x35:
         {
             const uint16_t addr = pair + DISP();
             write8(addr, _DEC(sms, read8(addr)));
-        } break;
+        }   break;
 
         case 0x36: // addr disp is stored first, then imm value
         {
             const uint16_t addr = pair + DISP();
             const uint8_t value = read8(REG_PC++);
             write8(addr, value);
-        } break;
+        }   break;
 
         case 0x64: *ixy_hi = *ixy_hi; break;
         case 0x65: *ixy_hi = *ixy_lo; break;
@@ -1531,16 +1636,22 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
         {
             const uint8_t value = read8(pair + DISP());
             _ADC(sms, value);
-        }break;
+        }   break;
 
+        case 0x26: *ixy_hi = read8(REG_PC++); break;
+        case 0x2E: *ixy_lo = read8(REG_PC++); break;
+        case 0x24: *ixy_hi = _INC(sms, *ixy_hi); break;
+        case 0x2C: *ixy_lo = _INC(sms, *ixy_lo); break;
+        case 0x25: *ixy_hi = _DEC(sms, *ixy_hi); break;
+        case 0x2D: *ixy_lo = _DEC(sms, *ixy_lo); break;
         case 0x96: _SUB(sms, read8(pair + DISP())); break;
         case 0x9E: _SBC(sms, read8(pair + DISP())); break;
         case 0xA6: _AND(sms, read8(pair + DISP())); break;
         case 0xAE: _XOR(sms, read8(pair + DISP())); break;
         case 0xB6: _OR(sms, read8(pair + DISP())); break;
         case 0xBE: _CP(sms, read8(pair + DISP())); break;
-        case 0xE9: REG_PC = pair;
-        case 0xF9: REG_SP = pair;
+        case 0xE9: REG_PC = pair; break;
+        case 0xF9: REG_SP = pair; break;
 
         case 0x46: case 0x4E: case 0x56: case 0x5E:
         case 0x66: case 0x6E: case 0x7E:
@@ -1558,7 +1669,7 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
             const uint16_t r = POP(sms);
             *ixy_hi = r >> 8;
             *ixy_lo = r & 0xFF;
-        } break;
+        }   break;
 
         case 0xCB: execute_CB_IXIY(sms, pair); break;
 
@@ -1615,7 +1726,7 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
             const uint16_t value = read16(addr);
 
             SET_REG_BC(value);
-        } break;
+        }   break;
 
         case 0x5B:
         {
@@ -1625,7 +1736,7 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
             const uint16_t value = read16(addr);
 
             SET_REG_DE(value);
-        } break;
+        }   break;
 
         case 0x6B:
         {
@@ -1635,7 +1746,7 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
             const uint16_t value = read16(addr);
 
             SET_REG_HL(value);
-        } break;
+        }   break;
 
         case 0x7B:
         {
@@ -1645,7 +1756,7 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
             const uint16_t value = read16(addr);
 
             REG_SP = value;
-        } break;
+        }   break;
 
 
         case 0x42: SBC_hl(sms, REG_BC); break;
@@ -1929,7 +2040,7 @@ void Z80_run(struct SMS_Core* sms)
     }
     else
     {
-        sms->cpu.cycles = 8;
+        sms->cpu.cycles = 4;
     }
 
     isr(sms);

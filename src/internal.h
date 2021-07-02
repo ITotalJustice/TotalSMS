@@ -21,9 +21,11 @@ extern "C" {
 #define SMS_MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 
-#if SMS_DEBUG
-    #define FORCE_INLINE inline
-#else
+#ifndef SMS_ENABLE_FORCE_INLINE
+    #define SMS_ENABLE_FORCE_INLINE 0
+#endif
+
+#if SMS_ENABLE_FORCE_INLINE
     #if defined(_MSC_VER)
         #define FORCE_INLINE inline __forceinline
     #elif defined(__GNUC__)
@@ -33,6 +35,8 @@ extern "C" {
     #else
         #define FORCE_INLINE inline
     #endif
+#else
+    #define FORCE_INLINE inline
 #endif
 
 #if SMS_SINGLE_FILE
@@ -90,8 +94,10 @@ extern "C" {
 // [CPU]
 SMS_FORCE_INLINE void Z80_run(struct SMS_Core* sms);
 
+SMS_FORCE_INLINE bool vdp_has_interrupt(const struct SMS_Core* sms);
+
 SMS_STATIC void Z80_nmi(struct SMS_Core* sms);
-SMS_STATIC void Z80_irq(struct SMS_Core* sms);
+// SMS_STATIC void Z80_irq(struct SMS_Core* sms);
 
 // [BUS]
 SMS_FORCE_INLINE uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);

@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.13.4)
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 project(TotalSMS
     VERSION 0.0.1
@@ -12,6 +13,7 @@ project(TotalSMS
 option(SMS_SINGLE_FILE "include all src in single.c" OFF)
 option(SMS_DEBUG "enable debug" OFF)
 option(SMS_DEV "enables debug and sanitizers" OFF)
+option(SMS_ENABLE_FORCE_INLINE "enables force inline, disabled in debug mode" ON)
 
 option(SMS_EXAMPLE_SDL "" OFF)
 

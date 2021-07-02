@@ -46,60 +46,10 @@ typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t colour_b2g2r2);
 
 enum
 {
-    // SMS_SCREEN_WIDTH = 342,
-    // SMS_SCREEN_HEIGHT = 262,
-
-    SMS_SCREEN_WIDTH = 256+13+15,
-    SMS_SCREEN_HEIGHT = 192 + 27 + 24,
+    SMS_SCREEN_WIDTH = 256+13+15, // 256 pixels, 13 l-border, 15 r-border
+    SMS_SCREEN_HEIGHT = 192+27+24, // 192 pixels, 27 t-border, 24 b-border
 
     SMS_ROM_SIZE_MAX = 0x80000, // 512KiB
-};
-
-enum Z80_RegisterSet
-{
-    REGISTER_SET_MAIN = 0,
-    REGISTER_SET_ALT = 1
-};
-
-enum Z80_8bitGeneralRegisters
-{
-    // general registers
-    GENERAL_REGISTER_A,
-    GENERAL_REGISTER_F,
-    GENERAL_REGISTER_B,
-    GENERAL_REGISTER_C,
-    GENERAL_REGISTER_D,
-    GENERAL_REGISTER_E,
-    GENERAL_REGISTER_H,
-    GENERAL_REGISTER_L,
-};
-
-enum Z80_16bitGeneralRegisters
-{
-    GENERAL_REGISTER_AF,
-    GENERAL_REGISTER_BC,
-    GENERAL_REGISTER_DE,
-    GENERAL_REGISTER_HL,
-};
-
-enum Z80_8bitSpecialRegisters
-{
-    SPECIAL_REGISTER_IXL,
-    SPECIAL_REGISTER_IXH,
-    SPECIAL_REGISTER_IYL,
-    SPECIAL_REGISTER_IYH,
-
-    SPECIAL_REGISTER_I,
-    SPECIAL_REGISTER_R,
-};
-
-enum Z80_16bitSpecialRegisters
-{
-    SPECIAL_REGISTER_PC, // program counter
-    SPECIAL_REGISTER_SP, // stak pointer
-
-    SPECIAL_REGISTER_IX,
-    SPECIAL_REGISTER_IY,
 };
 
 struct Z80_GeneralRegisterSet
@@ -117,7 +67,9 @@ struct Z80_GeneralRegisterSet
         bool C;
         bool N;
         bool P;
+        bool B3; // bit3
         bool H;
+        bool B5; // bit5
         bool Z;
         bool S;
     } flags;
@@ -168,8 +120,8 @@ struct SMS_SegaMapper
     struct // control
     {
         bool rom_write_enable;
-        bool ram_enable_c0000_ffff;
-        bool ram_enable_80000_bffff;
+        bool ram_enable_c0000;
+        bool ram_enable_80000;
         bool ram_bank_select;
         uint8_t bank_shift;
     } fffc;
@@ -193,6 +145,11 @@ struct SMS_Cart
         struct SMS_SegaMapper sega;
         struct SMS_CodemastersMapper codemasters;
     } mappers;
+
+    // some games have 8-16-32KiB ram
+    uint8_t ram[2][1024 * 16];
+
+    uint8_t max_bank_mask;
 };
 
 struct SMS_RomHeader
@@ -264,6 +221,7 @@ struct SMS_Vdp
 
     // idk...its cleared on control port read
     bool frame_interrupt_pending;
+    bool line_interrupt_pending;
     // set when there's more than 8 sprites on a line
     bool sprite_overflow;
     // set when a sprite collides
@@ -378,7 +336,7 @@ struct SMS_Core
 struct SMS_State
 {
     uint16_t magic;
-    uint16_t reserved;
+    uint16_t version;
 
     struct Z80 cpu;
     struct SMS_Vdp vdp;

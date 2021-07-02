@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <SDL.h>
+#include <SDL_image.h>
+#include <zlib.h>
 
 #ifdef EMSCRIPTEN
     #include <emscripten.h>
@@ -30,6 +32,12 @@ enum TouchButtonID
     TouchButtonID_DOWN,
     TouchButtonID_LEFT,
     TouchButtonID_RIGHT,
+    TouchButtonID_PAUSE,
+    TouchButtonID_MENU,
+    TouchButtonID_TITLE,
+    TouchButtonID_SAVE,
+    TouchButtonID_LOAD,
+    TouchButtonID_BACK,
 };
 
 static struct TouchButton
@@ -38,43 +46,80 @@ static struct TouchButton
     SDL_Texture* texture;
     int w, h;
     SDL_Rect rect;
+    bool enabled;
 } touch_buttons[] =
 {
     [TouchButtonID_A] =
     {
-        .path = "res/touch_buttons/a.bmp",
+        .path = "res/sprites/a.png",
         .w = 40,
         .h = 40,
     },
     [TouchButtonID_B] =
     {
-        .path = "res/touch_buttons/b.bmp",
+        .path = "res/sprites/b.png",
         .w = 40,
         .h = 40,
     },
     [TouchButtonID_UP] =
     {
-        .path = "res/touch_buttons/up.bmp",
+        .path = "res/sprites/up.png",
         .w = 30,
         .h = 38,
     },
     [TouchButtonID_DOWN] =
     {
-        .path = "res/touch_buttons/down.bmp",
+        .path = "res/sprites/down.png",
         .w = 30,
         .h = 38,
     },
     [TouchButtonID_LEFT] =
     {
-        .path = "res/touch_buttons/left.bmp",
+        .path = "res/sprites/left.png",
         .w = 38,
         .h = 30,
     },
     [TouchButtonID_RIGHT] =
     {
-        .path = "res/touch_buttons/right.bmp",
+        .path = "res/sprites/right.png",
         .w = 38,
         .h = 30,
+    },
+    [TouchButtonID_PAUSE] =
+    {
+        .path = "res/sprites/pause.png",
+        .w = 48,
+        .h = 48,
+    },
+    [TouchButtonID_MENU] =
+    {
+        .path = "res/sprites/menu.png",
+        .w = 48,
+        .h = 48,
+    },
+    [TouchButtonID_TITLE] =
+    {
+        .path = "res/sprites/title.png",
+        .w = 105,
+        .h = 35,
+    },
+    [TouchButtonID_SAVE] =
+    {
+        .path = "res/sprites/save.png",
+        .w = 105,
+        .h = 35,
+    },
+    [TouchButtonID_LOAD] =
+    {
+        .path = "res/sprites/load.png",
+        .w = 105,
+        .h = 35,
+    },
+    [TouchButtonID_BACK] =
+    {
+        .path = "res/sprites/back.png",
+        .w = 105,
+        .h = 35,
     },
 };
 
@@ -90,6 +135,12 @@ struct TouchCacheEntry
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 
+enum RunningState
+{
+    RunningState_GAME,
+    RunningState_MENU,
+};
+
 static struct TouchCacheEntry touch_entries[8] = {0}; // max of 8 touches at once
 static struct TouchCacheEntry mouse_entries[1] = {0}; // max of 1 mouse clicks at once
 
@@ -103,6 +154,7 @@ static bool has_rom = false;
 
 static bool is_mobile = false;
 static bool running = true;
+static enum RunningState running_state = RunningState_GAME;
 
 static int scale = 2;
 static int speed = 1;
@@ -118,6 +170,52 @@ static SDL_GameController* game_controller = NULL;
 
 
 static void toggle_fullscreen();
+static void savestate();
+static void loadstate();
+
+static void change_running_state(enum RunningState new_state)
+{
+    switch (new_state)
+    {
+        case RunningState_GAME:
+            touch_buttons[TouchButtonID_A].enabled = true;
+            touch_buttons[TouchButtonID_B].enabled = true;
+            touch_buttons[TouchButtonID_UP].enabled = true;
+            touch_buttons[TouchButtonID_DOWN].enabled = true;
+            touch_buttons[TouchButtonID_LEFT].enabled = true;
+            touch_buttons[TouchButtonID_RIGHT].enabled = true;
+            touch_buttons[TouchButtonID_PAUSE].enabled = true;
+            touch_buttons[TouchButtonID_MENU].enabled = true;
+            touch_buttons[TouchButtonID_TITLE].enabled = false;
+            touch_buttons[TouchButtonID_SAVE].enabled = false;
+            touch_buttons[TouchButtonID_LOAD].enabled = false;
+            touch_buttons[TouchButtonID_BACK].enabled = false;
+            #ifdef EMSCRIPTEN
+                SDL_PauseAudioDevice(audio_device, 0);
+            #endif
+            break;
+
+        case RunningState_MENU:
+            touch_buttons[TouchButtonID_A].enabled = false;
+            touch_buttons[TouchButtonID_B].enabled = false;
+            touch_buttons[TouchButtonID_UP].enabled = false;
+            touch_buttons[TouchButtonID_DOWN].enabled = false;
+            touch_buttons[TouchButtonID_LEFT].enabled = false;
+            touch_buttons[TouchButtonID_RIGHT].enabled = false;
+            touch_buttons[TouchButtonID_PAUSE].enabled = false;
+            touch_buttons[TouchButtonID_MENU].enabled = false;
+            touch_buttons[TouchButtonID_TITLE].enabled = true;
+            touch_buttons[TouchButtonID_SAVE].enabled = true;
+            touch_buttons[TouchButtonID_LOAD].enabled = true;
+            touch_buttons[TouchButtonID_BACK].enabled = true;
+            #ifdef EMSCRIPTEN
+                SDL_PauseAudioDevice(audio_device, 1);
+            #endif
+            break;
+    }
+
+    running_state = new_state;
+}
 
 #ifdef EMSCRIPTEN
 static void syncfs()
@@ -143,7 +241,7 @@ EMSCRIPTEN_KEEPALIVE
 void em_set_browser_type(bool _is_mobile)
 {
     is_mobile = _is_mobile;
-    // is_mobile = true;
+    // is_mobile = true; // for testing
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -205,6 +303,27 @@ static void on_touch_button_change(enum TouchButtonID touch_id, bool down)
         case TouchButtonID_DOWN:     SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
         case TouchButtonID_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
         case TouchButtonID_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
+        case TouchButtonID_PAUSE:    SMS_set_port_b(&sms, PAUSE_BUTTON, down);  break;
+
+        case TouchButtonID_MENU: if (down) { change_running_state(RunningState_MENU); } break;
+        case TouchButtonID_TITLE: break;
+        
+        case TouchButtonID_SAVE:
+            if (down)
+            {
+                savestate();
+                change_running_state(RunningState_GAME);
+            }
+            break;
+
+        case TouchButtonID_LOAD:
+            if (down)
+            {
+                loadstate();
+                change_running_state(RunningState_GAME);
+            }
+            break;
+        case TouchButtonID_BACK: if (down) { change_running_state(RunningState_GAME); } break;
     }
 }
 
@@ -214,12 +333,15 @@ static int is_touch_in_range(int x, int y)
     {
         const struct TouchButton* e = (const struct TouchButton*)&touch_buttons[i];
 
-        if (x >= e->rect.x && x <= (e->rect.x + e->rect.w))
+        if (e->enabled)
         {
-
-            if (y >= e->rect.y && y <= (e->rect.y + e->rect.h))
+            if (x >= e->rect.x && x <= (e->rect.x + e->rect.w))
             {
-                return (int)i;
+
+                if (y >= e->rect.y && y <= (e->rect.y + e->rect.h))
+                {
+                    return (int)i;
+                }
             }
         }
     }
@@ -284,6 +406,11 @@ static void on_touch_motion(struct TouchCacheEntry* cache, size_t size, SDL_Fing
 
 static void run()
 {
+    if (running_state != RunningState_GAME)
+    {
+        return;
+    }
+
     for (int i = 0; i < speed; ++i)
     {
         SMS_run_frame(&sms);
@@ -333,13 +460,14 @@ static void savestate()
         return;
     }
 
-    FILE* f = fopen(path, "wb");
+    gzFile f = gzopen(path, "wb");
     
     if (f)
     {
         SMS_savestate(&sms, &state);
-        fwrite(&state, 1, sizeof(state), f);
-        fclose(f);
+
+        gzwrite(f, &state, sizeof(state));
+        gzclose(f);
 
         #ifdef EMSCRIPTEN
             syncfs();
@@ -367,12 +495,12 @@ static void loadstate()
         return;
     }
 
-    FILE* f = fopen(path, "rb");
+    gzFile f = gzopen(path, "rb");
     
     if (f)
     {
-        fread(&state, 1, sizeof(state), f);
-        fclose(f);
+        gzread(f, &state, sizeof(state));
+        gzclose(f);
 
         SMS_loadstate(&sms, &state);
     }
@@ -428,6 +556,36 @@ static void resize_touch_buttons(int w, int h)
         touch_buttons[TouchButtonID_RIGHT].rect.y = h - 63 * min_scale;
         touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * min_scale;
         touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * min_scale;
+
+        touch_buttons[TouchButtonID_PAUSE].rect.x = w - 53 * scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.y = 5 * scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.w = touch_buttons[TouchButtonID_PAUSE].w * scale;
+        touch_buttons[TouchButtonID_PAUSE].rect.h = touch_buttons[TouchButtonID_PAUSE].h * scale;
+
+        touch_buttons[TouchButtonID_MENU].rect.x = 5 * scale;
+        touch_buttons[TouchButtonID_MENU].rect.y = 5 * scale;
+        touch_buttons[TouchButtonID_MENU].rect.w = touch_buttons[TouchButtonID_MENU].w * scale;
+        touch_buttons[TouchButtonID_MENU].rect.h = touch_buttons[TouchButtonID_MENU].h * scale;
+
+        touch_buttons[TouchButtonID_TITLE].rect.x = 10 * scale;
+        touch_buttons[TouchButtonID_TITLE].rect.y = 18 * scale;
+        touch_buttons[TouchButtonID_TITLE].rect.w = touch_buttons[TouchButtonID_TITLE].w * scale;
+        touch_buttons[TouchButtonID_TITLE].rect.h = touch_buttons[TouchButtonID_TITLE].h * scale;
+
+        touch_buttons[TouchButtonID_SAVE].rect.x = 10 * scale;
+        touch_buttons[TouchButtonID_SAVE].rect.y = 70 * scale;
+        touch_buttons[TouchButtonID_SAVE].rect.w = touch_buttons[TouchButtonID_SAVE].w * scale;
+        touch_buttons[TouchButtonID_SAVE].rect.h = touch_buttons[TouchButtonID_SAVE].h * scale;
+
+        touch_buttons[TouchButtonID_LOAD].rect.x = 10 * scale;
+        touch_buttons[TouchButtonID_LOAD].rect.y = (70 * scale) + ((45 * 1) * scale);
+        touch_buttons[TouchButtonID_LOAD].rect.w = touch_buttons[TouchButtonID_LOAD].w * scale;
+        touch_buttons[TouchButtonID_LOAD].rect.h = touch_buttons[TouchButtonID_LOAD].h * scale;
+
+        touch_buttons[TouchButtonID_BACK].rect.x = 10 * scale;
+        touch_buttons[TouchButtonID_BACK].rect.y = (70 * scale) + ((45 * 2) * scale);
+        touch_buttons[TouchButtonID_BACK].rect.w = touch_buttons[TouchButtonID_BACK].w * scale;
+        touch_buttons[TouchButtonID_BACK].rect.h = touch_buttons[TouchButtonID_BACK].h * scale;
     }
     else
     {
@@ -435,6 +593,7 @@ static void resize_touch_buttons(int w, int h)
         {
             touch_buttons[i].rect.x = -8000;
             touch_buttons[i].rect.y = -8000;
+            touch_buttons[i].enabled = false;
         }
     }
 }
@@ -545,8 +704,8 @@ static void on_key_event(const SDL_KeyboardEvent* e)
 
     switch (e->keysym.scancode)
     {
-        case SDL_SCANCODE_X:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
-        case SDL_SCANCODE_Z:        SMS_set_port_a(&sms, JOY1_B_BUTTON, down);      break;
+        case SDL_SCANCODE_X:        SMS_set_port_a(&sms, JOY1_B_BUTTON, down);      break;
+        case SDL_SCANCODE_Z:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
         case SDL_SCANCODE_UP:       SMS_set_port_a(&sms, JOY1_UP_BUTTON, down);     break;
         case SDL_SCANCODE_DOWN:     SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
         case SDL_SCANCODE_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
@@ -887,7 +1046,7 @@ static void load_touch_buttons()
 
     for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
     {
-        SDL_Surface* surface = SDL_LoadBMP(touch_buttons[i].path);
+        SDL_Surface* surface = IMG_Load(touch_buttons[i].path);
 
         if (surface)
         {
@@ -906,12 +1065,24 @@ static void load_touch_buttons()
 
 static void render()
 {
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, &rect);
 
+    if (running_state == RunningState_MENU)
+    {
+        int w = 0, h = 0;
+        SDL_GetRendererOutputSize(renderer, &w, &h);
+
+        SDL_Rect r = { .x = 0, .y = 10 * scale, .w = 130 * scale, .h = h - 20 * scale };
+        SDL_SetRenderDrawColor(renderer, 40, 40, 40, 200);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_RenderFillRect(renderer, &r);
+    }
+
     for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
     {
-        if (touch_buttons[i].texture)
+        if (touch_buttons[i].texture && touch_buttons[i].enabled)
         {
             SDL_RenderCopy(renderer, touch_buttons[i].texture, NULL, &touch_buttons[i].rect);
         }
@@ -937,6 +1108,7 @@ static void cleanup()
     if (renderer)       { SDL_DestroyRenderer(renderer); }
     if (window)         { SDL_DestroyWindow(window); }
 
+    IMG_Quit();
     SDL_Quit();
 }
 
@@ -1004,20 +1176,11 @@ int main(int argc, char** argv)
         goto fail;
     }
 
-    // SDL_DisplayMode current;
-    // for(int i = 0; i < SDL_GetNumVideoDisplays(); ++i){
-
-    // int should_be_zero = SDL_GetCurrentDisplayMode(i, &current);
-
-    // if(should_be_zero != 0)
-    //   // In case of error...
-    //   printf("Could not get display mode for video display #%d: %s", i, SDL_GetError());
-
-    // else
-    //   // On success, print the current display mode.
-    //   printf("Display #%d: current display mode is %dx%dpx @ %dhz.", i, current.w, current.h, current.refresh_rate);
-
-  // }
+    if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) == 0)
+    {
+        printf("IMG_Init: %s\n", IMG_GetError());
+        goto fail;
+    }
 
     if (SDL_GameControllerAddMappingsFromFile("res/controller_mapping/gamecontrollerdb.txt"))
     {
@@ -1102,6 +1265,9 @@ int main(int argc, char** argv)
     SMS_set_vblank_callback(&sms, core_on_vblank, NULL);
     SMS_set_colour_callback(&sms, core_on_colour, NULL);
     SMS_set_pixels(&sms, core_pixels, SMS_SCREEN_WIDTH, pixel_format->BitsPerPixel);
+
+    // todo: start in menu mode once loadrom option has been added
+    change_running_state(RunningState_GAME);
 
     #ifdef EMSCRIPTEN
         emscripten_set_main_loop(em_loop, 0, true);
