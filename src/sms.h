@@ -25,6 +25,15 @@ SMSAPI void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t 
 SMSAPI bool SMS_savestate(const struct SMS_Core* sms, struct SMS_State* state);
 SMSAPI bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state);
 
+SMSAPI void SMS_set_system_type(struct SMS_Core* sms, enum SMS_System system);
+SMSAPI enum SMS_System SMS_get_system_type(const struct SMS_Core* sms);
+SMSAPI bool SMS_is_system_type_gg(const struct SMS_Core* sms);
+
+SMSAPI void SMS_get_pixel_region(const struct SMS_Core* sms, uint16_t* x, uint16_t* y, uint16_t* w, uint16_t* h);
+
+SMSAPI void SMS_set_overscan_enable(struct SMS_Core* sms, bool enable);
+SMSAPI bool SMS_is_overscan_enabled(const struct SMS_Core* sms);
+
 // [INPUT]
 SMSAPI void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down);
 SMSAPI void SMS_set_port_b(struct SMS_Core* sms, enum SMS_PortB pin, bool down);

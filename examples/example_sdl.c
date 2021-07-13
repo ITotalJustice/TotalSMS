@@ -152,7 +152,7 @@ static uint8_t rom_data[SMS_ROM_SIZE_MAX] = {0};
 static size_t rom_size = 0;
 static bool has_rom = false;
 
-static bool is_mobile = true;
+static bool is_mobile = false;
 static bool running = true;
 static enum RunningState running_state = RunningState_GAME;
 
@@ -172,6 +172,24 @@ static SDL_GameController* game_controller = NULL;
 static void toggle_fullscreen();
 static void savestate();
 static void loadstate();
+static void on_rom_load();
+
+static void on_rom_load()
+{
+    const char* ext = strrchr(rom_path, '.');
+
+    enum SMS_System system = SMS_System_SMS2;
+
+    if (ext)
+    {
+        if (!strcmp(".gg", ext))
+        {
+            system = SMS_System_GG;
+        }
+    }
+
+    SMS_set_system_type(&sms, system);
+}
 
 static void change_running_state(enum RunningState new_state)
 {
@@ -271,6 +289,7 @@ void em_load_rom_data(const char* name, const uint8_t* data, int len)
             button.style.visibility = "hidden";
         });
 
+        on_rom_load();
     }
     else
     {
@@ -540,23 +559,23 @@ static void resize_touch_buttons(int w, int h)
         touch_buttons[TouchButtonID_B].rect.w = touch_buttons[TouchButtonID_B].w * big_scale;
         touch_buttons[TouchButtonID_B].rect.h = touch_buttons[TouchButtonID_B].h * big_scale;
 
-        touch_buttons[TouchButtonID_UP].rect.x = 35 * big_scale;
-        touch_buttons[TouchButtonID_UP].rect.y = h - 85 * big_scale;
+        touch_buttons[TouchButtonID_UP].rect.x = 30 * big_scale;
+        touch_buttons[TouchButtonID_UP].rect.y = h - 82 * big_scale;
         touch_buttons[TouchButtonID_UP].rect.w = touch_buttons[TouchButtonID_UP].w * big_scale;
         touch_buttons[TouchButtonID_UP].rect.h = touch_buttons[TouchButtonID_UP].h * big_scale;
 
-        touch_buttons[TouchButtonID_DOWN].rect.x = 35 * big_scale;
+        touch_buttons[TouchButtonID_DOWN].rect.x = 30 * big_scale;
         touch_buttons[TouchButtonID_DOWN].rect.y = h - 45 * big_scale;
         touch_buttons[TouchButtonID_DOWN].rect.w = touch_buttons[TouchButtonID_DOWN].w * big_scale;
         touch_buttons[TouchButtonID_DOWN].rect.h = touch_buttons[TouchButtonID_DOWN].h * big_scale;
 
         touch_buttons[TouchButtonID_LEFT].rect.x = 5 * big_scale;
-        touch_buttons[TouchButtonID_LEFT].rect.y = h - 63 * big_scale;
+        touch_buttons[TouchButtonID_LEFT].rect.y = h - 60 * big_scale;
         touch_buttons[TouchButtonID_LEFT].rect.w = touch_buttons[TouchButtonID_LEFT].w * big_scale;
         touch_buttons[TouchButtonID_LEFT].rect.h = touch_buttons[TouchButtonID_LEFT].h * big_scale;
 
-        touch_buttons[TouchButtonID_RIGHT].rect.x = 56 * big_scale;
-        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 63 * big_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.x = 47 * big_scale;
+        touch_buttons[TouchButtonID_RIGHT].rect.y = h - 60 * big_scale;
         touch_buttons[TouchButtonID_RIGHT].rect.w = touch_buttons[TouchButtonID_RIGHT].w * big_scale;
         touch_buttons[TouchButtonID_RIGHT].rect.h = touch_buttons[TouchButtonID_RIGHT].h * big_scale;
 
@@ -714,7 +733,7 @@ static void on_key_event(const SDL_KeyboardEvent* e)
         case SDL_SCANCODE_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
         case SDL_SCANCODE_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
         case SDL_SCANCODE_R:        SMS_set_port_b(&sms, RESET_BUTTON, down);       break;
-        case SDL_SCANCODE_P:        SMS_set_port_b(&sms, PAUSE_BUTTON, down);       break;
+        case SDL_SCANCODE_RETURN:   SMS_set_port_b(&sms, PAUSE_BUTTON, down);       break;
     
     #ifndef EMSCRIPTEN
         case SDL_SCANCODE_ESCAPE:
@@ -954,7 +973,7 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
 
     // using buffers because pushing 1 sample at a time seems to
     // cause popping sounds (on my chromebook).
-    static int8_t buffer[SAMPLES] = {0};
+    static int8_t buffer[SAMPLES * 2] = {0};
 
     static bool first = true;
 
@@ -991,7 +1010,8 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
         }
     #endif
 
-    buffer[buffer_count++] = data->tone0 + data->tone1 + data->tone2 + data->noise;
+    buffer[buffer_count++] = data->tone0[0] + data->tone1[0] + data->tone2[0] + data->noise[0];
+    buffer[buffer_count++] = data->tone0[1] + data->tone1[1] + data->tone2[1] + data->noise[1];
 
     if (buffer_count == sizeof(buffer))
     {
@@ -1012,15 +1032,26 @@ static void core_on_apu(void* user, struct SMS_ApuCallbackData* data)
     }
 }
 
-static uint32_t core_on_colour(void* user, uint8_t c)
+static uint32_t core_on_colour(void* user, uint8_t r, uint8_t g, uint8_t b)
 {
     (void)user;
 
-    const uint8_t r = ((c >> 0) & 0x3) << 6;
-    const uint8_t g = ((c >> 2) & 0x3) << 6;
-    const uint8_t b = ((c >> 4) & 0x3) << 6;
+    if (SMS_is_system_type_gg(&sms))
+    {
+        const uint8_t R = r << 4;
+        const uint8_t G = g << 4;
+        const uint8_t B = b << 4;
 
-    return SDL_MapRGB(pixel_format, r, g, b);
+        return SDL_MapRGB(pixel_format, R, G, B);
+    }
+    else
+    {
+        const uint8_t R = r << 6;
+        const uint8_t G = g << 6;
+        const uint8_t B = b << 6;
+
+        return SDL_MapRGB(pixel_format, R, G, B);
+    }
 }
 
 static void core_on_vblank(void* user)
@@ -1044,7 +1075,7 @@ static void core_on_vblank(void* user)
 static void load_touch_buttons()
 {
     #ifndef EMSCRIPTEN
-        // return;
+        return;
     #endif
 
     for (size_t i = 0; i < ARRAY_SIZE(touch_buttons); ++i)
@@ -1056,6 +1087,13 @@ static void load_touch_buttons()
             touch_buttons[i].texture = SDL_CreateTextureFromSurface(renderer, surface);
             touch_buttons[i].rect.w = touch_buttons[i].w;
             touch_buttons[i].rect.h = touch_buttons[i].h;
+
+            // todo: reduce the alpha in the src pictures
+            if (i <= TouchButtonID_MENU)
+            {
+                SDL_SetTextureBlendMode(touch_buttons[i].texture, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureAlphaMod(touch_buttons[i].texture, 80);
+            }
 
             SDL_FreeSurface(surface);
         }
@@ -1070,7 +1108,13 @@ static void render()
 {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, NULL, &rect);
+    {
+        uint16_t x, y, w, h;
+
+        SMS_get_pixel_region(&sms, &x, &y, &w, &h);
+        SDL_Rect r_src = { .x = x, .y = y, .w = w, .h = h };
+        SDL_RenderCopy(renderer, texture, &r_src, &rect);
+    }
 
     if (running_state == RunningState_MENU)
     {
@@ -1173,6 +1217,7 @@ int main(int argc, char** argv)
         }
 
         has_rom = true;
+        on_rom_load();
     #endif
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER))
@@ -1240,7 +1285,7 @@ int main(int argc, char** argv)
     {
         .freq = SDL_AUDIO_FREQ,
         .format = AUDIO_S8,
-        .channels = 1,
+        .channels = 2,
         .silence = 0,
         .samples = SAMPLES,
         .padding = 0,
@@ -1261,7 +1306,7 @@ int main(int argc, char** argv)
     printf("[SDL-AUDIO] freq: %d\n", aspec_got.freq);
     printf("[SDL-AUDIO] channels: %d\n", aspec_got.channels);
     printf("[SDL-AUDIO] samples: %d\n", aspec_got.samples);
-    printf("[SDL-AUDIO] size: %d\n", aspec_got.size);
+    printf("[SDL-AUDIO] size: %u\n", aspec_got.size);
 
     SDL_PauseAudioDevice(audio_device, 0);
 

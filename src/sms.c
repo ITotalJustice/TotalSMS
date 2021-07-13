@@ -65,6 +65,31 @@ static uint16_t find_rom_header_offset(const uint8_t* data)
     return 0;
 }
 
+void SMS_set_system_type(struct SMS_Core* sms, enum SMS_System system)
+{
+    sms->system = system;
+}
+
+enum SMS_System SMS_get_system_type(const struct SMS_Core* sms)
+{
+    return sms->system;
+}
+
+bool SMS_is_system_type_gg(const struct SMS_Core* sms)
+{
+    return SMS_get_system_type(sms) == SMS_System_GG;
+}
+
+void SMS_set_overscan_enable(struct SMS_Core* sms, bool enable)
+{
+    sms->overscan_enable = enable;
+}
+
+bool SMS_is_overscan_enabled(const struct SMS_Core* sms)
+{
+    return sms->overscan_enable;
+}
+
 struct SMS_RomHeader SMS_parse_rom_header(const uint8_t* data, uint16_t offset)
 {
     struct SMS_RomHeader header = {0};
@@ -142,13 +167,21 @@ static void SMS_reset(struct SMS_Core* sms)
     // port A/B are hi when a button is NOT pressed
     sms->port.a = 0xFF;
     sms->port.b = 0xFF;
+
+    sms->port.gg_regs[0x0] = 0xC0;
+    sms->port.gg_regs[0x1] = 0x7F;
+    sms->port.gg_regs[0x2] = 0xFF;
+    sms->port.gg_regs[0x3] = 0x00;
+    sms->port.gg_regs[0x4] = 0xFF;
+    sms->port.gg_regs[0x5] = 0x00;
+    sms->port.gg_regs[0x6] = 0xFF;
 }
 
 bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 {
     assert(sms && rom && size);
 
-    SMS_log("[INFO] loadrom called with rom size: 0x%lX\n", size);
+    SMS_log("[INFO] loadrom called with rom size: 0x%zX\n", size);
 
     // try to find the header offset
     const uint16_t header_offset = find_rom_header_offset(rom);

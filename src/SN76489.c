@@ -102,7 +102,7 @@ static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_
     // otherwise this will cause a hi-pitch screech, can be heard in golden-axe
     // to fix this, i check if the counter > 0 || if we have a value to reload
     // the counter with.
-    if (APU.tone[index].counter || APU.tone[index].tone)
+    if (APU.tone[index].counter > 0 || APU.tone[index].tone > 0)
     {
         APU.tone[index].counter -= cycles;
 
@@ -110,8 +110,22 @@ static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_
         {
             // the apu runs x16 slower than cpu!
             APU.tone[index].counter = APU.tone[index].tone * 16;
-            // change the polarity
-            APU.polarity[index] *= -1;
+
+            /*
+                from the docs:
+
+                Sample playback makes use of a feature of the SN76489's tone generators:
+                when the half-wavelength (tone value) is set to 1, they output a DC offset
+                value corresponding to the volume level (i.e. the wave does not flip-flop).
+                By rapidly manipulating the volume, a crude form of PCM is obtained.
+            */
+            // this effect is used by the sega intro in Tail's Adventure and
+            // sonic tripple trouble.
+            if (APU.tone[index].tone != 1)
+            {
+                // change the polarity
+                APU.polarity[index] *= -1;
+            }
         }
     }
 }
@@ -143,7 +157,7 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
         if (APU.noise.flip_flop == true)
         {
             // this is the bit used for the mixer
-            APU.polarity[3] = APU.noise.lfsr & 0x1 ? +1 : -1;
+            APU.polarity[3] = (APU.noise.lfsr & 0x1) ? +1 : -1;
 
             if (APU.noise.mode == WHITE_NOISE)
             {
@@ -157,25 +171,31 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
     }
 }
 
-// the volume is inverted, so that 0xF = OFF, 0x0 = MAX
-static const int8_t VOLUME_INVERT_TABLE[0x10] =
-{
-    0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8, 0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0
-};
-
 static inline int8_t SN76489_sample_channel(struct SMS_Core* sms, uint8_t index)
 {
+    // the volume is inverted, so that 0xF = OFF, 0x0 = MAX
+    static const int8_t VOLUME_INVERT_TABLE[0x10] =
+    {
+        0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8,
+        0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0
+    };
+
     return APU.polarity[index] * VOLUME_INVERT_TABLE[APU.volume[index]];
 }
 
 static void SN76489_sample(struct SMS_Core* sms)
 {
+    const int8_t tone0 = SN76489_sample_channel(sms, 0);
+    const int8_t tone1 = SN76489_sample_channel(sms, 1);
+    const int8_t tone2 = SN76489_sample_channel(sms, 2);
+    const int8_t noise = SN76489_sample_channel(sms, 3);
+
     struct SMS_ApuCallbackData data =
     {
-        .tone0 = SN76489_sample_channel(sms, 0),
-        .tone1 = SN76489_sample_channel(sms, 1),
-        .tone2 = SN76489_sample_channel(sms, 2),
-        .noise = SN76489_sample_channel(sms, 3),
+        .tone0 = { tone0 * APU.tone0_left, tone0 * APU.tone0_right },
+        .tone1 = { tone1 * APU.tone1_left, tone1 * APU.tone1_right },
+        .tone2 = { tone2 * APU.tone2_left, tone2 * APU.tone2_right },
+        .noise = { noise * APU.noise_left, noise * APU.noise_right },
     };
 
     sms->apu_callback(sms->apu_callback_user, &data);
@@ -212,4 +232,17 @@ void SN76489_init(struct SMS_Core* sms)
     APU.noise.better_drums = false;
 
     APU.latched_channel = 0;
+
+    // by default, all channels are enabled in GG mode.
+    // as sms is mono, these values will not be changed elsewhere
+    // (so always enabled!).
+    APU.tone0_left = true;
+    APU.tone1_left = true;
+    APU.tone2_left = true;
+    APU.noise_left = true;
+
+    APU.tone0_right = true;
+    APU.tone1_right = true;
+    APU.tone2_right = true;
+    APU.noise_right = true;
 }

@@ -1,10 +1,11 @@
+#include "sms.h"
 #include "internal.h"
 
 #include <string.h>
 #include <assert.h>
 
 
-static inline void sega_mapper_update_slot0(struct SMS_Core* sms)
+static void sega_mapper_update_slot0(struct SMS_Core* sms)
 {
     const size_t offset = 0x4000 * sms->cart.mappers.sega.fffd;
 
@@ -18,7 +19,7 @@ static inline void sega_mapper_update_slot0(struct SMS_Core* sms)
     }
 }
 
-static inline void sega_mapper_update_slot1(struct SMS_Core* sms)
+static void sega_mapper_update_slot1(struct SMS_Core* sms)
 {
     const size_t offset = 0x4000 * sms->cart.mappers.sega.fffe;
 
@@ -28,7 +29,7 @@ static inline void sega_mapper_update_slot1(struct SMS_Core* sms)
     }
 }
 
-static inline void sega_mapper_update_slot2(struct SMS_Core* sms)
+static void sega_mapper_update_slot2(struct SMS_Core* sms)
 {
     const size_t offset = 0x4000 * sms->cart.mappers.sega.ffff;
 
@@ -38,7 +39,7 @@ static inline void sega_mapper_update_slot2(struct SMS_Core* sms)
     }
 }
 
-static inline void sega_mapper_update_ram0(struct SMS_Core* sms)
+static void sega_mapper_update_ram0(struct SMS_Core* sms)
 {
     for (size_t i = 0; i < 0x10; ++i)
     {
@@ -145,7 +146,7 @@ uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr)
 // NOTE: writes from 0xEXXX will happen to this function, due to the
 // the switch currently used in the write func.
 // this is okay though because i use a switch here to check the addr!
-static FORCE_INLINE void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
+static inline void hi_ffxx_write(struct SMS_Core* sms, uint16_t addr, uint8_t value)
 {
     switch (addr)
     {
@@ -252,7 +253,7 @@ static inline uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 static inline uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
     // docs say that this is a 9-bit counter, but only upper 8-bits read
-    return sms->vdp.hcount >> 1;
+    return (uint16_t)((float)sms->vdp.cycles * 1.5f) >> 1;
 }
 
 static inline uint8_t IO_vdp_status_read(struct SMS_Core* sms)
@@ -290,17 +291,36 @@ static inline void IO_vdp_data_write(struct SMS_Core* sms, uint8_t value)
             break;
         
         case VDP_CODE_CRAM_WRITE:
-            // todo: have a bool array and mark entries dirty on change!
-            if (sms->colour_callback)
+            if (SMS_is_system_type_gg(sms))
             {
-                sms->vdp.colour[sms->vdp.addr & 0x1F] = sms->colour_callback(sms->colour_callback_user, value);
+                // even addr stores byte to latch, odd writes 2 bytes
+                if (sms->vdp.addr & 1)
+                {
+                    const uint8_t rg_index = (sms->vdp.addr - 1) & 0x3F;
+                    const uint8_t b_index = sms->vdp.addr & 0x3F;
+
+                    // check is the colour has changed, if so, set dirty
+                    if (sms->vdp.cram[rg_index] != sms->vdp.cram_gg_latch ||
+                        sms->vdp.cram[b_index] != value
+                    ) {
+                        sms->vdp.dirty_cram[rg_index] = true;
+                    }
+
+                    sms->vdp.cram[rg_index] = sms->vdp.cram_gg_latch;
+                    sms->vdp.cram[b_index] = value;
+                }
+                else
+                {
+                    // latches the r,g values
+                    sms->vdp.cram_gg_latch = value;
+                }
             }
             else
             {
-                sms->vdp.colour[sms->vdp.addr & 0x1F] = value;
+                sms->vdp.dirty_cram[sms->vdp.addr & 0x1F] |= sms->vdp.cram[sms->vdp.addr & 0x1F] != value;
+                sms->vdp.cram[sms->vdp.addr & 0x1F] = value;
             }
 
-            sms->vdp.cram[sms->vdp.addr & 0x1F] = value;
             sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
             break;
     }
@@ -344,12 +364,54 @@ static inline void IO_vdp_control_write(struct SMS_Core* sms, uint8_t value)
     }
 }
 
+static inline uint8_t IO_gamegear_read(const struct SMS_Core* sms, uint8_t addr)
+{
+    switch (addr & 0x7)
+    {
+        case 0x0: return sms->port.gg_regs[0x0] | 0x1F;
+        case 0x1: return /* 0x7F; */ sms->port.gg_regs[0x1];
+        case 0x2: return /* 0xFF; */ sms->port.gg_regs[0x2];
+        case 0x3: return /* 0x00; */ sms->port.gg_regs[0x3];
+        case 0x4: return /* 0xFF; */ sms->port.gg_regs[0x4];
+        case 0x5: return /* 0x00; */ sms->port.gg_regs[0x5];
+    }
+
+    UNREACHABLE(0xFF);
+}
+
+static inline void IO_gamegear_write(struct SMS_Core* sms, uint8_t addr, uint8_t value)
+{
+    switch (addr & 0x7)
+    {
+        case 0x1: sms->port.gg_regs[0x1] = value; break;
+        case 0x2: sms->port.gg_regs[0x2] = value; break;
+        case 0x3: sms->port.gg_regs[0x3] = value; break;
+        case 0x4: break;
+        case 0x5: sms->port.gg_regs[0x5] = value; break;
+
+        case 0x6:
+            sms->apu.tone0_right = IS_BIT_SET(value, 0);
+            sms->apu.tone1_right = IS_BIT_SET(value, 1);
+            sms->apu.tone2_right = IS_BIT_SET(value, 2);
+            sms->apu.noise_right = IS_BIT_SET(value, 3);
+
+            sms->apu.tone0_left = IS_BIT_SET(value, 4);
+            sms->apu.tone1_left = IS_BIT_SET(value, 5);
+            sms->apu.tone2_left = IS_BIT_SET(value, 6);
+            sms->apu.noise_left = IS_BIT_SET(value, 7);
+            break;
+    }
+}
+
 uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
 {
     switch (addr)
     {
         case 0x00: case 0x01: case 0x02: case 0x03:
-        case 0x04: case 0x05: case 0x06: case 0x07:
+        case 0x04: case 0x05:
+            return IO_gamegear_read(sms, addr);
+
+        case 0x06: case 0x07:
         case 0x08: case 0x09: case 0x0A: case 0x0B:
         case 0x0C: case 0x0D: case 0x0E: case 0x0F:
         case 0x10: case 0x11: case 0x12: case 0x13:
@@ -364,7 +426,8 @@ uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr)
         case 0x34: case 0x35: case 0x36: case 0x37:
         case 0x38: case 0x39: case 0x3A: case 0x3B:
         case 0x3C: case 0x3D: case 0x3E: case 0x3F:
-            SMS_log_fatal("[PORT-READ] 0x%02X last byte of the instruction\n", addr);
+            // note: ristar (GG) reads from port $22 for some reason...
+            SMS_log("[PORT-READ] 0x%02X last byte of the instruction\n", addr);
             return 0xFF; // todo:
 
         case 0x40: case 0x42: case 0x44: case 0x46:
@@ -435,7 +498,26 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
 {
     switch (addr)
     {
-        case 0x00: case 0x02: case 0x04: case 0x06:
+        // GG regs
+        case 0x00: case 0x01: case 0x02: case 0x03:
+        case 0x04: case 0x05: case 0x06:
+            if (SMS_is_system_type_gg(sms))
+            {
+                IO_gamegear_write(sms, addr, value);
+            }
+            else
+            {
+                if (addr & 1) // odd / even split
+                {
+                    IO_control_write(sms, value);
+                }
+                else
+                {
+                    IO_memory_control_write(sms, value);
+                }
+            }
+            break;
+
         case 0x08: case 0x0A: case 0x0C: case 0x0E:
         case 0x10: case 0x12: case 0x14: case 0x16:
         case 0x18: case 0x1A: case 0x1C: case 0x1E:
@@ -446,7 +528,7 @@ void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value)
             IO_memory_control_write(sms, value);
             break;
 
-        case 0x01: case 0x03: case 0x05: case 0x07:
+        case 0x07:
         case 0x09: case 0x0B: case 0x0D: case 0x0F:
         case 0x11: case 0x13: case 0x15: case 0x17:
         case 0x19: case 0x1B: case 0x1D: case 0x1F:

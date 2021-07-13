@@ -86,3 +86,5 @@ endif()
 if (SMS_ENABLE_FORCE_INLINE)
     target_compile_definitions(TotalSMS PRIVATE SMS_ENABLE_FORCE_INLINE=1)
 endif()
+
+# target_compile_definitions(TotalSMS PRIVATE SMS_BPP=32)

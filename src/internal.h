@@ -6,7 +6,7 @@ extern "C" {
 
 #include "types.h"
 
-#if 1
+#if 0
     // runs at 3.58MHz
     #define CPU_CLOCK (3580000)
 #else

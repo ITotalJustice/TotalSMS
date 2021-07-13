@@ -1616,10 +1616,10 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
             write8(addr, value);
         }   break;
 
-        case 0x64: *ixy_hi = *ixy_hi; break;
+        case 0x64: /* *ixy_hi = *ixy_hi; */ break;
         case 0x65: *ixy_hi = *ixy_lo; break;
         case 0x6C: *ixy_lo = *ixy_hi; break;
-        case 0x6D: *ixy_lo = *ixy_lo; break;
+        case 0x6D: /* *ixy_lo = *ixy_lo; */ break;
         case 0x7C: REG_A = *ixy_hi; break;
         case 0x7D: REG_A = *ixy_lo; break;
 

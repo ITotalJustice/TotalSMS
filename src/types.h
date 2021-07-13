@@ -41,7 +41,7 @@ struct SMS_Core;
 // callback types
 typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuCallbackData* data);
 typedef void (*sms_vblank_callback_t)(void* user);
-typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t colour_b2g2r2);
+typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t r, uint8_t g, uint8_t b);
 
 
 enum
@@ -50,6 +50,23 @@ enum
     SMS_SCREEN_HEIGHT = 192+27+24, // 192 pixels, 27 t-border, 24 b-border
 
     SMS_ROM_SIZE_MAX = 0x80000, // 512KiB
+};
+
+enum SMS_System
+{
+    SMS_System_SMS1,
+    SMS_System_SMS2,
+    SMS_System_GG,
+};
+
+// this is currently unused!
+enum SMS_SystemMode
+{
+    SMS_SystemMode_SMS1,
+    SMS_SystemMode_SMS2,
+
+    SMS_SystemMode_GG_SMS, // GG sys, in sms mode
+    SMS_SystemMode_GG, // GG sys in GG mode
 };
 
 struct Z80_GeneralRegisterSet
@@ -181,18 +198,28 @@ struct SMS_Vdp
 
     // bg can use either palette, while sprites can only use
     // the second half of the cram.
-    uint8_t cram[32];
+    uint8_t cram[64];
+
+    // writes to even addresses are latched!
+    uint8_t cram_gg_latch;
+
+    // set when cram value changes, the colour callback is then called
+    // during rendering of the line.
+    bool dirty_cram[64];
+    // set when the overscan colour changes.
+    bool dirty_overscan_colour;
 
     // the actual colour set to the pixels
     uint32_t colour[32];
 
-    // not sure if i should split this into structs...
+    // 16 registers, not all are useable
     uint8_t registers[0x10];
 
     // vertical scroll is updated when the display is not active,
     // not when the register is updated!
     uint8_t vertical_scroll;
 
+    uint16_t cycles;
     uint16_t hcount;
     uint16_t vcount;
 
@@ -219,8 +246,10 @@ struct SMS_Vdp
     // set if already have lo byte
     bool control_latch;
 
-    // idk...its cleared on control port read
+    // (all of below is cleared upon reading stat)
+    // set on vblank
     bool frame_interrupt_pending;
+    // set on line counter underflow
     bool line_interrupt_pending;
     // set when there's more than 8 sprites on a line
     bool sprite_overflow;
@@ -252,16 +281,17 @@ enum SMS_PortB
 
 struct SMS_Ports
 {
+    uint8_t gg_regs[7];
     uint8_t a;
     uint8_t b;
 };
 
 struct SMS_ApuCallbackData
 {
-    int8_t tone0;
-    int8_t tone1;
-    int8_t tone2;
-    int8_t noise;
+    int8_t tone0[2];
+    int8_t tone1[2];
+    int8_t tone2[2];
+    int8_t noise[2];
 };
 
 struct SN76489
@@ -290,6 +320,16 @@ struct SN76489
     uint8_t latched_channel;
     // vol or tone (or mode + shift instead of tone for noise).
     uint8_t latched_type;
+
+    // GG has stereo switches for each channel
+    bool tone0_left;
+    bool tone0_right;
+    bool tone1_left;
+    bool tone1_right;
+    bool tone2_left;
+    bool tone2_right;
+    bool noise_left;
+    bool noise_right;
 };
 
 struct SMS_MemoryControlRegister
@@ -311,6 +351,10 @@ struct SMS_Core
     struct SMS_Ports port;
     struct SMS_MemoryControlRegister memory_control;
     uint8_t system_ram[0x2000];
+
+    enum SMS_System system;
+    enum SMS_SystemMode system_mode;
+    bool overscan_enable;
 
     const uint8_t* rom;
     size_t rom_size;
