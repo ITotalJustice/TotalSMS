@@ -38,6 +38,8 @@ SMSAPI bool SMS_is_overscan_enabled(const struct SMS_Core* sms);
 SMSAPI void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down);
 SMSAPI void SMS_set_port_b(struct SMS_Core* sms, enum SMS_PortB pin, bool down);
 
+SMSAPI uint32_t SMS_crc32(uint32_t crc, const void* data, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

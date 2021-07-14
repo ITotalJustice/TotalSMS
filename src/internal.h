@@ -92,12 +92,13 @@ extern "C" {
 #define IS_BIT_SET(v, bit) (!!((v) & (1 << (bit))))
 
 // [CPU]
+SMS_STATIC void z80_init(struct SMS_Core* sms);
 SMS_FORCE_INLINE void Z80_run(struct SMS_Core* sms);
 
 SMS_FORCE_INLINE bool vdp_has_interrupt(const struct SMS_Core* sms);
 
 SMS_STATIC void Z80_nmi(struct SMS_Core* sms);
-// SMS_STATIC void Z80_irq(struct SMS_Core* sms);
+SMS_STATIC void Z80_irq(struct SMS_Core* sms);
 
 // [BUS]
 SMS_FORCE_INLINE uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);
@@ -117,12 +118,14 @@ SMS_INLINE void SN76489_reg_write(struct SMS_Core* sms, uint8_t value);
 SMS_FORCE_INLINE void SN76489_run(struct SMS_Core* sms, uint8_t cycles);
 SMS_STATIC void SN76489_init(struct SMS_Core* sms);
 
+SMS_STATIC void vdp_init(struct SMS_Core* sms);
 SMS_INLINE uint8_t vdp_status_flag_read(struct SMS_Core* sms);
 SMS_INLINE void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 SMS_FORCE_INLINE void vdp_run(struct SMS_Core* sms, uint8_t cycles);
 
 // [MISC]
 SMS_FORCE_INLINE bool SMS_parity(unsigned value);
+SMS_STATIC bool SMS_is_spiderman_int_hack_enabled(const struct SMS_Core* sms);
 
 #ifdef __cplusplus
 }

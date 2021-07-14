@@ -109,7 +109,7 @@ static inline void SN76489_tick_tone(struct SMS_Core* sms, uint8_t index, uint8_
         if (APU.tone[index].counter <= 0)
         {
             // the apu runs x16 slower than cpu!
-            APU.tone[index].counter = APU.tone[index].tone * 16;
+            APU.tone[index].counter += APU.tone[index].tone * 16;
 
             /*
                 from the docs:
@@ -144,9 +144,9 @@ static inline void SN76489_tick_noise(struct SMS_Core* sms, uint8_t cycles)
         // the apu runs x16 slower than cpu!
         switch (APU.noise.shift_rate)
         {
-            case 0x0: APU.noise.counter = 1 * 16 * multi; break;
-            case 0x1: APU.noise.counter = 2 * 16 * multi; break;
-            case 0x2: APU.noise.counter = 4 * 16 * multi; break;
+            case 0x0: APU.noise.counter += 1 * 16 * multi; break;
+            case 0x1: APU.noise.counter += 2 * 16 * multi; break;
+            case 0x2: APU.noise.counter += 4 * 16 * multi; break;
             case 0x3: APU.noise.counter = APU.tone[2].tone * 16; break;
         }
 

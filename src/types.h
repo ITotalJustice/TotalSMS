@@ -352,6 +352,7 @@ struct SMS_Core
     struct SMS_MemoryControlRegister memory_control;
     uint8_t system_ram[0x2000];
 
+    uint32_t crc;
     enum SMS_System system;
     enum SMS_SystemMode system_mode;
     bool overscan_enable;
@@ -381,6 +382,7 @@ struct SMS_State
 {
     uint16_t magic;
     uint16_t version;
+    uint32_t crc;
 
     struct Z80 cpu;
     struct SMS_Vdp vdp;

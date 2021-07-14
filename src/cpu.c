@@ -1435,7 +1435,7 @@ static FORCE_INLINE void isr(struct SMS_Core* sms)
         return;
     }
 
-    if (sms->cpu.IFF1 && vdp_has_interrupt(sms))
+    if (sms->cpu.IFF1 && (sms->cpu.interrupt_requested || vdp_has_interrupt(sms)))
     {
         sms->cpu.IFF1 = false;
         sms->cpu.IFF2 = false;
@@ -2044,4 +2044,20 @@ void Z80_run(struct SMS_Core* sms)
     }
 
     isr(sms);
+}
+
+void z80_init(struct SMS_Core* sms)
+{
+    // setup cpu regs, initial values from Sean Young docs.
+    sms->cpu.PC = 0x0000;
+    sms->cpu.SP = 0xDFF0; // fixes ace of aces and shadow dancer
+    sms->cpu.main.A = 0xFF;
+    sms->cpu.main.flags.C = true;
+    sms->cpu.main.flags.N = true;
+    sms->cpu.main.flags.P = true;
+    sms->cpu.main.flags.H = true;
+    sms->cpu.main.flags.B3 = true;
+    sms->cpu.main.flags.B5 = true;
+    sms->cpu.main.flags.Z = true;
+    sms->cpu.main.flags.S = true;
 }

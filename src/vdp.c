@@ -1,6 +1,7 @@
 #include "sms.h"
 #include "internal.h"
 #include <assert.h>
+#include <string.h>
 
 
 #define VDP sms->vdp
@@ -734,6 +735,13 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
                 }
                 break;
 
+            case 194:
+                if (SMS_is_spiderman_int_hack_enabled(sms) && vdp_is_vblank_irq_wanted(sms))
+                {
+                    Z80_irq(sms);
+                }
+                break;
+
             // see description in types.h for the jump back value
             case 219:
                 VDP.vcount_port = 213;
@@ -745,4 +753,17 @@ void vdp_run(struct SMS_Core* sms, uint8_t cycles)
                 break;
         }
     }
+}
+
+void vdp_init(struct SMS_Core* sms)
+{
+    memset(&VDP, 0, sizeof(VDP));
+    // i think unused regs return 0xFF?
+    memset(VDP.registers, 0xFF, sizeof(VDP.registers));
+
+    VDP.registers[0x0] = 0x36;
+    VDP.registers[0x1] = 0x80;
+    VDP.registers[0x6] = 0xFB;
+
+    VDP.line_counter = 0xFF;
 }
