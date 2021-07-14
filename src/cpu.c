@@ -1663,6 +1663,14 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
             write8(pair + DISP(), get_r8(sms, opcode));
             break;
 
+        case 0xE3:
+        {
+            const uint16_t value = read16(REG_SP);
+            write16(REG_SP, pair);
+            *ixy_hi = value >> 8;
+            *ixy_lo = value & 0xFF;
+        }   break;
+
         case 0xE5: PUSH(sms, pair); break;
         case 0xE1:
         {
