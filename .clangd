@@ -1,0 +1,22 @@
+CompileFlags:
+    # Add: [
+    #   # enable c++23 support
+    #   -std=c++2b]
+    Remove: [
+      -fimplicit-constexpr,
+      # emscripten ignores
+      -sUSE_SDL=2]
+
+Diagnostics:
+  # Tweak Clang-Tidy checks.
+  ClangTidy:
+    Add: [performance*, modernize*, readability*]
+    Remove: [
+      readability-implicit-bool-conversion,
+      readability-else-after-return,
+      readability-redundant-access-specifiers,
+      readability-magic-numbers,
+      readability-identifier-length,
+      readability-function-cognitive-complexity,
+      readability-qualified-auto,
+      modernize-avoid-c-arrays]

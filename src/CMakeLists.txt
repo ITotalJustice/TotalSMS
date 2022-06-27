@@ -1,90 +1,241 @@
-cmake_minimum_required(VERSION 3.13.4)
+cmake_minimum_required(VERSION 3.18.0)
 
+# (C)flags for each compiler
+# Werror is disabled atm because it's very annoying early into a project
+list(APPEND gcc_flags
+    -Wall
+    -Wextra
+    # -Werror
+    -Wfatal-errors
+    -Wpedantic
+    -Wshadow
+    -Wdouble-promotion
+    -Wformat=2
+    -Wformat-overflow=2
+    -Wformat-truncation=1
+    -Wundef
+    -Wmissing-include-dirs
+    -fstrict-aliasing
+    -Wstrict-aliasing=3
+    -Wstrict-overflow=5
+    -Walloca
+    -Wduplicated-branches
+    -Wduplicated-cond
+    -Wwrite-strings
+    -Wdate-time
+    -Wlogical-op
+    -Wpacked
+    -Wredundant-decls
+    -Wnested-externs
+    -Wcast-qual
+    -Wcast-align=strict
+    -Wunused-macros
+    -Wbad-function-cast
 
-if (SMS_SINGLE_FILE)
-    add_library(TotalSMS single.c)
+    -Ofast
+    # -funroll-loops
+    # -funroll-all-loops
+    # -fivopts
+    # -ftree-loop-ivcanon
+    # -fsched-pressure
+    # -fsched-spec-load
+    # -fsched-spec-load-dangerous
+    # -fomit-frame-pointer
 
-    target_compile_definitions(TotalSMS PRIVATE SMS_SINGLE_FILE=1)
-else()
-    add_library(TotalSMS
-        bus.c
-        cpu.c
-        joypad.c
-        sms.c
-        SN76489.c
-        vdp.c
-    )
+    # -fgcse-sm
+    # -fgcse-las
 
-    target_compile_definitions(TotalSMS PRIVATE SMS_SINGLE_FILE=0)
-endif()
+    # -fmodulo-sched
+    # -fmodulo-sched-allow-regmoves
+)
 
+list(APPEND clang_flags
+    -Wall
+    -Wextra
+    # -Werror
+    -Wfatal-errors
+    -Wpedantic
+    -Wshadow
+    -Wdouble-promotion
+    -Wformat=2
+    -Wundef
+    -Wmissing-include-dirs
+    -Wstrict-aliasing=2
+    -Wstrict-overflow=5
+    -Walloca
+    -Wwrite-strings
+    -Wdate-time
+    -Wpacked
+    -Wredundant-decls
+    -Wnested-externs
+    -Wcast-qual
+    -Wcast-align
+    -Wunused-macros
+    -Wreserved-id-macro
+    -Wbad-function-cast
+    -Wbitwise-op-parentheses
+    -Wbitfield-enum-conversion
+    -Wno-missing-braces # false positive
 
-target_include_directories(TotalSMS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_features(TotalSMS PRIVATE c_std_99)
+    # can try enabling this just to see what breaks (still compiles as of clang 11)
+    # be sure to enable (well, disable) the below flags else a *lot* of "errors"
+    # -Weverything
+    # -Wno-conversion
+    # -Wno-sign-conversion
+    # -Wno-missing-prototypes
+    # -Wno-padded
+)
 
+list(APPEND tcc_flags
+    -Wall
+    # -Werror
+    -Wwrite-strings
+    -Wunsupported
+)
 
-if (SMS_DEV)
-    list(APPEND _flags
-        -Wall
-        -Wextra
-        -Werror
-        -Wfatal-errors
-        -Wpedantic
-        -Wshadow
-        -Wdouble-promotion
-        -Wformat=2
-        -Wformat-overflow=2
-        -Wformat-truncation=1
-        -Wundef
-        -Wmissing-include-dirs
-        -Wstrict-aliasing=2
-        -Walloca
-        -Wduplicated-branches
-        -Wduplicated-cond
-        -Wwrite-strings
-        -Wdate-time
-        -Wsizeof-pointer-memaccess
-        -Wlogical-op
-        -Wpacked
-        -Wredundant-decls
-        -Wnested-externs
-        # -Winline
-        -ftrapv
-    )
+list(APPEND msvc_flags
+    /W4
+    # /WX
+)
 
-    list(APPEND _sanitizers
-        # -fsanitize=address
-        # -fsanitize=leak
-        -fsanitize=undefined
-        # -fsanitize=pointer-compare
-        # -fsanitize=pointer-subtract
-        -fstack-protector-all
-    )
+include(CheckCCompilerFlag)
+include(CheckLinkerFlag)
+include(CheckIPOSupported)
 
-    # include(CheckCCompilerFlag)
+function(target_apply_lto target)
+    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+    if (ipo_supported)
+        message(STATUS "IPO / LTO enabled for target: ${target}")
+        set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(STATUS "IPO / LTO not supported: <${ipo_error}>")
+    endif()
+endfunction()
 
-    # TODO: check_c_compiler_flag() seems to not work on all flags
-    # for some reason. example -Werror fails, even though its valid for gcc...
-    
-    foreach (flag IN LISTS _flags)
-        target_compile_options(TotalSMS PRIVATE ${flag})
+function(target_apply_lto_in_release target)
+    if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+        target_apply_lto(${target})
+    else()
+        message(STATUS "IPO / LTO not enabled in debug build")
+    endif()
+endfunction()
+
+function(target_add_compiler_flag target flag scope)
+    # check_c_compiler_flag() adds a macro to the test.c file such that
+    # it'll look like # will be shown as "#define COMPILER_SUPPORTS_-Wdouble-promotion"
+    # which is not a valid macro! because of this, we have to remove all invalid characters
+    string(REGEX REPLACE "[^a-zA-Z0-9_]" "_" check_flag ${flag})
+    check_c_compiler_flag(${flag} CHECK_FLAG_${check_flag})
+
+    if (CHECK_FLAG_${check_flag})
+        target_compile_options(${target} ${scope} ${flag})
+    endif()
+endfunction()
+
+function(target_add_linker_flag target flag scope)
+    string(REGEX REPLACE "[^a-zA-Z0-9_]" "_" check_flag ${flag})
+    check_linker_flag("C" ${flag} CHECK_FLAG_${check_flag})
+
+    if (CHECK_FLAG_${check_flag})
+        target_link_options(${target} ${scope} ${flag})
+        message("has linker flag ${flag}")
+    else()
+        message("does NOT have linker flag ${flag}")
+    endif()
+endfunction()
+
+function(target_add_compiler_flags target flag_list scope)
+    foreach (flag IN LISTS ${flag_list})
+       target_add_compiler_flag(${target} ${flag} ${scope})
     endforeach()
+endfunction()
 
-    foreach (flag IN LISTS _sanitizers)
-        target_compile_options(TotalSMS PRIVATE ${flag})
-        target_link_options(TotalSMS INTERFACE ${flag})
+function(target_add_linker_flags target flag_list scope)
+    foreach (flag IN LISTS ${flag_list})
+       target_add_linker_flag(${target} ${flag} ${scope})
     endforeach()
+endfunction()
 
+function(target_add_common_cflags target scope)
+    # enable warning flags for each compiler
+    # only gcc, clang, tcc and msvc are supported so far
+    if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        target_add_compiler_flags(${target} clang_flags ${scope})
+    elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_add_compiler_flags(${target} gcc_flags ${scope})
+    elseif (CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
+        target_add_compiler_flags(${target} tcc_flags ${scope})
+    elseif (CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+        target_add_compiler_flags(${target} msvc_flags ${scope})
+    endif()
+endfunction()
+
+macro(add_static_lib package subdir)
+    message(STATUS "using static ${package} from third-party/${subdir}")
+    set(${package}_CHECKED ON PARENT_SCOPE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/src/third-party/${subdir} ${CMAKE_BINARY_DIR}/src/third-party/${subdir})
+endmacro()
+
+# helper macro that works exactly like find_package()
+# except that it'll fallback to the static lib if the shared
+# lib is not found!
+macro(find_shared_lib package subdir)
+    find_package(${package} QUIET)
+    if (${package}_FOUND)
+        message(STATUS "using shared ${package}")
+    elseif (NOT ${package}_CHECKED)
+        add_static_lib(${package} ${subdir})
+    endif()
+endmacro()
+
+set(USE_MGB OFF)
+
+# this works for now, but will need to be more fancy
+# as more ports are made
+if (PLATFORM_LIBRETRO)
+    add_subdirectory(platforms/libretro)
 endif()
 
-
-if (SMS_DEBUG)
-    target_compile_definitions(TotalSMS PRIVATE SMS_DEBUG=1)
-    set(SMS_ENABLE_FORCE_INLINE OFF)
+if (PLATFORM_SDL2 OR ANDROID)
+    add_subdirectory(platforms/sdl2)
+    set(USE_MGB ON)
 endif()
 
-if (SMS_ENABLE_FORCE_INLINE)
-    target_compile_definitions(TotalSMS PRIVATE SMS_ENABLE_FORCE_INLINE=1)
+if (PLATFORM_GAMECUBE)
+    add_subdirectory(platforms/gamecube)
+    set(USE_MGB ON)
 endif()
 
-# target_compile_definitions(TotalSMS PRIVATE SMS_BPP=32)
+if (PLATFORM_NDS)
+    add_subdirectory(platforms/nds)
+endif()
+
+if (PLATFORM_SDL)
+    add_subdirectory(platforms/sdl)
+    set(USE_MGB ON)
+endif()
+
+if (PLATFORM_PSX)
+    add_subdirectory(platforms/psx)
+endif()
+
+if (PLATFORM_N64)
+    add_subdirectory(platforms/n64)
+endif()
+
+if (DEBUGGER)
+    add_subdirectory(platforms/debugger)
+    set(USE_MGB ON)
+endif()
+
+if (PLATFORM_EMSCRIPTEN)
+    add_subdirectory(platforms/emscripten)
+    set(USE_MGB ON)
+endif()
+
+if (USE_MGB)
+    add_subdirectory(mgb)
+endif()
+
+add_subdirectory(core)
+add_subdirectory(tests)

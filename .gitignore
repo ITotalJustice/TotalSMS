@@ -59,3 +59,15 @@ roms/
 *.zip
 *.raw
 ignoreme/
+compile_commands.json
+.cache
+libnx
+n64-emu
+rom*.h
+!rom_database.h
+!romloader.h
+out.h
+perf.*
+utils/
+old/
+imgui.ini
