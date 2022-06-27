@@ -645,7 +645,6 @@ static FORCE_INLINE void DEC_r8(struct SMS_Core* sms, const uint8_t opcode)
     set_r8(sms, result, opcode >> 3);
 }
 
-// TODO: THESE ARE WRONG, MISSING FLAGS!!!
 static FORCE_INLINE void INC_r16(struct SMS_Core* sms, const uint8_t opcode)
 {
     const uint8_t idx = opcode >> 4;
