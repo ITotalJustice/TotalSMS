@@ -564,7 +564,6 @@ int main(int argc, char** argv)
     if (audio_init)
     {
         SMS_set_apu_callback(&sms, core_audio_callback, AUDIO_FREQ);
-        SMS_set_better_drums(&sms, true);
     }
     SMS_set_pixels(&sms, pixel_buffer, SMS_SCREEN_WIDTH, pixel_format->BytesPerPixel);
 

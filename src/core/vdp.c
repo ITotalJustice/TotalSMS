@@ -29,7 +29,7 @@ enum
 
     NTSC_FPS = 60,
 
-    NTSC_CYCLES_PER_LINE = SMS_CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
+    NTSC_CYCLES_PER_LINE = 228, // SMS_CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
 
     SPRITE_EOF = 208,
 };
@@ -171,7 +171,7 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
         }   break;
 
         default:
-            assert(0 && "bpp invalid option!");
+            assert(!"bpp invalid option!");
             break;
     }
 }
@@ -243,19 +243,13 @@ void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
                 assert((value & 0xF) == 0xF && "Background Pattern Generator Base Address");
                 break;
 
-            case 0x09:
-                if (VDP.vcount >= 192)
-                {
-                    VDP.vertical_scroll = value;
-                }
-                break;
-
-            case 0xA:
-                if (VDP.vcount >= 192)
-                {
-                    VDP.line_counter = value;
-                }
-                break;
+            // unused registers
+            case 0xB:
+            case 0xC:
+            case 0xD:
+            case 0xE:
+            case 0xF:
+                return;
         }
 
         VDP.registers[addr & 0xF] = value;
@@ -904,17 +898,17 @@ static void vdp_update_palette(struct SMS_Core* sms)
 {
     if (sms->colour_callback)
     {
-        if (SMS_is_system_type_gg(sms))
+        switch (SMS_get_system_type(sms))
         {
-            vdp_update_gg_colours(sms);
-        }
-        else if (SMS_is_system_type_sms(sms))
-        {
-            vdp_update_sms_colours(sms);
-        }
-        else if (SMS_is_system_type_sg(sms))
-        {
-            vdp_update_sg_colours(sms);
+            case SMS_System_SMS:
+                vdp_update_sms_colours(sms);
+                break;
+            case SMS_System_GG:
+                vdp_update_gg_colours(sms);
+                break;
+            case SMS_System_SG1000:
+                vdp_update_sg_colours(sms);
+                break;
         }
     }
 }
@@ -953,64 +947,60 @@ bool vdp_has_interrupt(const struct SMS_Core* sms)
 
 static void vdp_advance_line_counter(struct SMS_Core* sms)
 {
-    if (VDP.vcount < 192)
+    // i don't think sg has line interrupt
+    if (!SMS_is_system_type_sg(sms))
     {
-        // i don't think sg has line interrupt
-        if (!SMS_is_system_type_sg(sms))
-        {
-            VDP.line_counter--;
+        VDP.line_counter--;
 
-            // reloads / fires irq (if enabled) on underflow
-            if (VDP.line_counter == 0xFF)
-            {
-                VDP.line_interrupt_pending = true;
-                VDP.line_counter = VDP.registers[0xA];
-            }
+        // reloads / fires irq (if enabled) on underflow
+        if (VDP.line_counter == 0xFF)
+        {
+            VDP.line_interrupt_pending = true;
+            VDP.line_counter = VDP.registers[0xA];
         }
     }
 }
 
 static void vdp_render_frame(struct SMS_Core* sms)
 {
-    if (VDP.vcount < 192)
+    // only render if enabled and we have pixels
+    if (!vdp_is_display_enabled(sms) || !sms->pixels || sms->skip_frame)
     {
-        // only render if enabled and we have pixels
-        if (vdp_is_display_enabled(sms) && sms->pixels && !sms->skip_frame)
+        return;
+    }
+
+    if (vdp_is_display_active(sms))
+    {
+        struct PriorityBuf prio = {0};
+        #ifndef SMS_PIXEL_WIDTH
+            pixel_width_t scanline[SMS_SCREEN_WIDTH] = {0};
+        #else
+            pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->pitch);
+        #endif
+
+        if (SMS_is_system_type_sg(sms))
         {
-            if (vdp_is_display_active(sms))
+            // this isn't correct, but it works :)
+            if ((VDP.registers[0] & 0x7) == 0)
             {
-                struct PriorityBuf prio = {0};
-                #ifndef SMS_PIXEL_WIDTH
-                    pixel_width_t scanline[SMS_SCREEN_WIDTH] = {0};
-                #else
-                    pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->pitch);
-                #endif
-
-                if (SMS_is_system_type_sg(sms))
-                {
-                    // this isn't correct, but it works :)
-                    if ((VDP.registers[0] & 0x7) == 0)
-                    {
-                        vdp_mode1_render_background(sms, scanline);
-                    }
-                    else
-                    {
-                        vdp_mode2_render_background(sms, scanline);
-                    }
-
-                    vdp_mode1_render_sprites(sms, scanline);
-                }
-                else // sms / gg render
-                {
-                    vdp_render_background(sms, scanline, &prio);
-                    vdp_render_sprites(sms, scanline, &prio);
-                }
-
-                #ifndef SMS_PIXEL_WIDTH
-                    write_scanline_to_frame(sms, scanline, VDP.vcount);
-                #endif
+                vdp_mode1_render_background(sms, scanline);
             }
+            else
+            {
+                vdp_mode2_render_background(sms, scanline);
+            }
+
+            vdp_mode1_render_sprites(sms, scanline);
         }
+        else // sms / gg render
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
+
+        #ifndef SMS_PIXEL_WIDTH
+            write_scanline_to_frame(sms, scanline, VDP.vcount);
+        #endif
     }
 }
 
@@ -1019,43 +1009,53 @@ static void vdp_tick(struct SMS_Core* sms)
     if (LIKELY(VDP.vcount < 192))
     {
         vdp_update_palette(sms);
-        vdp_advance_line_counter(sms);
         vdp_render_frame(sms);
     }
-
-    VDP.vcount++;
-    VDP.vcount_port++;
-
-    switch (VDP.vcount)
+    else
     {
-        case 193:
-            SMS_skip_frame(sms, false);
-            VDP.frame_interrupt_pending = true;
-            VDP.vertical_scroll = VDP.registers[0x9];
-            VDP.line_counter = VDP.registers[0xA];
+        VDP.vertical_scroll = VDP.registers[0x9];
+    }
 
-            if (sms->vblank_callback)
-            {
-                sms->vblank_callback(sms->userdata);
-            }
-            break;
+    // advance line counter on lines 0-191 and 192
+    if (LIKELY(VDP.vcount <= 192))
+    {
+        vdp_advance_line_counter(sms);
+    }
+    else
+    {
+        VDP.line_counter = VDP.registers[0xA];
+    }
 
-        case 194:
-            if (SMS_is_spiderman_int_hack_enabled(sms) && vdp_is_vblank_irq_wanted(sms))
-            {
-                z80_irq(sms);
-            }
-            break;
+    if (VDP.vcount == 192) // vblank. TODO: support diff hieght modes
+    {
+        SMS_skip_frame(sms, false);
+        VDP.frame_interrupt_pending = true;
 
-        // see description in types.h for the jump back value
-        case 219:
-            VDP.vcount_port = 213;
-            break;
+        if (sms->vblank_callback)
+        {
+            sms->vblank_callback(sms->userdata);
+        }
+    }
 
-        case 262:
-            VDP.vcount = 0;
-            VDP.vcount_port = 0;
-            break;
+    if (VDP.vcount == 193 && SMS_is_spiderman_int_hack_enabled(sms) && vdp_is_vblank_irq_wanted(sms)) // hack for spiderman, will remove soon
+    {
+        z80_irq(sms);
+    }
+
+    if (VDP.vcount == 218) // see description in types.h for the jump back value
+    {
+        VDP.vcount_port = 212;
+    }
+
+    if (VDP.vcount == 261) // end of frame. TODO: support pal height
+    {
+        VDP.vcount = 0;
+        VDP.vcount_port = 0;
+    }
+    else
+    {
+        VDP.vcount++;
+        VDP.vcount_port++;
     }
 }
 

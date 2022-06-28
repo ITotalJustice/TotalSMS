@@ -772,7 +772,6 @@ static FORCE_INLINE void RETN(struct SMS_Core* sms)
 {
     REG_PC = POP(sms);
     sms->cpu.IFF1 = sms->cpu.IFF2;
-    sms->cpu.IFF2 = false;
 }
 
 static FORCE_INLINE void JR(struct SMS_Core* sms)
@@ -1382,7 +1381,7 @@ static FORCE_INLINE void LD_A_I(struct SMS_Core* sms)
     REG_A = REG_I;
 
     FLAG_N = false;
-    FLAG_P = SMS_parity8(REG_A);
+    FLAG_P = sms->cpu.IFF2;
     FLAG_H = false;
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
@@ -1402,7 +1401,7 @@ static FORCE_INLINE void LD_A_R(struct SMS_Core* sms)
     REG_A = REG_R;
 
     FLAG_N = false;
-    FLAG_P = SMS_parity8(REG_A);
+    FLAG_P = sms->cpu.IFF2;
     FLAG_H = false;
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
@@ -1424,6 +1423,7 @@ static FORCE_INLINE void isr(struct SMS_Core* sms)
         sms->cpu.IFF2 = false;
         sms->cpu.interrupt_requested = false;
         sms->cpu.halt = false;
+        sms->cpu.cycles += 13;
 
         RST(sms, 0x38);
     }
@@ -1431,8 +1431,11 @@ static FORCE_INLINE void isr(struct SMS_Core* sms)
 
 void z80_nmi(struct SMS_Core* sms)
 {
-    sms->cpu.IFF2 = sms->cpu.IFF1;
     sms->cpu.IFF1 = false;
+    sms->cpu.IFF2 = false;
+    sms->cpu.halt = false;
+    sms->cpu.ei_delay = false;
+    sms->cpu.cycles += 11;
 
     RST(sms, 0x66);
 }

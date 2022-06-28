@@ -412,6 +412,7 @@ static uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 
 static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
+    assert(!"hcounter not yet emulated!");
     // docs say that this is a 9-bit counter, but only upper 8-bits read
     return (uint16_t)((float)sms->vdp.cycles * 1.5F) >> 1;
 }
@@ -477,14 +478,14 @@ static void IO_vdp_cram_sms_write(struct SMS_Core* sms, const uint8_t value)
 static void IO_vdp_data_write(struct SMS_Core* sms, const uint8_t value)
 {
     sms->vdp.control_latch = false;
+    // writes store the new value in the buffered_data
+    sms->vdp.buffer_read_data = value;
 
     switch (sms->vdp.code)
     {
         case VDP_CODE_VRAM_WRITE_LOAD:
         case VDP_CODE_VRAM_WRITE:
         case VDP_CODE_REG_WRITE:
-            // writes store the new value in the buffered_data
-            sms->vdp.buffer_read_data = value;
             // mark entry as dirty if modified
             sms->vdp.dirty_vram[sms->vdp.addr >> 2] |= sms->vdp.vram[sms->vdp.addr] != value;
             sms->vdp.vram[sms->vdp.addr] = value;
@@ -517,7 +518,7 @@ static void IO_vdp_control_write(struct SMS_Core* sms, const uint8_t value)
     if (sms->vdp.control_latch)
     {
         sms->vdp.control_word = (sms->vdp.control_word & 0xFF) | (value << 8);
-        sms->vdp.code = value >> 6;
+        sms->vdp.code = (value >> 6) & 3;
         sms->vdp.control_latch = false;
 
         switch (sms->vdp.code)

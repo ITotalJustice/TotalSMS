@@ -357,7 +357,7 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int syst
 
     if (system_hint != -1)
     {
-        SMS_set_system_type(sms, SMS_System_GG);
+        SMS_set_system_type(sms, system_hint);
     }
     else if (header.region_code == 0x5 || header.region_code == 0x6 || header.region_code == 0x7)
     {

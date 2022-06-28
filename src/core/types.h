@@ -16,19 +16,6 @@ extern "C" {
     #define SMS_SINGLE_FILE 0
 #endif
 
-#if defined _WIN32 || defined __CYGWIN__
-    #ifdef BUILDING_LIB
-        #define SMSAPI __declspec(dllexport)
-    #else
-        #define SMSAPI __declspec(dllimport)
-    #endif
-#else
-    #ifdef BUILDING_LIB
-        #define SMSAPI __attribute__ ((visibility ("default")))
-    #else
-        #define SMSAPI
-    #endif
-#endif
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -59,15 +46,10 @@ enum
     SMS_ROM_SIZE_MAX = 1024 * 512, // 512KiB
     SMS_SRAM_SIZE_MAX = 1024 * 16 * 2, // 2 banks of 16kib
 
-    #if 0
-        // runs at 3.58MHz
-        CPU_CLOCK = (3580000),
-    #else
-        // this value was taken for sms power docs
-        SMS_CPU_CLOCK = (3579545),
-    #endif
+    // this value was taken for sms power docs
+    SMS_CPU_CLOCK = 3579545,
 
-    SMS_CYCLES_PER_FRAME = (SMS_CPU_CLOCK / 60),
+    SMS_CYCLES_PER_FRAME = SMS_CPU_CLOCK / 60,
 };
 
 enum SMS_System
@@ -242,7 +224,6 @@ struct SMS_Vdp
     uint8_t vram[1024 * 16];
     bool dirty_vram[(1024 * 16) / 4];
     struct CachedPalette cached_palette[(1024 * 16) / 4];
-    // struct CachedTile cached_tile[(1024 * 16) / 4];
 
     // bg can use either palette, while sprites can only use
     // the second half of the cram.
