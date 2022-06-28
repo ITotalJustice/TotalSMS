@@ -8,6 +8,13 @@
 
 #define PSG sms->psg
 
+#if SMS_DISBALE_AUDIO
+
+void psg_reg_write(struct SMS_Core* sms, const uint8_t value) {}
+void psg_sync(struct SMS_Core* sms) {}
+void psg_run(struct SMS_Core* sms, const uint8_t cycles) {}
+
+#else
 
 enum
 {
@@ -239,6 +246,8 @@ void psg_run(struct SMS_Core* sms, const uint8_t cycles)
 {
     PSG.cycles += cycles; // PSG.cycles is an uint32_t, so it won't overflow
 }
+
+#endif // SMS_DISBALE_AUDIO
 
 void psg_init(struct SMS_Core* sms)
 {
