@@ -16,17 +16,11 @@ if (NINTENDO_3DS)
     ctr_create_3dsx(${output})
 endif()
 
-if (PS2)
-    # set(CMAKE_EXECUTABLE_SUFFIX .elf)
-    # target_include_directories(${output} PRIVATE ${PS2SDK}/ports/include/SDL)
-    # target_link_libraries(${output} PRIVATE sdl)
-endif()
-
 if (DREAMCAST)
     set(CMAKE_EXECUTABLE_SUFFIX .elf)
 endif()
 
-if (GAMECUBE)
+if (NINTENDO_GAMECUBE)
     target_link_libraries(${output} PRIVATE aesnd)
     target_link_libraries(${output} PRIVATE fat)
     ogc_create_dol(${output})

@@ -4,5 +4,204 @@
         "major": 3,
         "minor": 21,
         "patch": 0
-    }
+    },
+    "configurePresets": [
+        {
+            "name": "sdl",
+            "displayName": "sdl",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SDL": true,
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "sdl2",
+            "displayName": "sdl2",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SDL2": true,
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "sdl2-dev",
+            "displayName": "sdl2-dev",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "SDL2": true,
+                "SMS_DEV": true
+            }
+        },
+        {
+            "name": "debugger",
+            "displayName": "debugger",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "DEBUGGER": true
+            }
+        },
+        {
+            "name": "dreamcast",
+            "displayName": "dreamcast build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/toolchain/dreamcast.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "n64",
+            "displayName": "n64 build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/toolchain/n64.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "psx",
+            "displayName": "psx build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "/opt/psn00bsdk/lib/libpsn00b/cmake/sdk.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "ps2",
+            "displayName": "ps2 build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/toolchain/ps2.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "gamecube",
+            "displayName": "gamecube build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/GameCube.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "nds",
+            "displayName": "nds build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/NDS.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "3ds",
+            "displayName": "3ds build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/3DS.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "wii",
+            "displayName": "wii build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/Wii.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "wiiu",
+            "displayName": "wiiu build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/WiiU.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "switch",
+            "displayName": "switch build",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "SMS_SINGLE_FILE": true
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "sdl",
+            "configurePreset": "sdl"
+        },
+        {
+            "name": "sdl2",
+            "configurePreset": "sdl2"
+        },
+        {
+            "name": "sdl2-dev",
+            "configurePreset": "sdl2-dev"
+        },
+        {
+            "name": "debugger",
+            "configurePreset": "debugger"
+        },
+        {
+            "name": "dreamcast",
+            "configurePreset": "dreamcast"
+        },
+        {
+            "name": "n64",
+            "configurePreset": "n64"
+        },
+        {
+            "name": "psx",
+            "configurePreset": "psx"
+        },
+        {
+            "name": "ps2",
+            "configurePreset": "ps2"
+        },
+        {
+            "name": "gamecube",
+            "configurePreset": "gamecube"
+        },
+        {
+            "name": "nds",
+            "configurePreset": "nds"
+        },
+        {
+            "name": "3ds",
+            "configurePreset": "3ds"
+        },
+        {
+            "name": "wii",
+            "configurePreset": "wii"
+        },
+        {
+            "name": "wiiu",
+            "configurePreset": "wiiu"
+        },
+        {
+            "name": "switch",
+            "configurePreset": "switch"
+        }
+    ]
 }

@@ -71,3 +71,5 @@ perf.*
 utils/
 old/
 imgui.ini
+.vscode
+CMakeUserPresets.json
