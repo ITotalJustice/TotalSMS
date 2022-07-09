@@ -577,10 +577,17 @@ static void IO_gamegear_write(struct SMS_Core* sms, const uint8_t addr, const ui
         case 0x5: sms->port.gg_regs[0x5] = value; break;
 
         case 0x6: // sets stereo output for psg
-            for (size_t i = 0; i < 8; i++)
-            {
-                // sms->psg.channel_enable[i >> 1][i & 1] = IS_BIT_SET(value, i);
-            }
+            sms->psg.channel_enable[0][0] = IS_BIT_SET(value, 0);
+            sms->psg.channel_enable[0][1] = IS_BIT_SET(value, 1);
+
+            sms->psg.channel_enable[1][0] = IS_BIT_SET(value, 2);
+            sms->psg.channel_enable[1][1] = IS_BIT_SET(value, 3);
+
+            sms->psg.channel_enable[2][0] = IS_BIT_SET(value, 4);
+            sms->psg.channel_enable[2][1] = IS_BIT_SET(value, 5);
+
+            sms->psg.channel_enable[3][0] = IS_BIT_SET(value, 6);
+            sms->psg.channel_enable[3][1] = IS_BIT_SET(value, 7);
             break;
     }
 }
