@@ -218,8 +218,7 @@ struct SMS_Vdp
 {
     // this is used for vram r/w and cram writes.
     uint16_t addr;
-    // see [enum VDP_Code]
-    uint8_t code;
+    enum VDP_Code code;
 
     uint8_t vram[1024 * 16];
     bool dirty_vram[(1024 * 16) / 4];

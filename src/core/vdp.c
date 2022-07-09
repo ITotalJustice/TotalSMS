@@ -34,6 +34,11 @@ enum
     SPRITE_EOF = 208,
 };
 
+// SOURCE: https://www.smspower.org/forums/8161-SMSDisplayTiming
+// (divide mclks by 3)
+// 59,736 (179,208 mclks, 228x262)
+// frame_int 202 cycles into line 192 (607 mclks)
+// line_int 202 cycles into triggering (608 mclks)
 
 static FORCE_INLINE bool vdp_is_line_irq_wanted(const struct SMS_Core* sms)
 {
@@ -237,10 +242,6 @@ void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
 
             case 0x3:
                 assert(value == 0xFF && "colour table bits not all set");
-                break;
-
-            case 0x4:
-                assert((value & 0xF) == 0xF && "Background Pattern Generator Base Address");
                 break;
 
             // unused registers
@@ -767,6 +768,8 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
         const struct CachedPalette cpal = vdp_get_palette(sms, pattern_index);
         const uint32_t palette = cpal.normal;//horizontal_flip ? cpal.flipped : cpal.normal;
 
+        // note: the order of the below ifs are important.
+        // opaque sprites can collide, even when behind background/
         for (uint8_t x = 0; x < 8; ++x)
         {
             const int16_t x_index = x + sprite_x;
@@ -780,12 +783,6 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
             if (x_index >= region.endx)
             {
                 break;
-            }
-
-            // skip is bg has priority
-            if (prio->array[x_index])
-            {
-                continue;
             }
 
             const uint8_t palette_index = (palette >> (28 - (4 * x))) & 0xF;
@@ -805,6 +802,12 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
 
             // keep track of this sprite already being rendered
             drawn_sprites[x_index] = true;
+
+            // skip is bg has priority
+            if (prio->array[x_index])
+            {
+                continue;
+            }
 
             // sprite cram index is the upper 16-bytes!
             scanline[x_index] = VDP.colour[palette_index + 16];
@@ -932,17 +935,10 @@ void vdp_mark_palette_dirty(struct SMS_Core* sms)
 
 bool vdp_has_interrupt(const struct SMS_Core* sms)
 {
-    if (VDP.frame_interrupt_pending && vdp_is_vblank_irq_wanted(sms))
-    {
-        return true;
-    }
+    const bool frame_interrupt = VDP.frame_interrupt_pending && vdp_is_vblank_irq_wanted(sms);
+    const bool line_interrupt = VDP.line_interrupt_pending && vdp_is_line_irq_wanted(sms);
 
-    if (VDP.line_interrupt_pending && vdp_is_line_irq_wanted(sms))
-    {
-        return true;
-    }
-
-    return false;
+    return frame_interrupt || line_interrupt;
 }
 
 static void vdp_advance_line_counter(struct SMS_Core* sms)
@@ -963,50 +959,58 @@ static void vdp_advance_line_counter(struct SMS_Core* sms)
 
 static void vdp_render_frame(struct SMS_Core* sms)
 {
-    // only render if enabled and we have pixels
-    if (!vdp_is_display_enabled(sms) || !sms->pixels || sms->skip_frame)
+    // only render if display is enabled
+    if (!vdp_is_display_enabled(sms))
+    {
+        // on sms/gg, sprite overflow still happens with display disabled
+        if (!SMS_is_system_type_sg(sms))
+        {
+            vdp_parse_sprites(sms);
+        }
+        return;
+    }
+
+    // exit early if we have no pixels (this will break games that need sprite overflow and collision)
+    if (!sms->pixels || sms->skip_frame)
     {
         return;
     }
 
-    if (vdp_is_display_active(sms))
+    struct PriorityBuf prio = {0};
+    #ifndef SMS_PIXEL_WIDTH
+        pixel_width_t scanline[SMS_SCREEN_WIDTH] = {0};
+    #else
+        pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->pitch);
+    #endif
+
+    if (SMS_is_system_type_sg(sms))
     {
-        struct PriorityBuf prio = {0};
-        #ifndef SMS_PIXEL_WIDTH
-            pixel_width_t scanline[SMS_SCREEN_WIDTH] = {0};
-        #else
-            pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->pitch);
-        #endif
-
-        if (SMS_is_system_type_sg(sms))
+        // this isn't correct, but it works :)
+        if ((VDP.registers[0] & 0x7) == 0)
         {
-            // this isn't correct, but it works :)
-            if ((VDP.registers[0] & 0x7) == 0)
-            {
-                vdp_mode1_render_background(sms, scanline);
-            }
-            else
-            {
-                vdp_mode2_render_background(sms, scanline);
-            }
-
-            vdp_mode1_render_sprites(sms, scanline);
+            vdp_mode1_render_background(sms, scanline);
         }
-        else // sms / gg render
+        else
         {
-            vdp_render_background(sms, scanline, &prio);
-            vdp_render_sprites(sms, scanline, &prio);
+            vdp_mode2_render_background(sms, scanline);
         }
 
-        #ifndef SMS_PIXEL_WIDTH
-            write_scanline_to_frame(sms, scanline, VDP.vcount);
-        #endif
+        vdp_mode1_render_sprites(sms, scanline);
     }
+    else // sms / gg render
+    {
+        vdp_render_background(sms, scanline, &prio);
+        vdp_render_sprites(sms, scanline, &prio);
+    }
+
+    #ifndef SMS_PIXEL_WIDTH
+        write_scanline_to_frame(sms, scanline, VDP.vcount);
+    #endif
 }
 
 static void vdp_tick(struct SMS_Core* sms)
 {
-    if (LIKELY(VDP.vcount < 192))
+    if (LIKELY(vdp_is_display_active(sms)))
     {
         vdp_update_palette(sms);
         vdp_render_frame(sms);
@@ -1073,14 +1077,29 @@ void vdp_run(struct SMS_Core* sms, const uint8_t cycles)
 void vdp_init(struct SMS_Core* sms)
 {
     memset(&VDP, 0, sizeof(VDP));
-    // i think unused regs return 0xFF?
-    memset(VDP.registers, 0xFF, sizeof(VDP.registers));
     // update palette
     vdp_mark_palette_dirty(sms);
 
-    VDP.registers[0x0] = 0x36;
-    VDP.registers[0x1] = 0x80;
-    VDP.registers[0x6] = 0xFB;
+    // values on starup
+    VDP.registers[0x0] = 0x04; // %00000100 (taken from VDPTEST)
+    VDP.registers[0x1] = 0x20; // %00100000 (taken from VDPTEST)
+    VDP.registers[0x2] = 0xF1; // %11110001 (taken from VDPTEST)
+    VDP.registers[0x3] = 0xFF; // %11111111 (taken from VDPTEST)
+    VDP.registers[0x4] = 0x03; // %00000011 (taken from VDPTEST)
+    VDP.registers[0x5] = 0x81; // %10000001 (taken from VDPTEST)
+    VDP.registers[0x6] = 0xFB; // %11111011 (taken from VDPTEST)
+    VDP.registers[0x7] = 0x00; // %00000000 (taken from VDPTEST)
+    VDP.registers[0x8] = 0x00; // %00000000 (taken from VDPTEST)
+    VDP.registers[0x9] = 0x00; // %00000000 (taken from VDPTEST)
+    VDP.registers[0xA] = 0xFF; // %11111111 (taken from VDPTEST)
+    // vdp registers are write-only, so the the values of 0xB-0xF don't matter
+
+    if (1) // values after bios (todo: optional bios skip)
+    {
+        VDP.registers[0x0] = 0x36;
+        VDP.registers[0x1] = 0x80;
+        VDP.registers[0x6] = 0xFB;
+    }
 
     VDP.line_counter = 0xFF;
 }
