@@ -1,0 +1,13 @@
+{
+  "name": "totalsms-sdl2",
+  "version-string": "0.0.1",
+  "homepage": "https://github.com/ITotalJustice/TotalSMS",
+  "description": "WIP SMS emulator!",
+  "license": "MIT",
+  "dependencies": [
+    "sdl2",
+    "zlib",
+    "minizip",
+    "nativefiledialog"
+  ]
+}
