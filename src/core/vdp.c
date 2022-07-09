@@ -50,6 +50,11 @@ static FORCE_INLINE bool vdp_is_vblank_irq_wanted(const struct SMS_Core* sms)
     return IS_BIT_SET(VDP.registers[0x1], 5);
 }
 
+static FORCE_INLINE bool vdp_is_screen_size_change_enabled(const struct SMS_Core* sms)
+{
+    return IS_BIT_SET(VDP.registers[0x0], 1);
+}
+
 static FORCE_INLINE uint16_t vdp_get_nametable_base_addr(const struct SMS_Core* sms)
 {
     if (SMS_is_system_type_sg(sms))
@@ -90,6 +95,27 @@ static FORCE_INLINE uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
     const uint8_t sprite_size = IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
 
     return sprite_size << doubled_sprites;
+}
+
+// returns the hieght of the screen
+static uint16_t vdp_get_screen_height(const struct SMS_Core* sms)
+{
+    if (!vdp_is_screen_size_change_enabled(sms))
+    {
+        return 192;
+    }
+    else if (IS_BIT_SET(VDP.registers[1], 4))
+    {
+        return 224;
+    }
+    else if (IS_BIT_SET(VDP.registers[1], 3))
+    {
+        return 240;
+    }
+    else
+    {
+        return 192;
+    }
 }
 
 static uint8_t vdp_get_overscan_colour(const struct SMS_Core* sms)
@@ -653,16 +679,13 @@ struct SpriteEntries
 
 static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
 {
-    if (!SMS_is_system_type_sg(sms))
-    {
-        assert(IS_BIT_SET(VDP.registers[0x5], 0) && "needs lower index for oam");
-        assert((VDP.registers[0x6] & 0x3) == 0x3 && "Sprite Pattern Generator Base Address");
-    }
+    // assert((VDP.registers[0x6] & 0x3) == 0x3 && "Sprite Pattern Generator Base Address");
 
     struct SpriteEntries sprites = {0};
 
     const uint8_t line = VDP.vcount;
     const uint16_t sprite_attribute_base_addr = vdp_get_sprite_attribute_base_addr(sms);
+    const uint8_t sprite_attribute_x_index = IS_BIT_SET(VDP.registers[0x5], 0) ? 128 : 0;
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
 
     for (uint8_t i = 0; i < 64; ++i)
@@ -695,8 +718,8 @@ static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
             if (sprites.count < 8)
             {
                 sprites.entry[sprites.count].y = y;
-                // xn values start at + 0x80 in the SAT
-                sprites.entry[sprites.count].xn_index = 0x80 + (i * 2);
+                // xn values are either low (0) or high (128) end of SAT
+                sprites.entry[sprites.count].xn_index = sprite_attribute_x_index + (i * 2);
                 sprites.count++;
             }
 

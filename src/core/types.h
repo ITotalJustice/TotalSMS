@@ -159,7 +159,8 @@ struct SMS_SegaMapper
 
 struct SMS_CodemastersMapper
 {
-    bool dummy;
+    uint8_t slot[3];
+    bool ram_mapped; // ernie els golf features 8k on cart ram
 };
 
 struct SMS_Cart

@@ -314,7 +314,7 @@ static const struct RomEntry ENTRIES[] =
 	// Cool Spot (E) [b1].sms
 	{ .crc = 0xCC92058A, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_SMS },
 	// Cosmic Spacehead (E) [!].sms
-	{ .crc = 0x29822980, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_SMS },
+	{ .crc = 0x29822980, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_SMS },
 	// Cyber Shinobi (UE) [!].sms
 	{ .crc = 0x1350E4F8, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_SMS },
 	// Cyber Shinobi (UE) [T+Fre].sms
@@ -412,7 +412,7 @@ static const struct RomEntry ENTRIES[] =
 	// FIFA International Soccer (B) [!].sms
 	{ .crc = 0x9BB3B5F9, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_SMS },
 	// Fantastic Dizzy (E) [!].sms
-	{ .crc = 0xB9664AE1, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_SMS },
+	{ .crc = 0xB9664AE1, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_SMS },
 	// Fantasy Zone - The Maze (UE) [!].sms
 	{ .crc = 0xD29889AD, .rom = 0x20000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_SMS },
 	// Fantasy Zone - The Maze (UE) [o1].sms
@@ -2019,7 +2019,7 @@ static const struct RomEntry ENTRIES[] =
 	// Cool Spot (U) [!].gg
 	{ .crc = 0x2C758FC8, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Cosmic Spacehead (E) (M4) [!].gg
-	{ .crc = 0x6CAA625B, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
+	{ .crc = 0x6CAA625B, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
 	// Crayon Shin-Chan - Taiketsu! Tankam Panic!! (J).gg
 	{ .crc = 0x03D28EAB, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Crystal Warriors (U) [!].gg
@@ -2073,7 +2073,7 @@ static const struct RomEntry ENTRIES[] =
 	// Dragon Crystal (U) [!].gg
 	{ .crc = 0x0EF2ED93, .rom = 0x20000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Drop Zone (U) [!].gg
-	{ .crc = 0x152F0DCC, .rom = 0x20000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
+	{ .crc = 0x152F0DCC, .rom = 0x20000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
 	// Dunk Kid's (J).gg
 	{ .crc = 0x77ED48F5, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Dynamite Headdy (J) [b1].gg
@@ -2099,7 +2099,7 @@ static const struct RomEntry ENTRIES[] =
 	// Ecco the Dolphin (U) [b2].gg
 	{ .crc = 0x982E7132, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Ernie Els Golf (E).gg
-	{ .crc = 0x5E53C7F7, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
+	{ .crc = 0x5E53C7F7, .rom = 0x40000, .ram = 0x2000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
 	// Eternal Legend (J) [!].gg
 	{ .crc = 0x04302BBD, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Evander Holyfield's 'Real Deal' Boxing (U) [!].gg
@@ -2289,7 +2289,7 @@ static const struct RomEntry ENTRIES[] =
 	// James Pond II - Codename RoboCod (U) [!].gg
 	{ .crc = 0x9FB5C155, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Jang Pung II (K) [S].gg
-	{ .crc = 0x76C5BDFB, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
+	{ .crc = 0x76C5BDFB, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
 	// Jeopardy! - Sports Edition (U) [!].gg
 	{ .crc = 0x2DD850B7, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Jeopardy! (U) [!].gg
@@ -2633,7 +2633,7 @@ static const struct RomEntry ENTRIES[] =
 	// Pet Club Inu Daisuki! (J).gg
 	{ .crc = 0xB42D8430, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Pete Sampras Tennis (E) [!].gg
-	{ .crc = 0xC1756BEE, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
+	{ .crc = 0xC1756BEE, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
 	// Phantasy Star Adventure (J) [b1].gg
 	{ .crc = 0xF8F4B9A3, .rom = 0x20000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// Phantasy Star Adventure (J) [T+Eng1.01_AGTP].gg
@@ -2771,7 +2771,7 @@ static const struct RomEntry ENTRIES[] =
 	// Ryu Kyu (J).gg
 	{ .crc = 0x95EFD52B, .rom = 0x20000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// S.S. Lucifer - Man Overboard! (U) [!].gg
-	{ .crc = 0xD9A7F170, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
+	{ .crc = 0xD9A7F170, .rom = 0x40000, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
 	// SD Gundam - Winner's History (J) [T+Eng].gg
 	{ .crc = 0xD9A69E9E, .rom = 0x80000, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
 	// SD Gundam - Winner's History (J) [T+Fre0.99_Asmodeath].gg

@@ -116,10 +116,93 @@ static void setup_mapper_sega(struct SMS_Core* sms)
     sega_mapper_update_slot2(sms);
 }
 
+static void codemaster_mapper_update_slot(struct SMS_Core* sms, const uint8_t slot, const uint8_t value)
+{
+    sms->cart.mappers.codemasters.slot[slot] = value & sms->cart.max_bank_mask;
+    const size_t offset = 0x4000 * sms->cart.mappers.codemasters.slot[slot];
+
+    for (size_t i = 0; i < 0x10; ++i)
+    {
+        sms->rmap[i + (0x10 * slot)] = sms->rom + offset + (0x400 * i);
+    }
+}
+
+static void codemaster_mapper_update_slot0(struct SMS_Core* sms, const uint8_t value)
+{
+    codemaster_mapper_update_slot(sms, 0, value);
+}
+
+static void codemaster_mapper_update_slot1(struct SMS_Core* sms, const uint8_t value)
+{
+    // for codemaster games that feature on-cart ram
+    // writing to ctrl-1 with bit7 set maps ram 0xA000-0xC000
+    if (IS_BIT_SET(value, 7))
+    {
+        for (size_t i = 0; i < 0x8; ++i)
+        {
+            sms->rmap[i + 0x28] = sms->cart.ram[0] + (0x400 * i);
+            sms->wmap[i + 0x28] = sms->cart.ram[0] + (0x400 * i);
+        }
+
+        sms->cart.mappers.codemasters.ram_mapped = true;
+        return;
+    }
+    // was ram previously mapped?
+    else if (sms->cart.mappers.codemasters.ram_mapped)
+    {
+        sms->cart.mappers.codemasters.ram_mapped = false;
+
+        // unmap ram and re-map the rom
+        for (size_t i = 0; i < 0x8; ++i)
+        {
+            sms->wmap[i + 0x28] = UNUSED_BANK;
+        }
+
+        codemaster_mapper_update_slot(sms, 2, sms->cart.mappers.codemasters.slot[2]);
+    }
+
+    codemaster_mapper_update_slot(sms, 1, value);
+}
+
+static void codemaster_mapper_update_slot2(struct SMS_Core* sms, const uint8_t value)
+{
+    // NOTE: if ram is mapped (ernie elfs golf), then does writes to this
+    // reg remap rom? or are they ignored?
+    if (sms->cart.mappers.codemasters.ram_mapped)
+    {
+        sms->cart.mappers.codemasters.slot[2] = value & sms->cart.max_bank_mask;
+        const size_t offset = 0x4000 * sms->cart.mappers.codemasters.slot[2];
+
+        for (size_t i = 0; i < 0x8; ++i)
+        {
+            sms->rmap[i + 0x20] = sms->rom + offset + (0x400 * i);
+        }
+    }
+    else
+    {
+        codemaster_mapper_update_slot(sms, 2, value);
+    }
+}
+
+static void init_mapper_codemaster(struct SMS_Core* sms)
+{
+    sms->cart.mappers.codemasters.slot[0] = 0;
+    sms->cart.mappers.codemasters.slot[1] = 1;
+    sms->cart.mappers.codemasters.slot[2] = 2;
+    sms->cart.mappers.codemasters.ram_mapped = false;
+}
+
 static void setup_mapper_codemaster(struct SMS_Core* sms)
 {
-    UNUSED(sms);
-    assert(!"codemasters unsupported mapper!");
+    for (int i = 0; i < 0x10; ++i)
+    {
+        sms->rmap[0x30 + i] = sms->system_ram + (0x400 * (i & 0x7));
+        sms->wmap[0x30 + i] = sms->system_ram + (0x400 * (i & 0x7));
+    }
+
+    codemaster_mapper_update_slot0(sms, sms->cart.mappers.codemasters.slot[0]);
+    codemaster_mapper_update_slot1(sms, sms->cart.mappers.codemasters.slot[1]);
+    codemaster_mapper_update_slot2(sms, sms->cart.mappers.codemasters.slot[2]);
 }
 
 static void setup_mapper_dahjee_a(struct SMS_Core* sms)
@@ -265,6 +348,9 @@ void mapper_init(struct SMS_Core* sms)
             break;
 
         case MAPPER_TYPE_CODEMASTERS:
+            init_mapper_codemaster(sms);
+            break;
+
         case MAPPER_TYPE_NONE:
         case MAPPER_TYPE_DAHJEE_A:
         case MAPPER_TYPE_DAHJEE_B:
@@ -334,13 +420,51 @@ uint8_t SMS_read8(struct SMS_Core* sms, const uint16_t addr)
 
 void SMS_write8(struct SMS_Core* sms, const uint16_t addr, const uint8_t value)
 {
+    // specific mapper writes
+    switch (sms->cart.mapper_type)
+    {
+        case MAPPER_TYPE_SEGA:
+            if (addr >= 0xFFFC)
+            {
+                sega_mapper_fffx_write(sms, addr, value);
+            }
+            break;
+
+        // control regs are not mirrored to ram (written values cannot be read back)
+        case MAPPER_TYPE_CODEMASTERS:
+            if (addr <= 0x3FFF)
+            {
+                assert(!(addr & 0xFFF) && "codemaster ctrl mirror used!");
+                codemaster_mapper_update_slot0(sms, value);
+                return;
+            }
+            else if (addr >= 0x4000 && addr <= 0x7FFF)
+            {
+                assert(!(addr & 0xFFF) && "codemaster ctrl mirror used!");
+                codemaster_mapper_update_slot1(sms, value);
+                return;
+            }
+            else if (addr >= 0x8000 && addr <= 0xBFFF)
+            {
+                if (!sms->cart.mappers.codemasters.ram_mapped || addr <= 0x9FFF)
+                {
+                    assert(!(addr & 0xFFF) && "codemaster ctrl mirror used!");
+                    codemaster_mapper_update_slot2(sms, value);
+                    return;
+                }
+            }
+            break;
+
+        case MAPPER_TYPE_NONE:
+        case MAPPER_TYPE_DAHJEE_A:
+        case MAPPER_TYPE_DAHJEE_B:
+        case MAPPER_TYPE_THE_CASTLE:
+        case MAPPER_TYPE_OTHELLO:
+            break;
+    }
+
     assert(sms->wmap[addr >> 10] && "NULL ptr in wmap!");
     sms->wmap[addr >> 10][addr & 0x3FF] = value;
-
-    if (addr >= 0xFFFC && sms->cart.mapper_type == MAPPER_TYPE_SEGA)
-    {
-        sega_mapper_fffx_write(sms, addr, value);
-    }
 }
 
 uint16_t SMS_read16(struct SMS_Core* sms, const uint16_t addr)
@@ -412,7 +536,6 @@ static uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 
 static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
-    assert(!"hcounter not yet emulated!");
     // docs say that this is a 9-bit counter, but only upper 8-bits read
     return (uint16_t)((float)sms->vdp.cycles * 1.5F) >> 1;
 }
