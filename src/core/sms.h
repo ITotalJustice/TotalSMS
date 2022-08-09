@@ -52,7 +52,7 @@ void SMS_get_pixel_region(const struct SMS_Core* sms, int* x, int* y, int* w, in
 void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down);
 void SMS_set_port_b(struct SMS_Core* sms, enum SMS_PortB pin, bool down);
 
-uint32_t SMS_crc32(uint32_t crc, const void* data, size_t size);
+uint32_t SMS_crc32(const void* data, size_t size);
 
 #ifdef __cplusplus
 }
