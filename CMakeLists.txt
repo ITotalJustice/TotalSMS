@@ -16,6 +16,20 @@ option(SDL2 "build sdl2 frontend" OFF)
 option(LIBRETRO "build libretro core" OFF)
 option(DEBUGGER "build debugger" OFF)
 
+option(SMS_SINGLE_FILE "include all src in single.c" OFF)
+option(SMS_DEBUG "enable debug" OFF)
+option(SMS_DEV "enables debug and sanitizers" OFF)
+option(SMS_FORCE_INLINE "enables force inline, disabled in debug mode" ON)
+option(SMS_DISBALE_AUDIO "force disable of audio, useful for slow systems" OFF)
+
+option(TEST_AUDIO "" OFF)
+option(TEST_GFX "" OFF)
+option(TEST_ROMRUNNER "" OFF)
+option(TEST_PERF "" OFF)
+option(TEST_ALL "build all tests" OFF)
+
+option(LTO "enable lto for all targets" OFF)
+
 macro(set_toolchain_for_system enabled path)
     if (${enabled})
         set(CMAKE_TOOLCHAIN_FILE ${path})
@@ -44,28 +58,27 @@ project(TotalSMS
     LANGUAGES C
 )
 
-message("COMPILER: using ${CMAKE_C_COMPILER_ID}")
+message(STATUS "COMPILER: using ${CMAKE_C_COMPILER_ID}")
 
 # write out compile commands in clangd is found
 find_program(CLANGD_INSTALLED clangd)
 if (CLANGD_INSTALLED)
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-    message("found clangd: generating compile_commands.json to ${CMAKE_BINARY_DIR}/compile_commands.json")
+    message(STATUS "found clangd: generating compile_commands.json to ${CMAKE_BINARY_DIR}/compile_commands.json")
 else()
-    message("cant find clangd: not generating compile_commands.json")
+    message(STATUS "cant find clangd: not generating compile_commands.json")
 endif()
 
-option(SMS_SINGLE_FILE "include all src in single.c" OFF)
-option(SMS_DEBUG "enable debug" OFF)
-option(SMS_DEV "enables debug and sanitizers" OFF)
-option(SMS_FORCE_INLINE "enables force inline, disabled in debug mode" ON)
-option(SMS_DISBALE_AUDIO "force disable of audio, useful for slow systems" OFF)
-
-option(TEST_AUDIO "" OFF)
-option(TEST_GFX "" OFF)
-option(TEST_ROMRUNNER "" OFF)
-option(TEST_PERF "" OFF)
-option(TEST_ALL "build all tests" OFF)
+if (LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+    if (ipo_supported)
+        message(STATUS "IPO / LTO enabled for ALL targets")
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(STATUS "IPO / LTO not supported")
+    endif()
+endif()
 
 if (TEST_ALL)
     set(TEST_AUDIO ON)

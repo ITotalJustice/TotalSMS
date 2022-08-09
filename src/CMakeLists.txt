@@ -31,22 +31,7 @@ list(APPEND gcc_flags
     -Wcast-align=strict
     -Wunused-macros
     -Wbad-function-cast
-
-    -Ofast
-    # -funroll-loops
-    # -funroll-all-loops
-    # -fivopts
-    # -ftree-loop-ivcanon
-    # -fsched-pressure
-    # -fsched-spec-load
-    # -fsched-spec-load-dangerous
-    # -fomit-frame-pointer
-
-    # -fgcse-sm
-    # -fgcse-las
-
-    # -fmodulo-sched
-    # -fmodulo-sched-allow-regmoves
+    -ffunction-sections -fdata-sections
 )
 
 list(APPEND clang_flags
@@ -108,7 +93,7 @@ function(target_apply_lto target)
         message(STATUS "IPO / LTO enabled for target: ${target}")
         set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
     else()
-        message(STATUS "IPO / LTO not supported: <${ipo_error}>")
+        message(STATUS "IPO / LTO not supported")
     endif()
 endfunction()
 

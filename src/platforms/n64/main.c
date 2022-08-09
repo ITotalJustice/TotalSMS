@@ -1,28 +1,23 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+#include <strings.h>
+// #include </opt/libdragon/mips64-elf/include/libdragon.h>
+// #include <minizip/unzip.h>
+#include <unzip.h>
 #include <libdragon.h>
 #include <sms.h>
 
-#define USE_DFS 0
+#define FS_ENTRIES_MAX 256
 
-#if USE_DFS == 0
-    #include "rom.h"
-    #include "romgg.h"
-    #include "rom_castle.h"
-    #include "rom_flicky.h"
-    #include "rom_king_valley.h"
-    #include "rom_mean_bean.h"
-    #include "rom_fantasy_zone.h"
-    #include "rom_golden_axe.h"
-    #include "rom_phantasy_star.h"
-    #include "rom_sagaia.h"
-    // #include "rom_zillion.h"
-    // #include "rom_aladdin.h"
-    #include "rom_mega_man.h"
-    // #include "rom_shining_force.h"
-    #include "rom_sonic_chaos.h"
-#endif
+static char fs_dir[512];
+static dir_t fs_entries[FS_ENTRIES_MAX];
+static size_t fs_entries_count;
+
+static uint8_t rom_data[SMS_ROM_SIZE_MAX+1];
+static size_t rom_size;
 
 #define FPS_SKIP_MAX (4)
 #define AUDIO_FREQ (22050)
@@ -50,6 +45,108 @@ static display_context_t disp = 0;
 // See: https://github.com/DragonMinded/libdragon/blob/92feeeb9b7d2c03d434a5bee00e82c52159a9a0b/src/rdp.c#L99
 extern void *__safe_buffer[3];
 
+enum ExtensionType
+{
+    ExtensionType_ROM,
+    ExtensionType_ZIP,
+    ExtensionType_UNK
+};
+
+static enum ExtensionType get_extension_type(const char* file_name)
+{
+    const char* ext = strrchr(file_name, '.');
+
+    if (!ext)
+    {
+        return ExtensionType_UNK;
+    }
+
+    static const struct
+    {
+        const char* const ext;
+        enum ExtensionType type;
+    } ext_pairs[] =
+    {
+        { ".sms", ExtensionType_ROM },
+        { ".gg", ExtensionType_ROM },
+        { ".sg", ExtensionType_ROM },
+        { ".zip", ExtensionType_ZIP },
+    };
+
+    #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
+    for (size_t i = 0; i < ARRAY_SIZE(ext_pairs); ++i)
+    {
+        if (!strcasecmp(ext, ext_pairs[i].ext))
+        {
+            return ext_pairs[i].type;
+        }
+    }
+
+    return ExtensionType_UNK;
+}
+
+static bool loadzip(const char* path)
+{
+    unzFile zf = unzOpen64(path);
+
+    if (zf != NULL)
+    {
+        unz_global_info64 global_info;
+        if (UNZ_OK == unzGetGlobalInfo64(zf, &global_info))
+        {
+            for (uint64_t i = 0; i < global_info.number_entry; i++)
+            {
+                if (UNZ_OK == unzOpenCurrentFile(zf))
+                {
+                    unz_file_info64 file_info = {0};
+                    char name[256] = {0};
+
+                    if (UNZ_OK == unzGetCurrentFileInfo64(zf, &file_info, name, sizeof(name), NULL, 0, NULL, 0))
+                    {
+                        if (get_extension_type(name) == ExtensionType_ROM)
+                        {
+                            if (file_info.uncompressed_size < sizeof(rom_data))
+                            {
+                                rom_size = file_info.uncompressed_size;
+                                unzReadCurrentFile(zf, rom_data, rom_size);
+                                unzClose(zf);
+                                return true;
+                            }
+                        }
+                    }
+
+                    unzCloseCurrentFile(zf);
+                }
+
+                // advance to the next file (if there is one)
+                if (i + 1 < global_info.number_entry)
+                {
+                    unzGoToNextFile(zf); // todo: error handling
+                }
+            }
+        }
+
+        unzClose(zf);
+    }
+
+    return false;
+}
+
+
+static bool loadfile(const char* path)
+{
+    FILE* f = fopen(path, "rb");
+
+    if (f)
+    {
+        rom_size = fread(rom_data, 1, sizeof(rom_data), f);
+        fclose(f);
+        return rom_size > 0;
+    }
+
+    return false;
+}
 
 static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
 {
@@ -75,7 +172,7 @@ static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
     }
 }
 
-static void display_message_error(const char* msg)
+_Noreturn static void display_message_error(const char* msg)
 {
     console_init();
     console_set_render_mode(RENDER_MANUAL);
@@ -84,19 +181,6 @@ static void display_message_error(const char* msg)
     {
         console_clear();
             printf("%s", msg);
-        console_render();
-    }
-}
-
-static void display_message_error2(const char* msg, int d)
-{
-    console_init();
-    console_set_render_mode(RENDER_MANUAL);
-
-    for (;;)
-    {
-        console_clear();
-            printf("%s %d", msg, d);
         console_render();
     }
 }
@@ -137,8 +221,6 @@ static void aquire_and_swap_buffers(void)
     SMS_set_pixels(&sms, (short*)__safe_buffer[disp-1]+(320*25)+30, 320, 16);
 }
 
-static const char* skip_str[] = {"Frameskip: 0", "Frameskip: 1", "Frameskip: 2", "Frameskip: 3", "Frameskip: 4"};
-
 static void core_vblank_callback(void* user)
 {
     static int fps_skip_counter = 0;
@@ -150,6 +232,8 @@ static void core_vblank_callback(void* user)
     }
     else
     {
+        static const char* skip_str[] = {"Frameskip: 0", "Frameskip: 1", "Frameskip: 2", "Frameskip: 3", "Frameskip: 4"};
+
         graphics_draw_text(disp, 10, 10, "TotalSMS v0.0.1b");
         graphics_draw_text(disp, 200, 10, skip_str[fps_skip]);
         graphics_draw_text(disp, 10, 220, "[Z = Menu] [L/R = dec/inc FPS skip]");
@@ -166,14 +250,121 @@ static void core_vblank_callback(void* user)
 
 static int menu_update_cursor(int cursor, int max)
 {
-    if (cursor < 0) return max-1;
+    if (cursor < 0)
+    {
+        return max-1;
+    }
     return (cursor % max);
+}
+
+// SOURCE: https://github.com/DragonMinded/libdragon/blob/49e6a7d2f2ef88f0be111286f1678ae560fddfa1/examples/dfsdemo/dfsdemo.c#L24
+static void chdir( const char * const dirent )
+{
+    /* Ghetto implementation */
+    if( strcmp( dirent, ".." ) == 0 )
+    {
+        /* Go up one */
+        int len = strlen( fs_dir ) - 1;
+
+        /* Stop going past the min */
+        if( fs_dir[len] == '/' && fs_dir[len-1] == '/' && fs_dir[len-2] == ':' )
+        {
+            return;
+        }
+
+        if( fs_dir[len] == '/' )
+        {
+            fs_dir[len] = 0;
+            len--;
+        }
+
+        while( fs_dir[len] != '/')
+        {
+            fs_dir[len] = 0;
+            len--;
+        }
+    }
+    else
+    {
+        /* Add to end */
+        strcat( fs_dir, dirent );
+        strcat( fs_dir, "/" );
+    }
+}
+
+// SOURCE: https://github.com/DragonMinded/libdragon/blob/49e6a7d2f2ef88f0be111286f1678ae560fddfa1/examples/dfsdemo/dfsdemo.c#L58
+static int compare(const void * a, const void * b)
+{
+    const dir_t *first = (const dir_t *)a;
+    const dir_t *second = (const dir_t *)b;
+
+    if(first->d_type == DT_DIR && second->d_type != DT_DIR)
+    {
+        /* First should be first */
+        return -1;
+    }
+
+    if(first->d_type != DT_DIR && second->d_type == DT_DIR)
+    {
+        /* First should be second */
+        return 1;
+    }
+
+    return strcmp(first->d_name, second->d_name);
+}
+
+// SOURCE: https://github.com/DragonMinded/libdragon/blob/49e6a7d2f2ef88f0be111286f1678ae560fddfa1/examples/dfsdemo/dfsdemo.c#L78
+static bool scan_dfs(void)
+{
+    fs_entries_count = 0;
+
+    /* Grab first */
+    int ret = dir_findfirst(fs_dir, &fs_entries[fs_entries_count]);
+
+    if( ret != 0 )
+    {
+        return false;
+    }
+
+    fs_entries_count++;
+
+    /* Copy in loop */
+    while (fs_entries_count < FS_ENTRIES_MAX)
+    {
+        /* Grab next */
+        ret = dir_findnext(fs_dir,&fs_entries[fs_entries_count]);
+
+        if (ret != 0)
+        {
+            break;
+        }
+
+        // check the extention is what we want
+        switch (get_extension_type(fs_entries[fs_entries_count].d_name))
+        {
+            case ExtensionType_ROM:
+            case ExtensionType_ZIP:
+                fs_entries_count++;
+                break;
+
+            case ExtensionType_UNK:
+                printf("skipping file: %s\n", fs_entries[fs_entries_count].d_name);
+                break;
+        }
+    }
+
+    if (fs_entries_count > 1)
+    {
+        /* Should sort! */
+        qsort(fs_entries, fs_entries_count, sizeof(dir_t), compare);
+    }
+
+    return true;
 }
 
 static void display_menu(struct controller_data* kdown, struct controller_data* kheld)
 {
     (void)kheld;
-    #define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
 
     struct RomEntry
     {
@@ -182,29 +373,8 @@ static void display_menu(struct controller_data* kdown, struct controller_data* 
         size_t size;
     };
 
-    #if USE_DFS == 0
-    static const struct RomEntry entries[] =
-    {
-        { .name = "Sonic The Hedgehog.sms", .data = roms_Sonic_The_Hedgehog__USA__Europe__sms, .size = roms_Sonic_The_Hedgehog__USA__Europe__sms_len },
-        { .name = "Fantasy Zone.sms", .data = roms_sms_Fantasy_Zone__World___Rev_2__sms, .size = roms_sms_Fantasy_Zone__World___Rev_2__sms_len },
-        { .name = "Golden Axe.sms", .data = roms_sms_Golden_Axe__USA__Europe__sms, .size = roms_sms_Golden_Axe__USA__Europe__sms_len },
-        { .name = "Phantasy Star.sms", .data = roms_sms_Phantasy_Star__USA__Europe___Rev_3__sms, .size = roms_sms_Phantasy_Star__USA__Europe___Rev_3__sms_len },
-        { .name = "Sagaia.sms", .data = roms_sms_Sagaia__Europe__sms, .size = roms_sms_Sagaia__Europe__sms_len },
-        // { .name = "Zillion.sms", .data = roms_sms_Zillion__USA___Rev_1__sms, .size = roms_sms_Zillion__USA___Rev_1__sms_len },
-        { .name = "Sonic The Hedgehog - Triple Trouble.gg", .data = roms_gg_Sonic_The_Hedgehog___Triple_Trouble__USA__Europe__gg, .size = roms_gg_Sonic_The_Hedgehog___Triple_Trouble__USA__Europe__gg_len },
-        { .name = "Sonic Chaos.gg", .data = roms_gg_Sonic_Chaos__USA__Europe__gg, .size = roms_gg_Sonic_Chaos__USA__Europe__gg_len },
-        // { .name = "Aladdin.gg", .data = roms_gg_Aladdin__USA__Europe__gg, .size = roms_gg_Aladdin__USA__Europe__gg_len },
-        { .name = "Megaman.gg", .data = roms_gg_Megaman__U______gg, .size = roms_gg_Megaman__U______gg_len },
-        // { .name = "Shining Force II.gg", .data = roms_gg_Shining_Force_II___The_Sword_of_Hajya__USA__gg, .size = roms_gg_Shining_Force_II___The_Sword_of_Hajya__USA__gg_len },
-        { .name = "Dr Robotnik's MBM.gg", .data = roms_gg_Dr__Robotnik_s_Mean_Bean_Machine__USA__Europe__gg, .size = roms_gg_Dr__Robotnik_s_Mean_Bean_Machine__USA__Europe__gg_len },
-        { .name = "The Castle.sg", .data = roms_sg_Castle__The__Japan__sg, .size = roms_sg_Castle__The__Japan__sg_len },
-        { .name = "Flicky.sg", .data = roms_sg_Flicky__Japan__sg, .size = roms_sg_Flicky__Japan__sg_len },
-        { .name = "King's Valley.sg", .data = roms_sg_King_s_Valley__Taiwan__sg, .size = roms_sg_King_s_Valley__Taiwan__sg_len },
-    };
-    #endif
-
     static int cursor = 0;
-    static const int max = ARRAY_SIZE(entries);
+    const int max = fs_entries_count;
 
     graphics_fill_screen(disp, 0);
 
@@ -216,23 +386,59 @@ static void display_menu(struct controller_data* kdown, struct controller_data* 
     {
         cursor = menu_update_cursor(cursor+1, max);
     }
-    else if (kdown->c[0].A)
+    else if (kdown->c[0].A && fs_entries_count > 0)
     {
-        // for (int i = 0; i < 3; i++)
-        // {
-        //     graphics_fill_screen(disp, 0);
-        //     display_show(disp);
-        //     aquire_and_swap_buffers();
-        // }
-
-        if (!SMS_loadrom(&sms, entries[cursor].data, entries[cursor].size, -1))
+        if (fs_entries[cursor].d_type == DT_REG)
         {
-            display_message_error("failed to load sms rom");
+            char path[512];
+            strcpy( path, fs_dir );
+            strcat( path, fs_entries[cursor].d_name );
+
+            bool success = false;
+
+            switch (get_extension_type(fs_entries[cursor].d_name))
+            {
+                case ExtensionType_ROM:
+                    success = loadfile(path);
+                    break;
+
+                case ExtensionType_ZIP:
+                    success = loadzip(path);
+                    break;
+
+                case ExtensionType_UNK:
+                    break;
+            }
+
+            if (success)
+            {
+                if (!SMS_loadrom(&sms, rom_data, rom_size, -1))
+                {
+                    char msg[128] = {0};
+                    sprintf(msg, "failed to loadrom: %s", fs_entries[cursor].d_name);
+                    display_message_error(msg);
+                }
+                else
+                {
+                    loadrom_once = true;
+                    menu = Menu_ROM;
+                }
+            }
+        }
+        else if (fs_entries[cursor].d_type == DT_DIR)
+        {
+            chdir(fs_entries[cursor].d_name);
+            scan_dfs();
+            cursor = 0;
         }
 
-        loadrom_once = true;
-        menu = Menu_ROM;
         return;
+    }
+    else if (kdown->c[0].B)
+    {
+        chdir("..");
+        scan_dfs();
+        cursor = 0;
     }
     else if (kdown->c[0].Z && loadrom_once)
     {
@@ -246,18 +452,18 @@ static void display_menu(struct controller_data* kdown, struct controller_data* 
         return;
     }
 
-    graphics_draw_text(disp, 10, 10, "TotalSMS v0.0.1b");
+    graphics_draw_text(disp, 10, 10, "TotalSMS v0.0.1c");
 
     for (int i = 0; i < max; i++)
     {
         if (cursor == i)
         {
             graphics_draw_text(disp, 5, 25 + (i * 15), "->");
-            graphics_draw_text(disp, 20, 25 + (i * 15), entries[i].name);
+            graphics_draw_text(disp, 20, 25 + (i * 15), fs_entries[i].d_name);
         }
         else
         {
-            graphics_draw_text(disp, 5, 25 + (i * 15), entries[i].name);
+            graphics_draw_text(disp, 5, 25 + (i * 15), fs_entries[i].d_name);
         }
     }
 
@@ -336,6 +542,8 @@ int main(void)
         display_message_error("failed to init sms");
     }
 
+    assert(0 && "hello world");
+
     SMS_set_colour_callback(&sms, core_colour_callback);
     SMS_set_vblank_callback(&sms, core_vblank_callback);
     #if AUDIO_ENABLED
@@ -343,19 +551,23 @@ int main(void)
     #endif
     aquire_and_swap_buffers();
 
-    #if USE_DFS
     if (dfs_init(DFS_DEFAULT_LOCATION) != DFS_ESUCCESS)
     {
         display_message_error("Filesystem failed to start!\n");
     }
-    else
+
+    // first try and mount the romfs
+    strcpy(fs_dir, "rom://");
+    if (!scan_dfs())
     {
-        // todo: finish the filebrowser
-        dir_t buf;
-        dir_findfirst("rom://", &buf);
-        display_message_error(buf.d_name);
+        // if that fails, mount the sd card
+        strcpy(fs_dir, "sd://");
+        if (!scan_dfs())
+        {
+            // if that fails, fail early because we have no games :(
+            display_message_error("No roms or folders found!\n");
+        }
     }
-    #endif
 
     for (;;)
     {

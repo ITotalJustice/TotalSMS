@@ -12,6 +12,7 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SDL": true,
                 "SMS_SINGLE_FILE": true
             }
@@ -22,6 +23,7 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SDL2": true,
                 "SMS_SINGLE_FILE": true
             }
@@ -42,6 +44,7 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "DEBUGGER": true
             }
         },
@@ -52,6 +55,7 @@
             "toolchainFile": "${sourceDir}/cmake/toolchain/dreamcast.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -62,6 +66,7 @@
             "toolchainFile": "${sourceDir}/cmake/toolchain/n64.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -72,6 +77,7 @@
             "toolchainFile": "/opt/psn00bsdk/lib/libpsn00b/cmake/sdk.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -82,6 +88,7 @@
             "toolchainFile": "${sourceDir}/cmake/toolchain/ps2.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -92,6 +99,7 @@
             "toolchainFile": "$env{DEVKITPRO}/cmake/GameCube.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -102,6 +110,7 @@
             "toolchainFile": "$env{DEVKITPRO}/cmake/NDS.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -112,6 +121,7 @@
             "toolchainFile": "$env{DEVKITPRO}/cmake/3DS.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -122,6 +132,7 @@
             "toolchainFile": "$env{DEVKITPRO}/cmake/Wii.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -132,6 +143,7 @@
             "toolchainFile": "$env{DEVKITPRO}/cmake/WiiU.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -142,6 +154,7 @@
             "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         }
