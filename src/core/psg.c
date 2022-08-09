@@ -8,14 +8,6 @@
 
 #define PSG sms->psg
 
-#if SMS_DISBALE_AUDIO
-
-void psg_reg_write(struct SMS_Core* sms, const uint8_t value) {}
-void psg_sync(struct SMS_Core* sms) {}
-void psg_run(struct SMS_Core* sms, const uint8_t cycles) {}
-
-#else
-
 enum
 {
     LATCH_TYPE_TONE = 0,
@@ -32,6 +24,13 @@ enum
     LFSR_RESET_VALUE = 0x8000,
 };
 
+#if SMS_DISBALE_AUDIO
+
+void psg_reg_write(struct SMS_Core* sms, const uint8_t value) {}
+void psg_sync(struct SMS_Core* sms) {}
+void psg_run(struct SMS_Core* sms, const uint8_t cycles) {}
+
+#else
 
 static FORCE_INLINE void latch_reg_write(struct SMS_Core* sms, const uint8_t value)
 {
