@@ -28,7 +28,6 @@ enum
 
 void psg_reg_write(struct SMS_Core* sms, const uint8_t value) {}
 void psg_sync(struct SMS_Core* sms) {}
-void psg_run(struct SMS_Core* sms, const uint8_t cycles) {}
 
 #else
 
@@ -89,8 +88,6 @@ static FORCE_INLINE void data_reg_write(struct SMS_Core* sms, const uint8_t valu
 
 void psg_reg_write(struct SMS_Core* sms, const uint8_t value)
 {
-    psg_sync(sms);
-
     // if MSB is set, then this is a latched write, else its a normal data write
     if (value & 0x80)
     {
@@ -212,38 +209,22 @@ static void sample(struct SMS_Core* sms)
 // this is called on psg_reg_write() and at the end of a frame
 void psg_sync(struct SMS_Core* sms)
 {
-    // psg regs cannot be read, so no point ticking stuff
-    // if we don't have callback for samples to be pushed
-    if (!sms->apu_callback)
-    {
-        return;
-    }
-
     // psg is 16x slower than the cpu, so, it only makes sense to tick
     // each component at every 16 step.
     enum { STEP = 16 };
 
     // this loop will *not* cause PSG.cycles to underflow!
-    for (; STEP <= PSG.cycles; PSG.cycles -= STEP)
+    // for (; STEP <= PSG.cycles; PSG.cycles -= STEP)
+    for (int i = sms->apu_callback_freq; STEP <= i; i -= STEP)
     {
         tick_tone(sms, 0, STEP);
         tick_tone(sms, 1, STEP);
         tick_tone(sms, 2, STEP);
         tick_noise(sms, STEP);
-
-        sms->apu_callback_counter += STEP;
-
-        while (sms->apu_callback_counter >= sms->apu_callback_freq)
-        {
-            sms->apu_callback_counter -= sms->apu_callback_freq;
-            sample(sms);
-        }
     }
-}
 
-void psg_run(struct SMS_Core* sms, const uint8_t cycles)
-{
-    PSG.cycles += cycles; // PSG.cycles is an uint32_t, so it won't overflow
+    sample(sms);
+    sms_scheduler_add(sms, SMS_Event_PSG, psg_sync, sms->apu_callback_freq);
 }
 
 #endif // SMS_DISBALE_AUDIO

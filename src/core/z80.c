@@ -740,7 +740,7 @@ static FORCE_INLINE void CALL_cc(struct SMS_Core* sms, bool cond)
     if (cond)
     {
         CALL(sms);
-        sms->cpu.cycles += 7;
+        sms->scheduler.cycles += 7;
     }
     else
     {
@@ -758,7 +758,7 @@ static FORCE_INLINE void RET_cc(struct SMS_Core* sms, bool cond)
     if (cond)
     {
         RET(sms);
-        sms->cpu.cycles += 6;
+        sms->scheduler.cycles += 6;
     }
 }
 
@@ -766,12 +766,14 @@ static FORCE_INLINE void RETI(struct SMS_Core* sms)
 {
     REG_PC = POP(sms);
     sms->cpu.IFF1 = true;
+    z80_add_interrupt(sms);
 }
 
 static FORCE_INLINE void RETN(struct SMS_Core* sms)
 {
     REG_PC = POP(sms);
     sms->cpu.IFF1 = sms->cpu.IFF2;
+    z80_add_interrupt(sms);
 }
 
 static FORCE_INLINE void JR(struct SMS_Core* sms)
@@ -786,7 +788,7 @@ static FORCE_INLINE void DJNZ(struct SMS_Core* sms)
     if (REG_B)
     {
         JR(sms);
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
     else
     {
@@ -799,7 +801,7 @@ static FORCE_INLINE void JR_cc(struct SMS_Core* sms, bool cond)
     if (cond)
     {
         JR(sms);
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
     else
     {
@@ -827,12 +829,14 @@ static FORCE_INLINE void JP_cc(struct SMS_Core* sms, bool cond)
 static FORCE_INLINE void EI(struct SMS_Core* sms)
 {
     sms->cpu.ei_delay = true;
+    sms_scheduler_add(sms, SMS_Event_INTERRUPT, z80_irq_event, 0);
 }
 
 static FORCE_INLINE void DI(struct SMS_Core* sms)
 {
     sms->cpu.IFF1 = false;
     sms->cpu.IFF2 = false;
+    sms_scheduler_remove(sms, SMS_Event_INTERRUPT);
 }
 
 static FORCE_INLINE uint8_t _RL(struct SMS_Core* sms, const uint8_t value, bool carry)
@@ -1079,7 +1083,7 @@ static FORCE_INLINE void CPIR(struct SMS_Core* sms)
     if (REG_BC != 0 && FLAG_Z == false)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1095,7 +1099,7 @@ static FORCE_INLINE void CPDR(struct SMS_Core* sms)
     if (REG_BC != 0 && FLAG_Z == false)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1135,7 +1139,7 @@ static FORCE_INLINE void LDIR(struct SMS_Core* sms)
     if (REG_BC != 0)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1151,7 +1155,7 @@ static FORCE_INLINE void LDDR(struct SMS_Core* sms)
     if (REG_BC != 0)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1183,7 +1187,7 @@ static FORCE_INLINE void INIR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1199,7 +1203,7 @@ static FORCE_INLINE void INDR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1231,7 +1235,7 @@ static FORCE_INLINE void OTIR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1247,7 +1251,7 @@ static FORCE_INLINE void OTDR(struct SMS_Core* sms)
     if (REG_B != 0)
     {
         REG_PC -= 2;
-        sms->cpu.cycles += 5;
+        sms->scheduler.cycles += 5;
     }
 }
 
@@ -1267,10 +1271,21 @@ static FORCE_INLINE void OUT(struct SMS_Core* sms, const uint8_t value)
     writeIO(REG_C, value);
 }
 
+void z80_halt_event(struct SMS_Core* sms)
+{
+    while (sms->cpu.halt && !sms->scheduler.frame_end)
+    {
+        assert(sms->scheduler.next_event_cycles >= sms->scheduler.cycles && "unsigned underflow happens!");
+        sms->scheduler.cycles = sms->scheduler.next_event_cycles;
+        sms_scheduler_fire(sms);
+    }
+}
+
 static FORCE_INLINE void HALT(struct SMS_Core* sms)
 {
     assert((sms->cpu.ei_delay || sms->cpu.IFF1) && "halt with interrupts disabled!");
     sms->cpu.halt = true;
+    sms_scheduler_add(sms, SMS_Event_HALT, z80_halt_event, 0);
 }
 
 static FORCE_INLINE void DAA(struct SMS_Core* sms)
@@ -1407,42 +1422,61 @@ static FORCE_INLINE void LD_A_R(struct SMS_Core* sms)
     FLAG_S = REG_A >> 7;
 }
 
-static FORCE_INLINE void isr(struct SMS_Core* sms)
+void z80_add_interrupt(struct SMS_Core* sms)
+{
+    if (sms->cpu.IFF1 && (sms->cpu.interrupt_requested || vdp_has_interrupt(sms)))
+    {
+        sms_scheduler_add(sms, SMS_Event_INTERRUPT, z80_irq_event, 0);
+    }
+    else
+    {
+        sms_scheduler_remove(sms, SMS_Event_INTERRUPT);
+    }
+}
+
+void z80_irq_event(struct SMS_Core* sms)
 {
     if (sms->cpu.ei_delay)
     {
         sms->cpu.ei_delay = false;
         sms->cpu.IFF1 = true;
         sms->cpu.IFF2 = true;
-        return;
-    }
 
-    if (sms->cpu.IFF1 && (sms->cpu.interrupt_requested || vdp_has_interrupt(sms)))
+        if (sms->cpu.interrupt_requested || vdp_has_interrupt(sms))
+        {
+            // +1 cycles because we don't want it to fire imm after delay
+            sms_scheduler_add(sms, SMS_Event_INTERRUPT, z80_irq_event, 1);
+        }
+    }
+    else
     {
         sms->cpu.IFF1 = false;
         sms->cpu.IFF2 = false;
         sms->cpu.interrupt_requested = false;
         sms->cpu.halt = false;
-        sms->cpu.cycles += 13;
+        sms->scheduler.cycles += 13;
 
         RST(sms, 0x38);
     }
 }
 
+// todo: nmi happens in vblank (iirc)
 void z80_nmi(struct SMS_Core* sms)
 {
     sms->cpu.IFF1 = false;
     sms->cpu.IFF2 = false;
     sms->cpu.halt = false;
     sms->cpu.ei_delay = false;
-    sms->cpu.cycles += 11;
+    sms->scheduler.cycles += 11;
 
     RST(sms, 0x66);
+    sms_scheduler_remove(sms, SMS_Event_INTERRUPT);
 }
 
 void z80_irq(struct SMS_Core* sms)
 {
     sms->cpu.interrupt_requested = true;
+    z80_add_interrupt(sms);
 }
 
 // NOTE: templates would be much nicer here
@@ -1491,7 +1525,7 @@ static FORCE_INLINE void execute_CB(struct SMS_Core* sms)
         set_r8(sms, result, opcode);
     }
 
-    sms->cpu.cycles += CYC_CB[opcode]; // pretty sure this isn't accurate
+    sms->scheduler.cycles += CYC_CB[opcode]; // pretty sure this isn't accurate
 }
 
 static FORCE_INLINE void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
@@ -1517,7 +1551,7 @@ static FORCE_INLINE void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
             case 0x7: REG_A = result; break;
         }
 
-        sms->cpu.cycles += 23;
+        sms->scheduler.cycles += 23;
     }
     // bit is the only instr that doesn't set the result,
     // so this this 'else' will be for bit!
@@ -1526,7 +1560,7 @@ static FORCE_INLINE void execute_CB_IXIY(struct SMS_Core* sms, uint16_t ixy)
         // for IXIY BIT() instr only, the B3 and B5 flags are set differently
         FLAG_B3 = IS_BIT_SET(addr >> 8, 3);
         FLAG_B5 = IS_BIT_SET(addr >> 8, 5);
-        sms->cpu.cycles += 20;
+        sms->scheduler.cycles += 20;
     }
 }
 
@@ -1535,7 +1569,7 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
     const uint8_t opcode = read8(REG_PC++);
     const uint16_t pair = PAIR(*ixy_hi, *ixy_lo);
 
-    sms->cpu.cycles += CYC_DDFD[opcode];
+    sms->scheduler.cycles += CYC_DDFD[opcode];
 
     #define DISP() (int8_t)read8(REG_PC++)
 
@@ -1707,7 +1741,7 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
 static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
 {
     const uint8_t opcode = read8(REG_PC++);
-    sms->cpu.cycles += CYC_ED[opcode];
+    sms->scheduler.cycles += CYC_ED[opcode];
 
     switch (opcode)
     {
@@ -1842,7 +1876,7 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
 static FORCE_INLINE void execute(struct SMS_Core* sms)
 {
     const uint8_t opcode = read8(REG_PC++);
-    sms->cpu.cycles += CYC_00[opcode];
+    sms->scheduler.cycles += CYC_00[opcode];
 
     switch (opcode)
     {
@@ -2055,18 +2089,7 @@ static FORCE_INLINE void execute(struct SMS_Core* sms)
 
 void z80_run(struct SMS_Core* sms)
 {
-    sms->cpu.cycles = 0;
-
-    if (!sms->cpu.halt)
-    {
-        execute(sms);
-    }
-    else
-    {
-        sms->cpu.cycles = 4;
-    }
-
-    isr(sms);
+    execute(sms);
 }
 
 void z80_init(struct SMS_Core* sms)

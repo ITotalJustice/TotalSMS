@@ -225,6 +225,8 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
         VDP.sprite_collision = false;
         VDP.fifth_sprite_num = 0;
 
+        z80_add_interrupt(sms);
+
         return v;
     }
     else
@@ -240,6 +242,8 @@ uint8_t vdp_status_flag_read(struct SMS_Core* sms)
         VDP.line_interrupt_pending = false;
         VDP.sprite_overflow = false;
         VDP.sprite_collision = false;
+
+        z80_add_interrupt(sms);
 
         return v;
     }
@@ -281,6 +285,8 @@ void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
 
         VDP.registers[addr & 0xF] = value;
     }
+
+    z80_add_interrupt(sms);
 }
 
 // same as i used in dmg / gbc rendering for gb
@@ -976,6 +982,7 @@ static void vdp_advance_line_counter(struct SMS_Core* sms)
         {
             VDP.line_interrupt_pending = true;
             VDP.line_counter = VDP.registers[0xA];
+            z80_add_interrupt(sms);
         }
     }
 }
@@ -1057,6 +1064,7 @@ static void vdp_tick(struct SMS_Core* sms)
     {
         SMS_skip_frame(sms, false);
         VDP.frame_interrupt_pending = true;
+        z80_add_interrupt(sms);
 
         if (sms->vblank_callback)
         {
@@ -1084,21 +1092,14 @@ static void vdp_tick(struct SMS_Core* sms)
         VDP.vcount++;
         VDP.vcount_port++;
     }
-}
 
-void vdp_run(struct SMS_Core* sms, const uint8_t cycles)
-{
-    VDP.cycles += cycles;
-
-    if (UNLIKELY(VDP.cycles >= NTSC_CYCLES_PER_LINE))
-    {
-        VDP.cycles -= NTSC_CYCLES_PER_LINE;
-        vdp_tick(sms);
-    }
+    sms_scheduler_add(sms, SMS_Event_VDP, vdp_tick, NTSC_CYCLES_PER_LINE);
 }
 
 void vdp_init(struct SMS_Core* sms)
 {
+    sms_scheduler_add(sms, SMS_Event_VDP, vdp_tick, NTSC_CYCLES_PER_LINE);
+
     memset(&VDP, 0, sizeof(VDP));
     // update palette
     vdp_mark_palette_dirty(sms);

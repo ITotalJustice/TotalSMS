@@ -402,11 +402,13 @@ void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t 
     {
         sms->apu_callback = cb;
         sms->apu_callback_freq = (SMS_CPU_CLOCK / freq);
+        sms_scheduler_add(sms, SMS_Event_PSG, psg_sync, sms->apu_callback_freq);
     }
     else
     {
         sms->apu_callback = NULL;
         sms->apu_callback_freq = 0;
+        sms_scheduler_remove(sms, SMS_Event_PSG);
     }
 }
 
@@ -504,16 +506,107 @@ bool SMS_parity8(uint8_t value)
     #endif
 }
 
-void SMS_run(struct SMS_Core* sms, size_t cycles)
+static void find_next_event(struct SMS_Core* sms)
 {
-    for (size_t i = 0; i < cycles; i += sms->cpu.cycles)
-    {
-        z80_run(sms);
-        vdp_run(sms, sms->cpu.cycles);
-        psg_run(sms, sms->cpu.cycles);
+    uint32_t next_cycles = UINT32_MAX;
+    uint8_t index = 99;
 
-        assert(sms->cpu.cycles != 0);
+    for (int i = 0; i < SMS_Event_MAX; i++)
+    {
+        if (sms->scheduler.entries[i].cycles < next_cycles && sms->scheduler.entries[i].enabled)
+        {
+            next_cycles = sms->scheduler.entries[i].cycles;
+            index = i;
+        }
     }
 
-    psg_sync(sms);
+    assert(index != 99);
+
+    sms->scheduler.next_event_cycles = next_cycles;
+    sms->scheduler.next_event = index;
+}
+
+void sms_scheduler_add(struct SMS_Core* sms, enum SMS_Event e, void (*cb)(struct SMS_Core*), uint32_t cycles)
+{
+    struct SMS_SchedulerEntry* entry = &sms->scheduler.entries[e];
+    entry->enabled = true;
+    entry->callback = cb;
+    entry->cycles = sms->scheduler.cycles + cycles - entry->delta;
+
+    // if new event is to expire sooner, make it the next_event
+    if (entry->cycles < sms->scheduler.next_event_cycles)
+    {
+        sms->scheduler.next_event = e;
+        sms->scheduler.next_event_cycles = entry->cycles;
+    }
+    // if the same event was requested again and the cycles has changed,
+    // find the next event!
+    else if (sms->scheduler.next_event == e && sms->scheduler.next_event_cycles < entry->cycles)
+    {
+        // todo: find next event
+        find_next_event(sms);
+    }
+}
+
+void sms_scheduler_remove(struct SMS_Core* sms, enum SMS_Event e)
+{
+    struct SMS_SchedulerEntry* entry = &sms->scheduler.entries[e];
+    entry->enabled = false;
+    entry->delta = 0;
+
+    // if the next event just got disabled, find next event
+    if (sms->scheduler.next_event == e)
+    {
+        find_next_event(sms);
+    }
+}
+
+void sms_scheduler_fire(struct SMS_Core* sms)
+{
+    const enum SMS_Event e = sms->scheduler.next_event;
+    sms->scheduler.next_event = SMS_Event_MAX;
+
+    struct SMS_SchedulerEntry* entry = &sms->scheduler.entries[e];
+    entry->enabled = false;
+
+    if (e == SMS_Event_HALT)
+    {
+        find_next_event(sms);
+    }
+
+    // if event was late, save the delta time
+    if (e != SMS_Event_HALT && e != SMS_Event_INTERRUPT)
+    {
+        entry->delta = sms->scheduler.cycles - entry->cycles;
+    }
+
+    entry->callback(sms);
+    find_next_event(sms);
+}
+
+static void frame_event(struct SMS_Core* sms)
+{
+    sms->scheduler.frame_end = true;
+}
+
+void SMS_run(struct SMS_Core* sms, size_t cycles)
+{
+    sms->scheduler.frame_end = false;
+    sms_scheduler_add(sms, SMS_Event_FRAME, frame_event, cycles);
+
+    if (sms->cpu.halt)
+    {
+        z80_halt_event(sms);
+    }
+
+    while (!sms->scheduler.frame_end)
+    {
+        assert(sms->scheduler.next_event != SMS_Event_MAX);
+
+        z80_run(sms);
+        if (sms->scheduler.cycles >= sms->scheduler.next_event_cycles)
+        {
+            sms_scheduler_fire(sms);
+        }
+    }
 }

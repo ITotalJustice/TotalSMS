@@ -537,7 +537,8 @@ static uint8_t IO_read_vcounter(const struct SMS_Core* sms)
 static uint8_t IO_read_hcounter(const struct SMS_Core* sms)
 {
     // docs say that this is a 9-bit counter, but only upper 8-bits read
-    return (uint16_t)((float)sms->vdp.cycles * 1.5F) >> 1;
+    return 0;
+    // return (uint16_t)((float)sms->vdp.cycles * 1.5F) >> 1;
 }
 
 static uint8_t IO_vdp_status_read(struct SMS_Core* sms)

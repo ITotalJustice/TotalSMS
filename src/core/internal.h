@@ -127,14 +127,12 @@ SMS_STATIC void mapper_update(struct SMS_Core* sms);
 // [APU]
 SMS_INLINE void psg_reg_write(struct SMS_Core* sms, uint8_t value);
 SMS_STATIC void psg_sync(struct SMS_Core* sms);
-SMS_FORCE_INLINE void psg_run(struct SMS_Core* sms, uint8_t cycles);
 SMS_STATIC void psg_init(struct SMS_Core* sms);
 
 SMS_STATIC void vdp_init(struct SMS_Core* sms);
 SMS_INLINE uint8_t vdp_status_flag_read(struct SMS_Core* sms);
 SMS_INLINE void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 SMS_FORCE_INLINE bool vdp_has_interrupt(const struct SMS_Core* sms);
-SMS_FORCE_INLINE void vdp_run(struct SMS_Core* sms, uint8_t cycles);
 
 // [MISC]
 SMS_STATIC bool SMS_has_bios(const struct SMS_Core* sms);
@@ -142,6 +140,15 @@ SMS_FORCE_INLINE bool SMS_parity16(uint16_t value);
 SMS_FORCE_INLINE bool SMS_parity8(uint8_t value);
 SMS_STATIC bool SMS_is_spiderman_int_hack_enabled(const struct SMS_Core* sms);
 SMS_STATIC void vdp_mark_palette_dirty(struct SMS_Core* sms);
+
+// [SCHEDULER]
+SMS_FORCE_INLINE void sms_scheduler_add(struct SMS_Core* sms, enum SMS_Event e, void (*cb)(struct SMS_Core*), uint32_t cycles);
+SMS_FORCE_INLINE void sms_scheduler_remove(struct SMS_Core* sms, enum SMS_Event e);
+SMS_FORCE_INLINE void sms_scheduler_fire(struct SMS_Core* sms);
+
+SMS_FORCE_INLINE void z80_add_interrupt(struct SMS_Core* sms);
+SMS_STATIC void z80_irq_event(struct SMS_Core* sms);
+SMS_STATIC void z80_halt_event(struct SMS_Core* sms);
 
 #ifdef __cplusplus
 }

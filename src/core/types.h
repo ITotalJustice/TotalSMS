@@ -94,8 +94,6 @@ struct Z80_GeneralRegisterSet
 
 struct Z80
 {
-    uint16_t cycles;
-
     // [special purpose registers]
     uint16_t PC; // program counter
     uint16_t SP; // stack pointer
@@ -249,7 +247,6 @@ struct SMS_Vdp
     // not when the register is updated!
     uint8_t vertical_scroll;
 
-    int16_t cycles;
     uint16_t hcount;
     uint16_t vcount;
 
@@ -347,8 +344,6 @@ struct SMS_ApuCallbackData
 
 struct SMS_Psg
 {
-    uint32_t cycles; // elapsed cycles since last psg_sync()
-
     struct
     {
         int16_t counter; // 10-bits
@@ -386,6 +381,38 @@ struct SMS_MemoryControlRegister
     bool io_chip_disable : 1;
 };
 
+enum SMS_Event
+{
+    SMS_Event_VDP,
+    // SMS_Event_PSG0,
+    // SMS_Event_PSG1,
+    // SMS_Event_PSG2,
+    // SMS_Event_PSG3,
+    // SMS_Event_SAMPLE,
+    SMS_Event_PSG,
+    SMS_Event_HALT,
+    SMS_Event_INTERRUPT,
+    SMS_Event_FRAME,
+    SMS_Event_MAX,
+};
+
+struct SMS_SchedulerEntry
+{
+    void (*callback)(struct SMS_Core* sms);
+    uint32_t cycles;
+    uint16_t delta;
+    bool enabled;
+};
+
+struct SMS_Scheduler
+{
+    struct SMS_SchedulerEntry entries[SMS_Event_MAX];
+    enum SMS_Event next_event;
+    uint32_t next_event_cycles;
+    uint32_t cycles;
+    bool frame_end;
+};
+
 struct SMS_Core
 {
     // mapped every 0x400 due to how sega mapper works with the first
@@ -393,6 +420,7 @@ struct SMS_Core
     const uint8_t* rmap[0x10000 / 0x400]; // 64
     uint8_t* wmap[0x10000 / 0x400]; // 64
 
+    struct SMS_Scheduler scheduler;
     struct Z80 cpu;
     struct SMS_Vdp vdp;
     struct SMS_Psg psg;
