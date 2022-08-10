@@ -80,7 +80,7 @@ uint32_t SMS_crc32(const void* data, size_t size)
 
     crc = 0xFFFFFFFF;
     for (size_t i = 0; i < size; i++) {
-        byte = ((uint8_t*)data)[i];
+        byte = ((const uint8_t*)data)[i];
         crc = crc ^ byte;
         c = ((crc<<31>>31) & g7) ^ ((crc<<30>>31) & g6) ^
             ((crc<<29>>31) & g5) ^ ((crc<<28>>31) & g4) ^
