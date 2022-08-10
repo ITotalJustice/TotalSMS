@@ -71,6 +71,18 @@
             }
         },
         {
+            "name": "n64-noaudio",
+            "displayName": "n64-noaudio",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/toolchain/n64.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
+                "SMS_SINGLE_FILE": true,
+                "SMS_DISBALE_AUDIO": true
+            }
+        },
+        {
             "name": "psx",
             "displayName": "psx build",
             "binaryDir": "${sourceDir}/build/${presetName}",
@@ -183,6 +195,10 @@
         {
             "name": "n64",
             "configurePreset": "n64"
+        },
+        {
+            "name": "n64-noaudio",
+            "configurePreset": "n64-noaudio"
         },
         {
             "name": "psx",
