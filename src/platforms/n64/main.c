@@ -10,6 +10,10 @@
 #include <libdragon.h>
 #include <sms.h>
 
+// todo: use timer_ticks() for benchmarking
+// add timer_ticks() after functions and log the diff
+// then sort the logs that way.
+
 #define FS_ENTRIES_MAX 256
 
 static char fs_dir[512];
@@ -35,6 +39,8 @@ enum Menu
 static enum Menu menu = Menu_MAIN;
 static bool loadrom_once = false;
 static int fps_skip = 0;
+static volatile int fps = 0;
+static volatile int previous_fps = 0;
 
 static short* audio_buffer = NULL;
 static size_t audio_samples = 0;
@@ -185,6 +191,13 @@ _Noreturn static void display_message_error(const char* msg)
     }
 }
 
+static void timer_callback(int ovfl)
+{
+    // called every 1s
+    previous_fps = fps;
+    fps = 0;
+}
+
 static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b)
 {
     if (SMS_is_system_type_gg(&sms))
@@ -221,6 +234,13 @@ static void aquire_and_swap_buffers(void)
     SMS_set_pixels(&sms, (short*)__safe_buffer[disp-1]+(320*25)+30, 320, 16);
 }
 
+static void display_title(void)
+{
+    char title[256];
+    sprintf(title, "[TotalSMS v0.0.1c] [FPS: %d]\n", previous_fps);
+    graphics_draw_text(disp, 10, 10, title);
+}
+
 static void core_vblank_callback(void* user)
 {
     static int fps_skip_counter = 0;
@@ -232,10 +252,10 @@ static void core_vblank_callback(void* user)
     }
     else
     {
-        static const char* skip_str[] = {"Frameskip: 0", "Frameskip: 1", "Frameskip: 2", "Frameskip: 3", "Frameskip: 4"};
+        static const char* skip_str[] = {"[skip: 0]", "[skip: 1]", "[skip: 2]", "[skip: 3]", "[skip: 4]"};
 
-        graphics_draw_text(disp, 10, 10, "TotalSMS v0.0.1b");
-        graphics_draw_text(disp, 200, 10, skip_str[fps_skip]);
+        display_title();
+        graphics_draw_text(disp, 240, 10, skip_str[fps_skip]);
         graphics_draw_text(disp, 10, 220, "[Z = Menu] [L/R = dec/inc FPS skip]");
         #if SKIP_VSYNC
             display_show_force(disp);
@@ -452,7 +472,7 @@ static void display_menu(struct controller_data* kdown, struct controller_data* 
         return;
     }
 
-    graphics_draw_text(disp, 10, 10, "TotalSMS v0.0.1c");
+    display_title();
 
     for (int i = 0; i < max; i++)
     {
@@ -526,6 +546,9 @@ int main(void)
 {
     display_init(RESOLUTION_320x240, DEPTH_16_BPP, 2, GAMMA_NONE, ANTIALIAS_RESAMPLE);
     controller_init();
+    timer_init();
+    new_timer(TIMER_TICKS(1000000), TF_CONTINUOUS, timer_callback);
+
     #if AUDIO_ENABLED
         audio_init(AUDIO_FREQ, AUDIO_BUFFERS);
         audio_pause(0);
@@ -587,8 +610,12 @@ int main(void)
                 display_rom(&kdown, &kheld);
                 break;
         }
+
+        fps++;
     }
 
-    audio_close();
-    display_close();
+    // unreachable
+    // timer_close();
+    // audio_close();
+    // display_close();
 }
