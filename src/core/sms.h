@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-#include "types.h"
+#include "sms_types.h"
 
 // for frontends to detect if the game (maybe) uses sram:
 // 1: on rom load, check if a .sav exits, if so, load it

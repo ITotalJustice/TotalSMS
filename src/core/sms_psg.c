@@ -2,7 +2,7 @@
 // SOURCE: https://www.smspower.org/uploads/Development/richard.txt
 // SOURCE: https://www.smspower.org/uploads/Development/psg-20030421.txt
 
-#include "internal.h"
+#include "sms_internal.h"
 #include <stdint.h>
 #include <string.h>
 

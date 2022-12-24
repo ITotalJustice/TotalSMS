@@ -1,5 +1,5 @@
 #include "sms.h"
-#include "internal.h"
+#include "sms_internal.h"
 
 
 // [API]

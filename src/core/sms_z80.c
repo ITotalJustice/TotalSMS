@@ -1,7 +1,7 @@
 // for B3 and B5 stuff: http://www.z80.info/z80sflag.htm
 
-#include "internal.h"
-#include "types.h"
+#include "sms_internal.h"
+#include "sms_types.h"
 
 #include <stdint.h>
 #include <string.h>

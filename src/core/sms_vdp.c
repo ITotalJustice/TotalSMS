@@ -1,6 +1,6 @@
 #include "sms.h"
-#include "internal.h"
-#include "types.h"
+#include "sms_internal.h"
+#include "sms_types.h"
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>

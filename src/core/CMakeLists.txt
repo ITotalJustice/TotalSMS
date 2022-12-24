@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.13.4)
 
 list(APPEND src_all
-    bus.c
-    z80.c
-    joypad.c
+    sms_bus.c
+    sms_z80.c
+    sms_joypad.c
     sms.c
-    psg.c
-    vdp.c
-    rom_database.c
+    sms_psg.c
+    sms_vdp.c
+    sms_rom_database.c
 )
 
-list(APPEND src_single single.c)
+list(APPEND src_single sms_single.c)
 
 if (PLATFORM_PSX)
     if (SMS_SINGLE_FILE)

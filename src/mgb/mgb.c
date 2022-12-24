@@ -3,7 +3,7 @@
 #include "romloader.h"
 #include "filedialog.h"
 #include "directory.h"
-#include "types.h"
+#include "sms_types.h"
 #include "util.h"
 #include "ifile/cfile/cfile.h"
 #include "ifile/gzip/gzip.h"

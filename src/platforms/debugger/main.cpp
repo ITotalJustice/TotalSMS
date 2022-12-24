@@ -5,7 +5,7 @@
 #include "io_debugger.hpp"
 #include "mapper_debugger.hpp"
 #include "psg_debugger.hpp"
-#include "types.h"
+#include "sms_types.h"
 #include "vdp_debugger.hpp"
 #include "z80_debugger.hpp"
 #include "trim_font.hpp"

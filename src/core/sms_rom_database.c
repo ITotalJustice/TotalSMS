@@ -1,6 +1,6 @@
-#include "rom_database.h"
-#include "internal.h"
-#include "types.h"
+#include "sms_rom_database.h"
+#include "sms_internal.h"
+#include "sms_types.h"
 
 // this can be optimised by splitting into 2 tables
 // one with just the crc32, the other with the rest of

@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-#include "types.h"
+#include "sms_types.h"
 
 // if neither set, check compiler, else, default to little
 #if !defined(SMS_LITTLE_ENDIAN) && !defined(SMS_BIG_ENDIAN)

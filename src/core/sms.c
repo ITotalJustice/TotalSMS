@@ -1,7 +1,7 @@
 #include "sms.h"
-#include "internal.h"
-#include "types.h"
-#include "rom_database.h"
+#include "sms_internal.h"
+#include "sms_types.h"
+#include "sms_rom_database.h"
 
 #include <assert.h>
 #include <stddef.h>

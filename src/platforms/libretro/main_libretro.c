@@ -1,5 +1,5 @@
 #include "libretro.h"
-#include "types.h"
+#include "sms_types.h"
 #include <sms.h>
 
 #include <stdbool.h>
