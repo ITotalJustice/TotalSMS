@@ -395,13 +395,16 @@ void SMS_set_userdata(struct SMS_Core* sms, void* userdata)
     sms->userdata = userdata;
 }
 
-void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t freq)
+void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, struct SMS_ApuSample* samples, uint32_t size, uint32_t freq)
 {
     // avoid div by 0
-    if (cb && freq)
+    if (cb && samples && size && freq)
     {
         sms->apu_callback = cb;
         sms->apu_callback_freq = (SMS_CPU_CLOCK / freq);
+        sms->apu_samples = samples;
+        sms->apu_sample_size = size;
+        sms->apu_sample_index = 0;
     }
     else
     {

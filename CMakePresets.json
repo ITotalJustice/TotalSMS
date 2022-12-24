@@ -39,16 +39,6 @@
             }
         },
         {
-            "name": "debugger",
-            "displayName": "debugger",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "DEBUGGER": true
-            }
-        },
-        {
             "name": "dreamcast",
             "displayName": "dreamcast build",
             "binaryDir": "${sourceDir}/build/${presetName}",
@@ -183,10 +173,6 @@
         {
             "name": "sdl2-dev",
             "configurePreset": "sdl2-dev"
-        },
-        {
-            "name": "debugger",
-            "configurePreset": "debugger"
         },
         {
             "name": "dreamcast",

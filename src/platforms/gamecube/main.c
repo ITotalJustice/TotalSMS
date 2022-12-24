@@ -44,6 +44,7 @@ struct AudioBuffer
 static volatile int audio_buffer_index = 0;
 static volatile int audio_buffer_next_index = 0;
 static struct AudioBuffer audio_buffers[AUDIO_BUFFERS] = {0};
+static struct SMS_ApuSample sms_audio_samples[SAMPLES];
 
 static const int scale = 1;
 static struct SMS_Core sms = {0};
@@ -276,7 +277,7 @@ static void on_audio_dma()
     audio_buffer_index = (audio_buffer_index + 1) % AUDIO_BUFFERS;
 }
 
-static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
+static void core_audio_callback(void* user, struct SMS_ApuSample* samples, uint32_t size)
 {
     struct AudioBuffer* buffer = &audio_buffers[audio_buffer_next_index];
 
@@ -285,18 +286,14 @@ static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
         return;
     }
 
-    buffer->samples[buffer->size++] = (data->tone0[0] + data->tone1[0] + data->tone2[0] + data->noise[0]) * 256;
-    buffer->samples[buffer->size++] = (data->tone0[1] + data->tone1[1] + data->tone2[1] + data->noise[1]) * 256;
+    SMS_apu_mixer_s16(samples, buffer->samples, size);
+    buffer->size = size * 2;
+    audio_buffer_next_index = (audio_buffer_next_index + 1) % AUDIO_BUFFERS;
 
-    if (buffer->size == SAMPLES)
+    if (!AUDIO_GetDMAEnableFlag())
     {
-        audio_buffer_next_index = (audio_buffer_next_index + 1) % AUDIO_BUFFERS;
-
-        if (!AUDIO_GetDMAEnableFlag())
-        {
-            on_audio_dma();
-            AUDIO_StartDMA();
-        }
+        on_audio_dma();
+        AUDIO_StartDMA();
     }
 }
 
@@ -334,7 +331,7 @@ int main(int argc, char** argv)
     SMS_init(&sms);
     SMS_set_colour_callback(&sms, core_colour_callback);
     SMS_set_vblank_callback(&sms, core_vblank_callback);
-    SMS_set_apu_callback(&sms, core_audio_callback, AUDIO_FREQ);
+    SMS_set_apu_callback(&sms, core_audio_callback, sms_audio_samples, sizeof(sms_audio_samples)/sizeof(sms_audio_samples[0]), AUDIO_FREQ);
     surface_lock(game_surface);
     SMS_set_pixels(&sms, game_surface->pixels, game_surface->w, game_surface->format->BytesPerPixel);
 

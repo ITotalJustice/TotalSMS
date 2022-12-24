@@ -26,7 +26,7 @@ bool SMS_used_sram(const struct SMS_Core* sms);
 
 void SMS_skip_frame(struct SMS_Core* sms, bool enable);
 void SMS_set_pixels(struct SMS_Core* sms, void* pixels, uint16_t pitch, uint8_t bpp);
-void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t freq);
+void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, struct SMS_ApuSample* samples, uint32_t size, uint32_t freq);
 void SMS_set_vblank_callback(struct SMS_Core* sms, sms_vblank_callback_t cb);
 void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb);
 void SMS_set_userdata(struct SMS_Core* sms, void* userdata);
@@ -39,6 +39,15 @@ bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state);
 // however, after listening to real hw, the drums were in fact always that bad sounding.
 // setting this to true will re-enable better drums!
 void SMS_set_better_drums(struct SMS_Core* sms, bool enable);
+
+/**
+ * @brief mixes samples into s16 stereo format
+ *
+ * @param samples the sample buffer
+ * @param output number of entires must be count*2
+ * @param count number of samples
+ */
+void SMS_apu_mixer_s16(const struct SMS_ApuSample* samples, int16_t* output, uint32_t count);
 
 void SMS_set_system_type(struct SMS_Core* sms, enum SMS_System system);
 enum SMS_System SMS_get_system_type(const struct SMS_Core* sms);

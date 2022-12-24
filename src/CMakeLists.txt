@@ -208,11 +208,6 @@ if (PLATFORM_N64)
     add_subdirectory(platforms/n64)
 endif()
 
-if (DEBUGGER)
-    add_subdirectory(platforms/debugger)
-    set(USE_MGB ON)
-endif()
-
 if (PLATFORM_EMSCRIPTEN)
     add_subdirectory(platforms/emscripten)
     set(USE_MGB ON)

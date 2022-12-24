@@ -24,13 +24,13 @@ extern "C" {
 
 // fwd
 struct SMS_Ports;
-struct SMS_ApuCallbackData;
+struct SMS_ApuSample;
 struct SMS_MemoryControlRegister;
 struct SMS_Core;
 
 
 // callback types
-typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuCallbackData* data);
+typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuSample* samples, uint32_t size);
 typedef void (*sms_vblank_callback_t)(void* user);
 typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t r, uint8_t g, uint8_t b);
 
@@ -337,7 +337,7 @@ struct SMS_Ports
     uint8_t b;
 };
 
-struct SMS_ApuCallbackData
+struct SMS_ApuSample
 {
     uint8_t tone0[2];
     uint8_t tone1[2];
@@ -421,8 +421,11 @@ struct SMS_Core
     sms_apu_callback_t apu_callback;
     void* userdata;
 
-    uint32_t apu_callback_freq;
-    uint32_t apu_callback_counter;
+    struct SMS_ApuSample* apu_samples; // sample buffer
+    uint32_t apu_sample_size; // number of samples
+    uint32_t apu_sample_index; // index into the buffer
+    uint32_t apu_callback_freq; // sample rate
+    uint32_t apu_callback_counter; // how many cpu cycles until sample
 
     // enable to have better sounding drums in most games!
     bool better_drums;

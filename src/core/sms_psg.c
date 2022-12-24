@@ -192,21 +192,61 @@ static FORCE_INLINE uint8_t sample_channel(struct SMS_Core* sms, const uint8_t i
 
 static void sample(struct SMS_Core* sms)
 {
+    if (sms->apu_sample_index >= sms->apu_sample_size)
+    {
+        sms->apu_callback(sms->userdata, sms->apu_samples, sms->apu_sample_size);
+        sms->apu_sample_index = 0;
+    }
+
+    // generate samples
     const uint8_t tone0 = sample_channel(sms, 0);
     const uint8_t tone1 = sample_channel(sms, 1);
     const uint8_t tone2 = sample_channel(sms, 2);
-    // the noise channel sounds louder on actual console
     const uint8_t noise = sample_channel(sms, 3);
 
-    struct SMS_ApuCallbackData data =
-    {
-        .tone0 = { tone0 * PSG.channel_enable[0][0], tone0 * PSG.channel_enable[0][1] },
-        .tone1 = { tone1 * PSG.channel_enable[1][0], tone1 * PSG.channel_enable[1][1] },
-        .tone2 = { tone2 * PSG.channel_enable[2][0], tone2 * PSG.channel_enable[2][1] },
-        .noise = { noise * PSG.channel_enable[3][0], noise * PSG.channel_enable[3][1] },
-    };
+    // apply stereo
+    struct SMS_ApuSample* sample = &sms->apu_samples[sms->apu_sample_index];
+    sample->tone0[0] = tone0 * PSG.channel_enable[0][0];
+    sample->tone0[1] = tone0 * PSG.channel_enable[0][1];
+    sample->tone1[0] = tone1 * PSG.channel_enable[1][0];
+    sample->tone1[1] = tone1 * PSG.channel_enable[1][1];
+    sample->tone2[0] = tone2 * PSG.channel_enable[2][0];
+    sample->tone2[1] = tone2 * PSG.channel_enable[2][1];
+    sample->noise[0] = noise * PSG.channel_enable[3][0];
+    sample->noise[1] = noise * PSG.channel_enable[3][1];
 
-    sms->apu_callback(sms->userdata, &data);
+    // next!
+    sms->apu_sample_index++;
+}
+
+static int16_t scale_psg_u8_to_s16(uint8_t input)
+{
+    return ((input * 0xFFFFU) / 0xFU) ^ 0x8000U;
+}
+
+void SMS_apu_mixer_s16(const struct SMS_ApuSample* samples, int16_t* output, uint32_t count)
+{
+    int16_t tone0;
+    int16_t tone1;
+    int16_t tone2;
+    int16_t noise;
+    uint32_t i;
+
+    for (i = 0; i < count; i++)
+    {
+        // left
+        tone0 = scale_psg_u8_to_s16(samples[i].tone0[0]);
+        tone1 = scale_psg_u8_to_s16(samples[i].tone1[0]);
+        tone2 = scale_psg_u8_to_s16(samples[i].tone2[0]);
+        noise = scale_psg_u8_to_s16(samples[i].noise[0]);
+        *output++ = (tone0 + tone1 + tone2 + noise) / 4;
+        // right
+        tone0 = scale_psg_u8_to_s16(samples[i].tone0[1]);
+        tone1 = scale_psg_u8_to_s16(samples[i].tone1[1]);
+        tone2 = scale_psg_u8_to_s16(samples[i].tone2[1]);
+        noise = scale_psg_u8_to_s16(samples[i].noise[1]);
+        *output++ = (tone0 + tone1 + tone2 + noise) / 4;
+    }
 }
 
 // this is called on psg_reg_write() and at the end of a frame

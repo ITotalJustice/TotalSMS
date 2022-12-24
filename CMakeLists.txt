@@ -14,7 +14,6 @@ option(SWITCH "build switch" OFF)
 option(SDL "build sdl frontend" OFF)
 option(SDL2 "build sdl2 frontend" OFF)
 option(LIBRETRO "build libretro core" OFF)
-option(DEBUGGER "build debugger" OFF)
 
 option(SMS_SINGLE_FILE "include all src in single.c" OFF)
 option(SMS_DEBUG "enable debug" OFF)

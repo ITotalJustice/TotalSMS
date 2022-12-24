@@ -43,6 +43,7 @@ static volatile int fps = 0;
 static volatile int previous_fps = 0;
 
 static short* audio_buffer = NULL;
+static struct SMS_ApuSample* sms_audio_samples = NULL;
 static size_t audio_samples = 0;
 
 static struct SMS_Core sms = {0};
@@ -154,28 +155,21 @@ static bool loadfile(const char* path)
     return false;
 }
 
-static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
+static void core_audio_callback(void* user, struct SMS_ApuSample* samples, uint32_t size)
 {
-    static size_t size = 0;
-
     if (!audio_buffer)
     {
         return;
     }
 
-    audio_buffer[size++] = (data->tone0[0] + data->tone1[0] + data->tone2[0] + data->noise[0]) * 128;
-    audio_buffer[size++] = (data->tone0[1] + data->tone1[1] + data->tone2[1] + data->noise[1]) * 128;
+    SMS_apu_mixer_s16(samples, audio_buffer, size);
 
-    if (size == audio_samples)
-    {
-        #if AUDIO_START
-            audio_write_end();
-            audio_buffer = audio_write_begin();
-        #else
-            audio_write(audio_buffer);
-        #endif
-        size = 0;
-    }
+    #if AUDIO_START
+        audio_write_end();
+        audio_buffer = audio_write_begin();
+    #else
+        audio_write(audio_buffer);
+    #endif
 }
 
 _Noreturn static void display_message_error(const char* msg)
@@ -553,6 +547,7 @@ int main(void)
         audio_init(AUDIO_FREQ, AUDIO_BUFFERS);
         audio_pause(0);
         audio_samples = audio_get_buffer_length() * 2; // stereo
+        sms_audio_samples = malloc(audio_samples * sizeof(struct SMS_ApuSample));
         #if AUDIO_START
             audio_buffer = audio_write_begin();
         #else
@@ -570,7 +565,7 @@ int main(void)
     SMS_set_colour_callback(&sms, core_colour_callback);
     SMS_set_vblank_callback(&sms, core_vblank_callback);
     #if AUDIO_ENABLED
-        SMS_set_apu_callback(&sms, core_audio_callback, audio_get_frequency());
+        SMS_set_apu_callback(&sms, core_audio_callback, sms_audio_samples, audio_samples, audio_get_frequency());
     #endif
     aquire_and_swap_buffers();
 

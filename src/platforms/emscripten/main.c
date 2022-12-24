@@ -31,6 +31,7 @@ static void* pixel_buffer = NULL;
 static int window_w = SMS_SCREEN_WIDTH;
 static int window_h = SMS_SCREEN_HEIGHT;
 static struct AudioData audio_data[AUDIO_ENTRIES];
+static struct SMS_ApuSample sms_audio_samples[SAMPLES];
 static bool audio_init = false;
 static bool paused = false;
 static bool syncfs_running = false;
@@ -95,7 +96,7 @@ static void render(void)
     SDL_RenderPresent(renderer);
 }
 
-static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
+static void core_audio_callback(void* user, struct SMS_ApuSample* samples, uint32_t size)
 {
     (void)user;
     static int index = 0;
@@ -103,19 +104,15 @@ static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
     SDL_LockAudio();
         struct AudioData* adata = &audio_data[index];
 
-        if (adata->size >= SAMPLES * 2)
+        if (adata->size >= SAMPLES*2)
         {
             SDL_UnlockAudio();
             return;
         }
 
-        adata->buffer[adata->size++] = (data->tone0[0] + data->tone1[0] + data->tone2[0] + data->noise[0]) * 256;
-        adata->buffer[adata->size++] = (data->tone0[1] + data->tone1[1] + data->tone2[1] + data->noise[1]) * 256;
-
-        if (adata->size >= SAMPLES * 2)
-        {
-            index = (index + 1) % AUDIO_ENTRIES;
-        }
+        SMS_apu_mixer_s16(samples, adata->buffer, size);
+        adata->size = size * 2;
+        index = (index + 1) % AUDIO_ENTRIES;
     SDL_UnlockAudio();
 }
 
@@ -586,7 +583,7 @@ int main(void)
     SMS_set_vblank_callback(&sms, core_vblank_callback);
     if (audio_init)
     {
-        SMS_set_apu_callback(&sms, core_audio_callback, AUDIO_FREQ);
+        SMS_set_apu_callback(&sms, core_audio_callback, sms_audio_samples, sizeof(sms_audio_samples)/sizeof(sms_audio_samples[0]), AUDIO_FREQ);
     }
     SMS_set_pixels(&sms, pixel_buffer, SMS_SCREEN_WIDTH, pixel_format->BytesPerPixel);
 

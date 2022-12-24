@@ -26,34 +26,21 @@
 
 #define AUDIO_FREQ (48000)
 #if defined(PS2)
-    #define AUDIO_FORMAT AUDIO_S16
     #define WINDOW_FLAGS SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN
 #elif defined(__3DS__)
-    #define AUDIO_FORMAT AUDIO_S16
     #define WINDOW_FLAGS SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN
 #elif defined(__GAMECUBE__)
-    #define AUDIO_FORMAT AUDIO_U8
     #define WINDOW_FLAGS SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN
 #elif defined(DREAMCAST)
-    #define AUDIO_FORMAT AUDIO_S8
     #define WINDOW_FLAGS SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN
 #else
-    #define AUDIO_FORMAT AUDIO_U8
     #define WINDOW_FLAGS SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_RESIZABLE
 #endif
 #define SAMPLES 2048
 
 struct AudioData
 {
-#if AUDIO_FORMAT == AUDIO_S16
     Sint16 buffer[SAMPLES*2];
-#elif AUDIO_FORMAT == AUDIO_U8
-    Uint8 buffer[SAMPLES*2];
-#elif AUDIO_FORMAT == AUDIO_S8
-    Sint8 buffer[SAMPLES*2];
-#else
-    #error "unsupported audio format"
-#endif
     Uint32 size;
 };
 
@@ -72,6 +59,7 @@ static int window_w = SMS_SCREEN_WIDTH*scale;
 static int window_h = SMS_SCREEN_HEIGHT*scale;
 static int window_bpp = 16;
 static struct AudioData audio_data[AUDIO_ENTRIES];
+static struct SMS_ApuSample sms_audio_samples[SAMPLES];
 static bool running = true;
 static bool audio_init = false;
 
@@ -121,8 +109,9 @@ static void surface_unlock(SDL_Surface* surface)
     }
 }
 
-static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
+static void core_audio_callback(void* user, struct SMS_ApuSample* samples, uint32_t size)
 {
+    (void)user;
     static int index = 0;
 
     SDL_LockAudio();
@@ -134,20 +123,9 @@ static void core_audio_callback(void* user, struct SMS_ApuCallbackData* data)
             return;
         }
 
-    #if AUDIO_FORMAT == AUDIO_S16
-        adata->buffer[adata->size++] = (data->tone0[0] + data->tone1[0] + data->tone2[0] + data->noise[0]) * 256;
-        adata->buffer[adata->size++] = (data->tone0[1] + data->tone1[1] + data->tone2[1] + data->noise[1]) * 256;
-    #elif AUDIO_FORMAT == AUDIO_U8 || AUDIO_FORMAT == AUDIO_S8
-        adata->buffer[adata->size++] = (data->tone0[0] + data->tone1[0] + data->tone2[0] + data->noise[0]);
-        adata->buffer[adata->size++] = (data->tone0[1] + data->tone1[1] + data->tone2[1] + data->noise[1]);
-    #else
-        #error "unknown audio format"
-    #endif
-
-        if (adata->size >= SAMPLES*2)
-        {
-            index = (index + 1) % AUDIO_ENTRIES;
-        }
+        SMS_apu_mixer_s16(samples, adata->buffer, size);
+        adata->size = size * 2;
+        index = (index + 1) % AUDIO_ENTRIES;
     SDL_UnlockAudio();
 }
 
@@ -247,11 +225,7 @@ static void sdl_audio_callback(void* user, Uint8* data, int len)
         return;
     }
 
-#if AUDIO_FORMAT == AUDIO_S16
     if (audio_data[index].size < (Uint32)len/2)
-#else
-    if (audio_data[index].size < (Uint32)len)
-#endif
     {
         memset(data, 0, len);
         return;
@@ -772,7 +746,7 @@ int main(int argc, char** argv)
     SDL_AudioSpec wanted_spec =
     {
         .freq = AUDIO_FREQ,
-        .format = AUDIO_FORMAT,
+        .format = AUDIO_S16,
         .channels = 2,
         .samples = SAMPLES,
         .callback = sdl_audio_callback,
@@ -795,7 +769,7 @@ int main(int argc, char** argv)
     SMS_set_vblank_callback(&sms, core_vblank_callback);
     if (audio_init)
     {
-        SMS_set_apu_callback(&sms, core_audio_callback, AUDIO_FREQ);
+        SMS_set_apu_callback(&sms, core_audio_callback, sms_audio_samples, sizeof(sms_audio_samples)/sizeof(sms_audio_samples[0]), AUDIO_FREQ);
         SMS_set_better_drums(&sms, false);
     }
     surface_lock(game_surface);
