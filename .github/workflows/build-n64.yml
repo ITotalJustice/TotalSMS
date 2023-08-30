@@ -1,0 +1,44 @@
+name: Build N64 ROM
+on: [push]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install build-essential git wget cmake libpng-dev -y
+          wget https://github.com/DragonMinded/libdragon/releases/download/toolchain-continuous-prerelease/gcc-toolchain-mips64-x86_64.deb
+          sudo dpkg -i gcc-toolchain-mips64-x86_64.deb
+          rm gcc-toolchain-mips64-x86_64.deb
+
+
+      - name: Download homebrew ROM
+        run: |
+          mkdir ./src/platforms/n64/roms
+          cd ./src/platforms/n64/roms
+          wget https://www.smspower.org/uploads/Homebrew/FadeTest-GG-1.00.zip
+          unzip FadeTest-GG-1.00.zip
+          # rm FadeTest-GG-1.00.zip
+
+      # Using commit from prior to 2023 (Oct 15, 2022), since that was the last time it was likely working.
+      - name: Build and install libdragon
+        run: |
+          git clone https://github.com/DragonMinded/libdragon.git
+          cd libdragon
+          git checkout 0ed01b240ca94e698a6a404eeb3acb1637185376
+          N64_INST=/opt/libdragon ./build.sh
+
+      - name: Build N64 ROM # This example project is built using libdragon and outputs the result to the 'build' folder. Replace with the commands required to build your project, or remove this step entirely if your site is pre-built.
+        run: |
+          cmake -B build -DN64=ON -DSMS_SINGLE_FILE=ON -DLTO=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j4
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: TotalSMS_N64
+          path: |
+            build/src/platforms/n64/TotalSMS_N64.z64
