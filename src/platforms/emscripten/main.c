@@ -46,6 +46,7 @@ typedef struct {
     int window_w;
     int window_h;
     bool frame_blending;
+    bool stretch_screen;
 
     bool paused;
     bool quit;
@@ -73,6 +74,9 @@ static void on_file_picker(App* app);
 static void on_savestate(App* app);
 static void on_loadstate(App* app);
 static void on_pause_toggle(App* app);
+static void on_fullscreen_toggle(App* app);
+static void on_screen_stretch_toggle(App* app);
+static void on_frame_blending_toggle(App* app);
 static void on_set_pause(App* app, bool enable);
 
 static const struct KeyMap KEY_MAP[] = {
@@ -96,6 +100,9 @@ static const struct HotKeyMap HOT_KEY_MAP[] = {
     { SDL_KMOD_CTRL, SDLK_S, on_savestate }, // save state.
     { SDL_KMOD_CTRL, SDLK_L, on_loadstate }, // load state.
     { SDL_KMOD_CTRL, SDLK_P, on_pause_toggle }, // pause.
+    { SDL_KMOD_CTRL, SDLK_F, on_fullscreen_toggle }, // fullscreen.
+    { SDL_KMOD_SHIFT, SDLK_F, on_screen_stretch_toggle }, // fill the entire screen.
+    { SDL_KMOD_SHIFT, SDLK_B, on_frame_blending_toggle }, // blend previous frame.
 };
 
 static const struct GamepadButtonMap GAMEPAD_BUTTON_MAP[] = {
@@ -341,6 +348,19 @@ static void on_pause_toggle(App* app) {
     on_set_pause(app, app->paused ^ 1);
 }
 
+static void on_fullscreen_toggle(App* app) {
+    const bool is_fullscreen = SDL_WINDOW_FULLSCREEN & SDL_GetWindowFlags(app->window);
+    SDL_SetWindowFullscreen(app->window, is_fullscreen ^ 1);
+}
+
+static void on_screen_stretch_toggle(App* app) {
+    app->stretch_screen ^= 1;
+}
+
+static void on_frame_blending_toggle(App* app) {
+    app->frame_blending ^= 1;
+}
+
 static void on_set_pause(App* app, bool enable) {
     app->paused = enable;
 
@@ -435,7 +455,7 @@ static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
         return;
     }
 
-    for (int i = 0; i < SDL_arraysize(HOT_KEY_MAP); i++) {
+    for (size_t i = 0; i < SDL_arraysize(HOT_KEY_MAP); i++) {
         const struct HotKeyMap* p = &HOT_KEY_MAP[i];
         if ((!p->mod || (p->mod & e->mod)) && p->key == e->key && e->down) {
             p->func(app);
@@ -446,7 +466,7 @@ static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
     // todo: only handle inputs if focused emulator screen.
     //  && !ImGui::IsAnyItemActive()
     if (!(e->mod & (SDL_KMOD_CTRL|SDL_KMOD_SHIFT|SDL_KMOD_ALT|SDL_KMOD_GUI))) {
-        for (int i = 0; i < SDL_arraysize(KEY_MAP); i++) {
+        for (size_t i = 0; i < SDL_arraysize(KEY_MAP); i++) {
             const struct KeyMap* p = &KEY_MAP[i];
             if (p->key == e->key) {
                 input_set(app, e->down, p->port, p->button);
@@ -527,18 +547,19 @@ static void sdl_on_gamepad_device_event(App* app, const SDL_GamepadDeviceEvent* 
 
 static void sdl_on_gamepad_button_event(App* app, const struct SDL_GamepadButtonEvent* e)
 {
-    const bool down = e->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+    // auto& controller = app->controllers[e->which];
+    struct Gamepad* controller = &app->gamepad;
+    controller->button[e->button] = e->down;
 
-    switch (e->button)
-    {
-        case SDL_GAMEPAD_BUTTON_SOUTH: input_set(app, down, 0, JOY1_A_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_EAST: input_set(app, down, 0, JOY1_B_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_BACK: input_set(app, down, 1, RESET_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_START: input_set(app, down, 1, PAUSE_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_DPAD_UP: input_set(app, down, 0, JOY1_UP_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_DPAD_DOWN: input_set(app, down, 0, JOY1_DOWN_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_DPAD_LEFT: input_set(app, down, 0, JOY1_LEFT_BUTTON); break;
-        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: input_set(app, down, 0, JOY1_RIGHT_BUTTON); break;
+    if (controller->last_button[e->button] != controller->button[e->button]) {
+        controller->last_button[e->button] = controller->button[e->button];
+
+        for (size_t i = 0; i < SDL_arraysize(GAMEPAD_BUTTON_MAP); i++) {
+            const struct GamepadButtonMap* p = &GAMEPAD_BUTTON_MAP[i];
+            if (p->key == e->button) {
+                input_set(app, e->down, p->port, p->button);
+            }
+        }
     }
 }
 
@@ -549,7 +570,7 @@ static void emulator_render(App* app) {
 
     // get the size of the display
     int display_w, display_h;
-    SDL_GetCurrentRenderOutputSize(app->renderer, &display_w, &display_h);
+    SDL_GetRenderOutputSize(app->renderer, &display_w, &display_h);
 
     // get the output size of the sms
     SDL_Rect rect;
@@ -564,20 +585,23 @@ static void emulator_render(App* app) {
     dst_rect.x = (display_w - dst_rect.w) / 2;
     dst_rect.y = (display_h - dst_rect.h) / 2;
 
+    const SDL_FRect* dst_rect_p = app->stretch_screen ? NULL : &dst_rect;
+
     if (app->frame_blending) {
         SDL_SetTextureBlendMode(app->texture_current, SDL_BLENDMODE_NONE);
         SDL_SetTextureBlendMode(app->texture_previous, SDL_BLENDMODE_BLEND);
         SDL_SetTextureAlphaMod(app->texture_previous, 144);
 
         // render new frame at 100% alpha with the previous frame as 40%
-        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, &dst_rect);
-        SDL_RenderTexture(app->renderer, app->texture_previous, &src_rect, &dst_rect);
+        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, dst_rect_p);
+        SDL_RenderTexture(app->renderer, app->texture_previous, &src_rect, dst_rect_p);
 
         SDL_Texture* temp = app->texture_current;
         app->texture_current = app->texture_previous;
         app->texture_previous = temp;
     } else {
-        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, &dst_rect);
+        SDL_SetTextureBlendMode(app->texture_current, SDL_BLENDMODE_NONE);
+        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, dst_rect_p);
     }
 }
 
@@ -656,7 +680,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     app->window_h = display_mode->h;
 
     // setup video and textures
-    app->window = SDL_CreateWindow("TotalSMS", app->window_w, app->window_h, SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    app->window = SDL_CreateWindow("TotalSMS", app->window_w, app->window_h, SDL_WINDOW_HIGH_PIXEL_DENSITY|SDL_WINDOW_RESIZABLE);
     if (!app->window) {
         goto fail;
     }
@@ -805,6 +829,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
         case SDL_EVENT_GAMEPAD_AXIS_MOTION:
             sdl_on_gamepad_axis_event(app, &event->gaxis);
+            break;
+
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            on_set_pause(app, event->type == SDL_EVENT_WINDOW_FOCUS_LOST);
             break;
     }
 
