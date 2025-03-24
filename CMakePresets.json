@@ -39,6 +39,48 @@
             }
         },
         {
+            "name": "sdl3",
+            "displayName": "sdl3",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "LTO": true,
+                "SDL3": true,
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "sdl3-dev",
+            "displayName": "sdl3-dev",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "SDL3": true,
+                "SMS_DEV": true
+            }
+        },
+        {
+            "name": "blipbuf",
+            "displayName": "blipbuf",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BLIPBUF": true,
+                "LTO": true,
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "blipbuf-dev",
+            "displayName": "blipbuf-dev",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BLIPBUF": true,
+                "SMS_DEV": true
+            }
+        },
+        {
             "name": "dreamcast",
             "displayName": "dreamcast build",
             "binaryDir": "${sourceDir}/build/${presetName}",
@@ -159,6 +201,30 @@
                 "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
+        },
+        {
+            "name": "emsdk",
+            "displayName": "emsdk",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "LTO": false,
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
+            "name": "emsdk-dev",
+            "displayName": "emsdk-dev",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "EMRUN": true,
+                "LTO": false,
+                "SMS_SINGLE_FILE": true,
+                "SMS_DEBUG": true
+            }
         }
     ],
     "buildPresets": [
@@ -173,6 +239,14 @@
         {
             "name": "sdl2-dev",
             "configurePreset": "sdl2-dev"
+        },
+        {
+            "name": "blipbuf",
+            "configurePreset": "blipbuf"
+        },
+        {
+            "name": "blipbuf-dev",
+            "configurePreset": "blipbuf-dev"
         },
         {
             "name": "dreamcast",
@@ -217,6 +291,14 @@
         {
             "name": "switch",
             "configurePreset": "switch"
+        },
+        {
+            "name": "emsdk",
+            "configurePreset": "emsdk"
+        },
+        {
+            "name": "emsdk-dev",
+            "configurePreset": "emsdk-dev"
         }
     ]
 }

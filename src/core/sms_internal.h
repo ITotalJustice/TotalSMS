@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 #include "sms_types.h"
+#include <assert.h>
 
 // if neither set, check compiler, else, default to little
 #if !defined(SMS_LITTLE_ENDIAN) && !defined(SMS_BIG_ENDIAN)
@@ -27,6 +28,13 @@ extern "C" {
 #define SMS_MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define SMS_MAX(x, y) (((x) > (y)) ? (x) : (y))
 
+#if (defined(__cplusplus) && __cplusplus < 201103L) || (!defined(static_assert))
+  #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+    #define sms_static_assert _Static_assert
+  #else
+    #define sms_static_assert(expr, msg) typedef char static_assertion[(expr) ? 1 : -1]
+  #endif
+#endif
 
 #ifndef SMS_ENABLE_FORCE_INLINE
     #define SMS_ENABLE_FORCE_INLINE 1
@@ -60,7 +68,7 @@ extern "C" {
     #define SMS_FORCE_INLINE
 #endif // SMS_SINGLE_FILE
 
-#if defined __has_builtin
+#if defined(__has_builtin)
     #define HAS_BUILTIN(x) __has_builtin(x)
 #else
     #if defined(__GNUC__)
@@ -106,42 +114,66 @@ extern "C" {
 // returns 1 OR 0
 #define IS_BIT_SET(v, bit) (!!((v) & (1 << (bit))))
 
+enum SchedulerID {
+    /* start of the events, do not remove. */
+    SchedulerID_VDP,
+    SchedulerID_IRQ,
+    SchedulerID_HALT,
+    SchedulerID_FRAME,
+
+    /* end of the events, do not remove. */
+    SchedulerID_MAX,
+};
+
 // [CPU]
 SMS_STATIC void z80_init(struct SMS_Core* sms);
-SMS_FORCE_INLINE void z80_run(struct SMS_Core* sms);
+SMS_STATIC void z80_run(struct SMS_Core* sms);
+SMS_STATIC void z80_on_irq_event(void* user, unsigned id, unsigned cycles_late);
+SMS_STATIC void z80_on_halt_event(void* user, unsigned id, unsigned cycles_late);
 SMS_STATIC void z80_nmi(struct SMS_Core* sms);
-SMS_STATIC void z80_irq(struct SMS_Core* sms);
+SMS_STATIC void z80_check_for_irq(struct SMS_Core* sms);
+SMS_STATIC void z80_halt_loop(struct SMS_Core* sms);
+SMS_STATIC uint8_t z80_get_reg_main(const struct SMS_Core* sms, uint8_t idx);
+SMS_STATIC uint8_t z80_get_reg_alt(const struct SMS_Core* sms, uint8_t idx);
+SMS_STATIC void z80_set_reg_main(struct SMS_Core* sms, uint8_t value, uint8_t idx);
+SMS_STATIC void z80_set_reg_alt(struct SMS_Core* sms, uint8_t value, uint8_t idx);
 
 // [BUS]
-SMS_FORCE_INLINE uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);
-SMS_FORCE_INLINE void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value);
-SMS_FORCE_INLINE uint16_t SMS_read16(struct SMS_Core* sms, uint16_t addr);
-SMS_FORCE_INLINE void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value);
-
+SMS_STATIC uint8_t SMS_read8(struct SMS_Core* sms, uint16_t addr);
+SMS_STATIC void SMS_write8(struct SMS_Core* sms, uint16_t addr, uint8_t value);
+SMS_STATIC uint16_t SMS_read16(struct SMS_Core* sms, uint16_t addr);
+SMS_STATIC void SMS_write16(struct SMS_Core* sms, uint16_t addr, uint16_t value);
 SMS_STATIC uint8_t SMS_read_io(struct SMS_Core* sms, uint8_t addr);
 SMS_STATIC void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 
+// [MAPPER]
 SMS_STATIC void mapper_init(struct SMS_Core* sms);
 SMS_STATIC void mapper_update(struct SMS_Core* sms);
 
 // [APU]
-SMS_INLINE void psg_reg_write(struct SMS_Core* sms, uint8_t value);
-SMS_STATIC void psg_sync(struct SMS_Core* sms);
-SMS_FORCE_INLINE void psg_run(struct SMS_Core* sms, uint8_t cycles);
-SMS_STATIC void psg_init(struct SMS_Core* sms);
+// SMS_STATIC void psg_reg_write(struct SMS_Core* sms, uint8_t value);
+// SMS_STATIC void psg_init(struct SMS_Core* sms);
+// SMS_STATIC void psg_end_frame(struct SMS_Core* sms);
 
+// [VDP]
 SMS_STATIC void vdp_init(struct SMS_Core* sms);
-SMS_INLINE uint8_t vdp_status_flag_read(struct SMS_Core* sms);
-SMS_INLINE void vdp_io_write(struct SMS_Core* sms, uint8_t addr, uint8_t value);
-SMS_FORCE_INLINE bool vdp_has_interrupt(const struct SMS_Core* sms);
-SMS_FORCE_INLINE void vdp_run(struct SMS_Core* sms, uint8_t cycles);
+SMS_STATIC uint8_t vdp_io_read_vcounter(const struct SMS_Core* sms);
+SMS_STATIC uint8_t vdp_io_read_hcounter(const struct SMS_Core* sms);
+SMS_STATIC uint8_t vdp_io_data_read(struct SMS_Core* sms);
+SMS_STATIC uint8_t vdp_io_status_read(struct SMS_Core* sms);
+SMS_STATIC void vdp_io_data_write(struct SMS_Core* sms, uint8_t value);
+SMS_STATIC void vdp_io_control_write(struct SMS_Core* sms, uint8_t value);
+SMS_STATIC bool vdp_has_interrupt(const struct SMS_Core* sms);
+SMS_STATIC void vdp_on_event(void* user, unsigned id, unsigned late);
 
 // [MISC]
 SMS_STATIC bool SMS_has_bios(const struct SMS_Core* sms);
-SMS_FORCE_INLINE bool SMS_parity16(uint16_t value);
-SMS_FORCE_INLINE bool SMS_parity8(uint8_t value);
-SMS_STATIC bool SMS_is_spiderman_int_hack_enabled(const struct SMS_Core* sms);
+SMS_STATIC bool SMS_parity8(uint8_t value);
 SMS_STATIC void vdp_mark_palette_dirty(struct SMS_Core* sms);
+SMS_STATIC void timeout_event(void* user, unsigned id, unsigned late);
+
+SMS_STATIC void joypad_poll(struct SMS_Core* sms, int port);
+SMS_STATIC uint8_t joypad_read(struct SMS_Core* sms, int port);
 
 #ifdef __cplusplus
 }

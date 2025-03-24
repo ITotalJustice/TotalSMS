@@ -1,10 +1,10 @@
 // for B3 and B5 stuff: http://www.z80.info/z80sflag.htm
 
+#include "scheduler.h"
 #include "sms_internal.h"
 #include "sms_types.h"
 
 #include <stdint.h>
-#include <string.h>
 #include <assert.h>
 
 
@@ -209,6 +209,70 @@ enum
 #define SET_REG_DE_ALT(v) SET_PAIR(REG_D_ALT, REG_E_ALT, v)
 #define SET_REG_HL_ALT(v) SET_PAIR(REG_H_ALT, REG_L_ALT, v)
 #define SET_REG_AF_ALT(v) REG_A_ALT = (((v) >> 8) & 0xFF); REG_F_SET_ALT(v)
+
+uint8_t z80_get_reg_main(const struct SMS_Core* sms, uint8_t idx)
+{
+    switch (idx & 0x7)
+    {
+        case 0x0: return REG_B;
+        case 0x1: return REG_C;
+        case 0x2: return REG_D;
+        case 0x3: return REG_E;
+        case 0x4: return REG_H;
+        case 0x5: return REG_L;
+        case 0x6: return REG_F_GET();
+        case 0x7: return REG_A;
+    }
+
+    UNREACHABLE(0xFF);
+}
+
+uint8_t z80_get_reg_alt(const struct SMS_Core* sms, uint8_t idx)
+{
+    switch (idx & 0x7)
+    {
+        case 0x0: return REG_B_ALT;
+        case 0x1: return REG_C_ALT;
+        case 0x2: return REG_D_ALT;
+        case 0x3: return REG_E_ALT;
+        case 0x4: return REG_H_ALT;
+        case 0x5: return REG_L_ALT;
+        case 0x6: return REG_F_GET_ALT();
+        case 0x7: return REG_A_ALT;
+    }
+
+    UNREACHABLE(0xFF);
+}
+
+void z80_set_reg_main(struct SMS_Core* sms, uint8_t value, uint8_t idx)
+{
+    switch (idx & 0x7)
+    {
+        case 0x0: REG_B = value; break;
+        case 0x1: REG_C = value; break;
+        case 0x2: REG_D = value; break;
+        case 0x3: REG_E = value; break;
+        case 0x4: REG_H = value; break;
+        case 0x5: REG_L = value; break;
+        case 0x6: REG_F_SET(value); break;
+        case 0x7: REG_A = value; break;
+    }
+}
+
+void z80_set_reg_alt(struct SMS_Core* sms, uint8_t value, uint8_t idx)
+{
+    switch (idx & 0x7)
+    {
+        case 0x0: REG_B_ALT = value; break;
+        case 0x1: REG_C_ALT = value; break;
+        case 0x2: REG_D_ALT = value; break;
+        case 0x3: REG_E_ALT = value; break;
+        case 0x4: REG_H_ALT = value; break;
+        case 0x5: REG_L_ALT = value; break;
+        case 0x6: REG_F_SET_ALT(value); break;
+        case 0x7: REG_A_ALT = value; break;
+    }
+}
 
 #define read8(addr) SMS_read8(sms, addr)
 #define read16(addr) SMS_read16(sms, addr)
@@ -762,15 +826,18 @@ static FORCE_INLINE void RET_cc(struct SMS_Core* sms, bool cond)
     }
 }
 
+// reti signals to an IO device that the interrupt has
+// finished, however this is unused on the sms
+// so it functions exactly like RET
 static FORCE_INLINE void RETI(struct SMS_Core* sms)
 {
-    REG_PC = POP(sms);
-    sms->cpu.IFF1 = true;
+    RET(sms);
 }
 
 static FORCE_INLINE void RETN(struct SMS_Core* sms)
 {
     REG_PC = POP(sms);
+    // restore interrupt enable flag
     sms->cpu.IFF1 = sms->cpu.IFF2;
 }
 
@@ -827,10 +894,12 @@ static FORCE_INLINE void JP_cc(struct SMS_Core* sms, bool cond)
 static FORCE_INLINE void EI(struct SMS_Core* sms)
 {
     sms->cpu.ei_delay = true;
+    z80_check_for_irq(sms);
 }
 
 static FORCE_INLINE void DI(struct SMS_Core* sms)
 {
+    sms->cpu.ei_delay = false;
     sms->cpu.IFF1 = false;
     sms->cpu.IFF2 = false;
 }
@@ -1270,7 +1339,8 @@ static FORCE_INLINE void OUT(struct SMS_Core* sms, const uint8_t value)
 static FORCE_INLINE void HALT(struct SMS_Core* sms)
 {
     assert((sms->cpu.ei_delay || sms->cpu.IFF1) && "halt with interrupts disabled!");
-    sms->cpu.halt = true;
+    sms->cpu.execution_mode = Z80_ExecutionMode_HALT;
+    scheduler_add(&sms->scheduler, SchedulerID_HALT, 0, z80_on_halt_event, sms);
 }
 
 static FORCE_INLINE void DAA(struct SMS_Core* sms)
@@ -1397,52 +1467,14 @@ static FORCE_INLINE void LD_A_R(struct SMS_Core* sms)
     // the refresh reg is ticked on every mem access.
     // to avoid this slight overhead, just increment the value
     // on read. this will work find as R is used as psuedo RNG anyway.
-    REG_R += REG_H + REG_A + REG_C;
-    REG_A = REG_R;
+    const uint8_t rng = REG_H + REG_A + REG_C + scheduler_get_ticks(&sms->scheduler);
+    REG_A = (REG_R & 0x80) | ((rng) & 0x7F);
 
     FLAG_N = false;
     FLAG_P = sms->cpu.IFF2;
     FLAG_H = false;
     FLAG_Z = REG_A == 0;
     FLAG_S = REG_A >> 7;
-}
-
-static FORCE_INLINE void isr(struct SMS_Core* sms)
-{
-    if (sms->cpu.ei_delay)
-    {
-        sms->cpu.ei_delay = false;
-        sms->cpu.IFF1 = true;
-        sms->cpu.IFF2 = true;
-        return;
-    }
-
-    if (sms->cpu.IFF1 && (sms->cpu.interrupt_requested || vdp_has_interrupt(sms)))
-    {
-        sms->cpu.IFF1 = false;
-        sms->cpu.IFF2 = false;
-        sms->cpu.interrupt_requested = false;
-        sms->cpu.halt = false;
-        sms->cpu.cycles += 13;
-
-        RST(sms, 0x38);
-    }
-}
-
-void z80_nmi(struct SMS_Core* sms)
-{
-    sms->cpu.IFF1 = false;
-    sms->cpu.IFF2 = false;
-    sms->cpu.halt = false;
-    sms->cpu.ei_delay = false;
-    sms->cpu.cycles += 11;
-
-    RST(sms, 0x66);
-}
-
-void z80_irq(struct SMS_Core* sms)
-{
-    sms->cpu.interrupt_requested = true;
 }
 
 // NOTE: templates would be much nicer here
@@ -1698,6 +1730,7 @@ static FORCE_INLINE void execute_IXIY(struct SMS_Core* sms, uint8_t* ixy_hi, uin
 
         default:
             SMS_log_fatal("UNK OP: 0xFD%02X\n", opcode);
+            assert(0);
             break;
     }
 
@@ -1835,6 +1868,7 @@ static FORCE_INLINE void execute_ED(struct SMS_Core* sms)
 
         default:
             SMS_log_fatal("UNK OP: 0xED%02X\n", opcode);
+            assert(0);
             break;
     }
 }
@@ -2049,24 +2083,82 @@ static FORCE_INLINE void execute(struct SMS_Core* sms)
 
         default:
             SMS_log_fatal("UNK OP: 0x%02X\n", opcode);
+            assert(0);
             break;
     }
 }
 
 void z80_run(struct SMS_Core* sms)
 {
-    sms->cpu.cycles = 0;
-
-    if (!sms->cpu.halt)
+    while LIKELY(!scheduler_should_fire(&sms->scheduler))
     {
+        assert(sms->cpu.execution_mode == Z80_ExecutionMode_RUNNING);
+        sms->cpu.cycles = 0;
         execute(sms);
+        // sms->cpu.cycles = 4; /* uncheck for speeeed. */
+        scheduler_tick(&sms->scheduler, sms->cpu.cycles);
     }
-    else
-    {
-        sms->cpu.cycles = 4;
-    }
+}
 
-    isr(sms);
+static inline bool is_irq_pending(const struct SMS_Core* sms)
+{
+    return sms->cpu.IFF1 && vdp_has_interrupt(sms);
+}
+
+void z80_halt_loop(struct SMS_Core* sms)
+{
+    while (!sms->frame_end && sms->cpu.execution_mode == Z80_ExecutionMode_HALT)
+    {
+        scheduler_advance_to_next_event(&sms->scheduler);
+        scheduler_fire(&sms->scheduler);
+    }
+}
+
+void z80_nmi(struct SMS_Core* sms)
+{
+    sms->cpu.execution_mode = Z80_ExecutionMode_RUNNING;
+    sms->cpu.IFF2 = sms->cpu.IFF1 | sms->cpu.ei_delay;
+    sms->cpu.IFF1 = false;
+    sms->cpu.ei_delay = false;
+    sms->cpu.cycles += 11;
+    RST(sms, 0x66);
+}
+
+void z80_on_halt_event(void* user, unsigned id, unsigned cycles_late)
+{
+    assert(id == SchedulerID_HALT);
+    struct SMS_Core* sms = user;
+    z80_halt_loop(sms);
+}
+
+void z80_on_irq_event(void* user, unsigned id, unsigned cycles_late)
+{
+    assert(id == SchedulerID_IRQ);
+    struct SMS_Core* sms = user;
+
+    if (sms->cpu.ei_delay)
+    {
+        sms->cpu.ei_delay = false;
+        sms->cpu.IFF1 = true;
+        sms->cpu.IFF2 = true;
+        scheduler_add(&sms->scheduler, id, 1, z80_on_irq_event, user);
+    }
+    else if (is_irq_pending(sms))
+    {
+        sms->cpu.IFF1 = false;
+        sms->cpu.IFF2 = false;
+        sms->cpu.execution_mode = Z80_ExecutionMode_RUNNING;
+        sms->cpu.cycles += 13;
+        RST(sms, 0x38);
+    }
+}
+
+void z80_check_for_irq(struct SMS_Core* sms)
+{
+    if (sms->cpu.ei_delay || is_irq_pending(sms))
+    {
+        scheduler_add(&sms->scheduler, SchedulerID_IRQ, 0, z80_on_irq_event, sms);
+    }
 }
 
 void z80_init(struct SMS_Core* sms)
@@ -2083,4 +2175,9 @@ void z80_init(struct SMS_Core* sms)
     sms->cpu.main.flags.B5 = true;
     sms->cpu.main.flags.Z = true;
     sms->cpu.main.flags.S = true;
+    REG_R = 0;
+    sms->cpu.IFF1 = false;
+    sms->cpu.IFF2 = false;
+    sms->cpu.ei_delay = false;
+    sms->cpu.execution_mode = Z80_ExecutionMode_RUNNING;
 }

@@ -31,7 +31,6 @@ list(APPEND gcc_flags
     -Wcast-align=strict
     -Wunused-macros
     -Wbad-function-cast
-    -ffunction-sections -fdata-sections
 )
 
 list(APPEND clang_flags
@@ -200,6 +199,11 @@ if (PLATFORM_SDL)
     set(USE_MGB ON)
 endif()
 
+if (PLATFORM_SDL3)
+    add_subdirectory(platforms/sdl3)
+    set(USE_MGB OFF)
+endif()
+
 if (PLATFORM_PSX)
     add_subdirectory(platforms/psx)
 endif()
@@ -210,6 +214,11 @@ endif()
 
 if (PLATFORM_EMSCRIPTEN)
     add_subdirectory(platforms/emscripten)
+    set(USE_MGB ON)
+endif()
+
+if (BLIPBUF)
+    add_subdirectory(platforms/blip)
     set(USE_MGB ON)
 endif()
 

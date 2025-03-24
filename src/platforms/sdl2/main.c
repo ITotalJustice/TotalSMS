@@ -38,51 +38,83 @@ struct AudioData
     Uint32 size;
 };
 
-#define AUDIO_ENTRIES 4
+struct Input {
+    uint8_t port[2];
+};
 
 static const int sms_scale = 4;
 static const int gg_scale = 5;
 static struct SMS_Core sms = {0};
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
-static SDL_Texture* texture = NULL;
+static SDL_Texture* texture_current;
+static SDL_Texture* texture_previous;
+static SDL_AudioStream* audio_stream = NULL;
+static SDL_AudioDeviceID audio_device_id = 0;
 static SDL_GameController* controller = NULL;
 static SDL_PixelFormat* pixel_format = NULL;
 static uint32_t pixel_format_enum = 0;
 static void* pixel_buffer = NULL;
 static int window_w = SMS_SCREEN_WIDTH*sms_scale;
 static int window_h = SMS_SCREEN_HEIGHT*sms_scale;
-static struct AudioData audio_data[AUDIO_ENTRIES];
-static struct SMS_ApuSample sms_audio_samples[SAMPLES];
 static bool running = true;
 static bool audio_init = false;
+static bool frame_blending = true;
+static struct Input inputs[2]; // [0] current [1 previous]
 
+static void input_set(bool down, uint8_t port, uint8_t value) {
+    if (down) {
+        inputs[0].port[port] |= value;
+    } else {
+        inputs[0].port[port] &= ~value;
+    }
+}
+
+static bool input_is_dirty(void) {
+    return inputs[0].port[0] != inputs[1].port[0] || inputs[0].port[1] != inputs[1].port[1];
+}
+
+static void input_apply(void) {
+    SMS_set_port_a(&sms, inputs[0].port[0], true);
+    SMS_set_port_a(&sms, ~inputs[0].port[0], false);
+    SMS_set_port_b(&sms, inputs[0].port[1], true);
+    SMS_set_port_b(&sms, ~inputs[0].port[1], false);
+    inputs[1] = inputs[0];
+}
 
 static void render(void)
 {
     SDL_Rect src_rect = {0};
     SMS_get_pixel_region(&sms, &src_rect.x, &src_rect.y, &src_rect.w, &src_rect.h);
-    SDL_RenderCopy(renderer, texture, &src_rect, NULL);
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+    if (frame_blending) {
+        SDL_SetTextureBlendMode(texture_current, SDL_BLENDMODE_NONE);
+        SDL_SetTextureBlendMode(texture_previous, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureAlphaMod(texture_previous, 100);
+
+        // render new frame at 100% alpha with the previous frame as 40%
+        SDL_RenderCopy(renderer, texture_current, &src_rect, NULL);
+        SDL_RenderCopy(renderer, texture_previous, &src_rect, NULL);
+
+        SDL_Texture* temp = texture_current;
+        texture_current = texture_previous;
+        texture_previous = temp;
+    } else {
+        SDL_RenderCopy(renderer, texture_current, &src_rect, NULL);
+    }
+
     SDL_RenderPresent(renderer);
 }
 
-static void core_audio_callback(void* user, struct SMS_ApuSample* samples, uint32_t size)
+static void core_audio_callback(void* user, int16_t* samples, uint32_t size)
 {
     (void)user;
-    static int index = 0;
 
     SDL_LockAudio();
-        struct AudioData* adata = &audio_data[index];
-
-        if (adata->size >= SAMPLES*2)
-        {
-            SDL_UnlockAudio();
-            return;
-        }
-
-        SMS_apu_mixer_s16(samples, adata->buffer, size);
-        adata->size = size * 2;
-        index = (index + 1) % AUDIO_ENTRIES;
+        SDL_AudioStreamPut(audio_stream, samples, size * sizeof(*samples));
     SDL_UnlockAudio();
 }
 
@@ -98,7 +130,7 @@ static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b
 
         return SDL_MapRGB(pixel_format, R, G, B);
     }
-    else if (SMS_is_system_type_sms(&sms))
+    else
     {
         const uint8_t R = r << 6;
         const uint8_t G = g << 6;
@@ -106,23 +138,25 @@ static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b
 
         return SDL_MapRGB(pixel_format, R, G, B);
     }
-    else
-    {
-        return SDL_MapRGB(pixel_format, r, g, b);
-    }
 }
 
 static void core_vblank_callback(void* user)
 {
     (void)user;
+
+    if (SMS_get_skip_frame(&sms))
+    {
+        return;
+    }
+
     void* pixels = NULL; int pitch = 0;
-    SDL_LockTexture(texture, NULL, &pixels, &pitch);
+    SDL_LockTexture(texture_current, NULL, &pixels, &pitch);
         SDL_ConvertPixels(
             SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT, // w,h
             pixel_format_enum, pixel_buffer, SMS_SCREEN_WIDTH * pixel_format->BytesPerPixel, // src
             pixel_format_enum, pixels, pitch // dst
         );
-    SDL_UnlockTexture(texture);
+    SDL_UnlockTexture(texture_current);
 
     render();
 }
@@ -130,22 +164,9 @@ static void core_vblank_callback(void* user)
 static void sdl_audio_callback(void* user, Uint8* data, int len)
 {
     (void)user;
-    static int index = 0;
 
-    if (len <= 0)
-    {
-        return;
-    }
-
-    if (audio_data[index].size < (Uint32)len/2)
-    {
-        memset(data, 0, len);
-        return;
-    }
-
-    memcpy(data, audio_data[index].buffer, len);
-    audio_data[index].size = 0;
-    index = (index + 1) % AUDIO_ENTRIES;
+    memset(data, 0, len);
+    SDL_AudioStreamGet(audio_stream, data, len);
 }
 
 // sdl events
@@ -197,14 +218,14 @@ static void on_key_event(const SDL_KeyboardEvent* e)
 
     switch (e->keysym.scancode)
     {
-        case SDL_SCANCODE_X:        SMS_set_port_a(&sms, JOY1_B_BUTTON, down);      break;
-        case SDL_SCANCODE_Z:        SMS_set_port_a(&sms, JOY1_A_BUTTON, down);      break;
-        case SDL_SCANCODE_UP:       SMS_set_port_a(&sms, JOY1_UP_BUTTON, down);     break;
-        case SDL_SCANCODE_DOWN:     SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down);   break;
-        case SDL_SCANCODE_LEFT:     SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down);   break;
-        case SDL_SCANCODE_RIGHT:    SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down);  break;
-        case SDL_SCANCODE_R:        SMS_set_port_b(&sms, RESET_BUTTON, down);       break;
-        case SDL_SCANCODE_RETURN:   SMS_set_port_b(&sms, PAUSE_BUTTON, down);       break;
+        case SDL_SCANCODE_X:        input_set(down, 0, JOY1_B_BUTTON); break;
+        case SDL_SCANCODE_Z:        input_set(down, 0, JOY1_A_BUTTON); break;
+        case SDL_SCANCODE_UP:       input_set(down, 0, JOY1_UP_BUTTON); break;
+        case SDL_SCANCODE_DOWN:     input_set(down, 0, JOY1_DOWN_BUTTON); break;
+        case SDL_SCANCODE_LEFT:     input_set(down, 0, JOY1_LEFT_BUTTON); break;
+        case SDL_SCANCODE_RIGHT:    input_set(down, 0, JOY1_RIGHT_BUTTON); break;
+        case SDL_SCANCODE_R:        input_set(down, 0, RESET_BUTTON); break;
+        case SDL_SCANCODE_RETURN:   input_set(down, 0, PAUSE_BUTTON); break;
 
     #ifndef EMSCRIPTEN
         case SDL_SCANCODE_ESCAPE:
@@ -233,36 +254,36 @@ static void on_generic_axis_event(const int value, const int axis)
         case SDL_CONTROLLER_AXIS_LEFTX: case SDL_CONTROLLER_AXIS_RIGHTX:
             if (value < left)
             {
-                SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, true);
-                SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, false);
+                input_set(true, 0, JOY1_LEFT_BUTTON);
+                input_set(false, 0, JOY1_RIGHT_BUTTON);
             }
             else if (value > right)
             {
-                SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, false);
-                SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, true);
+                input_set(false, 0, JOY1_LEFT_BUTTON);
+                input_set(true, 0, JOY1_RIGHT_BUTTON);
             }
             else
             {
-                SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, false);
-                SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, false);
+                input_set(false, 0, JOY1_LEFT_BUTTON);
+                input_set(false, 0, JOY1_RIGHT_BUTTON);
             }
             break;
 
         case SDL_CONTROLLER_AXIS_LEFTY: case SDL_CONTROLLER_AXIS_RIGHTY:
             if (value < up)
             {
-                SMS_set_port_a(&sms, JOY1_UP_BUTTON, true);
-                SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, false);
+                input_set(true, 0, JOY1_UP_BUTTON);
+                input_set(false, 0, JOY1_DOWN_BUTTON);
             }
             else if (value > down)
             {
-                SMS_set_port_a(&sms, JOY1_UP_BUTTON, false);
-                SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, true);
+                input_set(false, 0, JOY1_UP_BUTTON);
+                input_set(true, 0, JOY1_DOWN_BUTTON);
             }
             else
             {
-                SMS_set_port_a(&sms, JOY1_UP_BUTTON, false);
-                SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, false);
+                input_set(false, 0, JOY1_UP_BUTTON);
+                input_set(false, 0, JOY1_DOWN_BUTTON);
             }
             break;
     }
@@ -279,14 +300,14 @@ static void on_controller_button_event(const struct SDL_ControllerButtonEvent* e
 
     switch (e->button)
     {
-        case SDL_CONTROLLER_BUTTON_A: SMS_set_port_a(&sms, JOY1_A_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_B: SMS_set_port_a(&sms, JOY1_B_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_BACK: SMS_set_port_b(&sms, RESET_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_START: SMS_set_port_b(&sms, PAUSE_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_UP: SMS_set_port_a(&sms, JOY1_UP_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: SMS_set_port_a(&sms, JOY1_DOWN_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: SMS_set_port_a(&sms, JOY1_LEFT_BUTTON, down); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: SMS_set_port_a(&sms, JOY1_RIGHT_BUTTON, down); break;
+        case SDL_CONTROLLER_BUTTON_A: input_set(down, 0, JOY1_A_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_B: input_set(down, 0, JOY1_B_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_BACK: input_set(down, 1, RESET_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_START: input_set(down, 1, PAUSE_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP: input_set(down, 0, JOY1_UP_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: input_set(down, 0, JOY1_DOWN_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: input_set(down, 0, JOY1_LEFT_BUTTON); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: input_set(down, 0, JOY1_RIGHT_BUTTON); break;
     }
 }
 
@@ -425,8 +446,13 @@ static void cleanup(void)
 
     if (SDL_WasInit(SDL_INIT_AUDIO))
     {
-        SDL_CloseAudio();
+        SDL_CloseAudioDevice(audio_device_id);
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
+
+        if (audio_stream)
+        {
+            SDL_FreeAudioStream(audio_stream);
+        }
     }
 
     if (SDL_WasInit(SDL_INIT_TIMER))
@@ -440,9 +466,13 @@ static void cleanup(void)
         {
             SDL_FreeFormat(pixel_format);
         }
-        if (texture)
+        if (texture_current)
         {
-            SDL_DestroyTexture(texture);
+            SDL_DestroyTexture(texture_current);
+        }
+        if (texture_previous)
+        {
+            SDL_DestroyTexture(texture_previous);
         }
         if (renderer)
         {
@@ -460,6 +490,92 @@ static void cleanup(void)
     SDL_Quit();
 }
 
+static void emulate_run(void)
+{
+    const uint32_t speed = 1;//emulate_get_speed();
+    const bool skip_frame = SMS_get_skip_frame(&sms);
+
+    for (uint32_t i = 0; i < speed; i++)
+    {
+        // skip unseen frames
+        if (i + 1 != speed)
+        {
+            SMS_skip_frame(&sms, true);
+        }
+        else
+        {
+            SMS_skip_frame(&sms, skip_frame);
+        }
+
+        SMS_run(&sms, SMS_CYCLES_PER_FRAME);
+    }
+}
+
+// my edit code: RwwYiFuR
+struct Runahead {
+    struct SMS_State* states;
+    uint8_t count;
+    uint8_t frames;
+};
+
+static struct Runahead g_runahead;
+
+static void runahead_init(uint8_t frames) {
+    if (!frames) {
+        return;
+    }
+    g_runahead.frames = frames;
+    g_runahead.states = malloc(frames * sizeof(struct SMS_State));
+    g_runahead.count = 0;
+}
+
+static void runahead_exit(void) {
+    if (g_runahead.states) {
+        free(g_runahead.states);
+    }
+    memset(&g_runahead, 0, sizeof(g_runahead));
+}
+
+static void run_frame(void) {
+    if (!g_runahead.frames) {
+        // run frame as normal
+        input_apply();
+        emulate_run();
+    } else {
+        if (input_is_dirty()) {
+            // only loadstate if it's valid
+            if (g_runahead.count) {
+                SMS_loadstate(&sms, &g_runahead.states[0], sizeof(g_runahead.states[0]));
+            }
+            input_apply();
+            g_runahead.count = 0;
+        }
+
+        // emulate ahead, fill up state array
+        if (g_runahead.count < g_runahead.frames) {
+            while (g_runahead.count < g_runahead.frames) {
+                SMS_skip_audio(&sms, true);
+                SMS_skip_frame(&sms, true);
+                emulate_run();
+                SMS_savestate(&sms, &g_runahead.states[g_runahead.count], sizeof(g_runahead.states[g_runahead.count]), true);
+                g_runahead.count++;
+            }
+        } else {
+            // otherwise, move state array down, over-writting oldest state
+            for (uint8_t i = 0; i < g_runahead.count - 1; i++) {
+                g_runahead.states[i] = g_runahead.states[i + 1];
+            }
+
+            // add new state
+            SMS_savestate(&sms, &g_runahead.states[g_runahead.count - 1], sizeof(g_runahead.states[g_runahead.count - 1]), true);
+        }
+
+        SMS_skip_audio(&sms, false);
+        SMS_skip_frame(&sms, false);
+        emulate_run();
+    }
+}
+
 int main(int argc, char** argv)
 {
     #if !BUILT_IN_ROM
@@ -468,6 +584,9 @@ int main(int argc, char** argv)
         return -1;
     }
     #endif
+
+    // https://github.com/mosra/magnum/issues/184#issuecomment-425952900
+    SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER))
     {
@@ -506,8 +625,9 @@ int main(int argc, char** argv)
         goto fail;
     }
 
-    texture = SDL_CreateTexture(renderer, pixel_format_enum, SDL_TEXTUREACCESS_STREAMING, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT);
-    if (!texture)
+    texture_current = SDL_CreateTexture(renderer, pixel_format_enum, SDL_TEXTUREACCESS_STREAMING, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT);
+    texture_previous = SDL_CreateTexture(renderer, pixel_format_enum, SDL_TEXTUREACCESS_STREAMING, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT);
+    if (!texture_current || !texture_previous)
     {
         goto fail;
     }
@@ -522,23 +642,59 @@ int main(int argc, char** argv)
         .userdata = NULL,
     };
 
-    if (SDL_OpenAudio(&wanted_spec, NULL) < 0)
+    SDL_AudioSpec obtained_spec;
+    audio_device_id = SDL_OpenAudioDevice(NULL, 0, &wanted_spec, &obtained_spec, SDL_AUDIO_ALLOW_ANY_CHANGE);
+
+    if (audio_device_id == 0)
     {
         audio_init = 0;
     }
     else
     {
+        audio_stream = SDL_NewAudioStream(
+            wanted_spec.format, wanted_spec.channels, obtained_spec.freq,
+            obtained_spec.format, obtained_spec.channels, obtained_spec.freq
+        );
+
         audio_init = 1;
+        SDL_PauseAudioDevice(audio_device_id, 0);
     }
-    SDL_PauseAudio(0);
 
     SMS_init(&sms);
     SMS_set_colour_callback(&sms, core_colour_callback);
     SMS_set_vblank_callback(&sms, core_vblank_callback);
     if (audio_init)
     {
-        SMS_set_apu_callback(&sms, core_audio_callback, sms_audio_samples, SDL_arraysize(sms_audio_samples), AUDIO_FREQ);
+        SMS_set_apu_callback(&sms, core_audio_callback, obtained_spec.freq);
     }
+    uint32_t palette[16];
+    struct Colour { uint8_t r,g,b; };
+    // https://www.smspower.org/uploads/Development/sg1000.txt
+    const struct Colour SG_COLOUR_TABLE[] =
+    {
+        {0x00, 0x00, 0x00}, // 0: transparent
+        {0x00, 0x00, 0x00}, // 1: black
+        {0x20, 0xC0, 0x20}, // 2: green
+        {0x60, 0xE0, 0x60}, // 3: bright green
+        {0x20, 0x20, 0xE0}, // 4: blue
+        {0x40, 0x60, 0xE0}, // 5: bright blue
+        {0xA0, 0x20, 0x20}, // 6: dark red
+        {0x40, 0xC0, 0xE0}, // 7: cyan (?)
+        {0xE0, 0x20, 0x20}, // 8: red
+        {0xE0, 0x60, 0x60}, // 9: bright red
+        {0xC0, 0xC0, 0x20}, // 10: yellow
+        {0xC0, 0xC0, 0x80}, // 11: bright yellow
+        {0x20, 0x80, 0x20}, // 12: dark green
+        {0xC0, 0x40, 0xA0}, // 13: pink
+        {0xA0, 0xA0, 0xA0}, // 14: gray
+        {0xE0, 0xE0, 0xE0}, // 15: white
+    };
+    for (int i = 0; i < 16; i++)
+    {
+        const struct Colour c = SG_COLOUR_TABLE[i];
+        palette[i] = SDL_MapRGB(pixel_format, c.r, c.g, c.b);
+    }
+    SMS_set_builtin_palette(&sms, palette);
     SMS_set_pixels(&sms, pixel_buffer, SMS_SCREEN_WIDTH, pixel_format->BytesPerPixel);
 
     mgb_init(&sms);
@@ -570,11 +726,15 @@ int main(int argc, char** argv)
 
     printf("loaded rom\n");
 
+    runahead_init(0);
+
     while (running)
     {
         events();
-        SMS_run(&sms, SMS_CYCLES_PER_FRAME);
+        run_frame();
     }
+
+    runahead_exit();
 
     cleanup();
     return 0;

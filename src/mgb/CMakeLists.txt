@@ -1,29 +1,28 @@
 cmake_minimum_required(VERSION 3.13.4)
 
-# disable for now as they're unused
-set(IPS OFF)
-set(UPS OFF)
-set(GAMESHARK OFF)
-set(CODEBREAKER OFF)
-set(GAMEGENIE OFF)
+# include(FetchContent)
 
-add_subdirectory(cheats)
-add_subdirectory(patch)
+# FetchContent_Declare(rewind
+#     GIT_REPOSITORY https://github.com/ITotalJustice/librewind.git
+#     GIT_TAG        v1.2.0
+# )
+
+# FetchContent_MakeAvailable(rewind)
 
 add_library(mgb
     mgb.c
     filedialog.c
     romloader.c
     util.c
-    rewind.c
+    # rewind.c
     compressors.c
     directory.c
+    png/png.c
 
     ifile/ifile.c
     ifile/zip/zip.c
     ifile/mem/mem.c
     ifile/cfile/cfile.c
-    ifile/gzip/gzip.c
 )
 
 target_include_directories(mgb INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -46,17 +45,13 @@ endif()
 add_static_lib(minizip minizip)
 find_shared_lib(unofficial-nativefiledialog nativefiledialog)
 find_shared_lib(ZLIB zlib)
-# find_shared_lib(zstd zstd)
-# find_shared_lib(lz4 zstd)
-
-# find_package(zstd CONFIG REQUIRED)
-# find_package(lz4 CONFIG REQUIRED)
 
 target_add_common_cflags(mgb PRIVATE)
 target_apply_lto_in_release(mgb)
 
 target_link_libraries(mgb PRIVATE
     TotalSMS
+    # rewind
     minizip::minizip
     ZLIB::ZLIB
 )

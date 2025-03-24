@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
+cmake_policy(SET CMP0069 NEW)
+set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+
 option(DREAMCAST "build dreamcast" OFF)
 option(GAMECUBE "build gamecube" OFF)
 option(N64 "build n64" OFF)
@@ -13,6 +16,7 @@ option(SWITCH "build switch" OFF)
 
 option(SDL "build sdl frontend" OFF)
 option(SDL2 "build sdl2 frontend" OFF)
+option(SDL3 "build sdl3 frontend" OFF)
 option(LIBRETRO "build libretro core" OFF)
 
 option(SMS_SINGLE_FILE "include all src in single.c" OFF)
@@ -20,6 +24,7 @@ option(SMS_DEBUG "enable debug" OFF)
 option(SMS_DEV "enables debug and sanitizers" OFF)
 option(SMS_FORCE_INLINE "enables force inline, disabled in debug mode" ON)
 option(SMS_DISBALE_AUDIO "force disable of audio, useful for slow systems" OFF)
+option(SMS_FAST_AUDIO "neighbour linear interpolation resampling of audio" OFF)
 
 option(TEST_AUDIO "" OFF)
 option(TEST_GFX "" OFF)
@@ -60,13 +65,8 @@ project(TotalSMS
 message(STATUS "COMPILER: using ${CMAKE_C_COMPILER_ID}")
 
 # write out compile commands in clangd is found
-find_program(CLANGD_INSTALLED clangd)
-if (CLANGD_INSTALLED)
-    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-    message(STATUS "found clangd: generating compile_commands.json to ${CMAKE_BINARY_DIR}/compile_commands.json")
-else()
-    message(STATUS "cant find clangd: not generating compile_commands.json")
-endif()
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+message(STATUS "generating compile_commands.json to ${CMAKE_BINARY_DIR}/compile_commands.json")
 
 if (LTO)
     include(CheckIPOSupported)
@@ -95,6 +95,10 @@ endif()
 
 if (SDL2)
     set(PLATFORM_SDL2 ON)
+endif()
+
+if (SDL3)
+    set(PLATFORM_SDL3 ON)
 endif()
 
 if (NINTENDO_SWITCH)

@@ -1,5 +1,4 @@
 #include "mem.h"
-#include "../../util.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -159,8 +158,6 @@ IFile_t* imem_open(void* data, size_t len, enum IFileMode mode, int flags)
 
 IFile_t* imem_open_const(const void* data, size_t len, enum IFileMode mode, int flags)
 {
-    UNUSED(flags);
-
     if (!data || !len || mode == IFileMode_WRITE)
     {
         return NULL;

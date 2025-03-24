@@ -6,13 +6,14 @@
 #include "sms_types.h"
 #include "util.h"
 #include "ifile/cfile/cfile.h"
-#include "ifile/gzip/gzip.h"
 #include "ifile/mem/mem.h"
+#include "png/png.h"
 
 #include <string.h>
 #include <stdlib.h>
 #include <sms.h>
 #include <assert.h>
+#include <zlib.h>
 
 #ifdef EMSCRIPTEN
     #include <emscripten.h>
@@ -36,18 +37,38 @@ struct LoadRomConfig
     bool own_fd;
 };
 
-struct RewindState
+// savestates compressed with defalte/inflate
+// lz4 was considered, but it seemed silly to have 2 compression
+// algorithims included in my code, although lz4 is arguably
+struct StateMeta
 {
-    struct SMS_State state;
-    uint32_t pixels[144][160];
+    uint32_t magic;
+    char platform_string[64]; // todo:
+    uint32_t state_size;
+    // if 0, then the state is uncompressed!
+    uint32_t state_compressed_size;
+    uint32_t padding;
+    uint64_t timestamp;
+    uint64_t playtime;
+    uint8_t reserved[160];
 };
+
+enum { STATE_MAGIC = 0x536A0535 };
+
+// struct RewindState
+// {
+//     struct SMS_State state;
+//     uint32_t pixels[SMS_SCREEN_HEIGHT][SMS_SCREEN_WIDTH];
+// };
 
 struct mgb
 {
     // set via init()
     struct SMS_Core* sms;
 
-    void (*on_file_cb)(const char*, enum CallbackType, bool);
+    void* user;
+    set_on_file_callback_func on_file_cb;
+    convert_pixels_to_png_format_func on_png_convert_cb;
 
     // [OPTIONAL]
     // folder prefixes, eg, save_folder = "/saves";
@@ -110,7 +131,7 @@ static void loadsave(void)
                 {
                     if (mgb.on_file_cb)
                     {
-                        mgb.on_file_cb(ss.str, CallbackType_LOAD_SAVE, true);
+                        mgb.on_file_cb(mgb.user, ss.str, CallbackType_LOAD_SAVE, true);
                     }
                     mgb_log("[MGB] loaded save: %s\n", ss.str);
                 }
@@ -182,7 +203,7 @@ static bool loadbios(const struct LoadRomConfig* config)
 
     if (mgb.on_file_cb)
     {
-        mgb.on_file_cb(config->path, CallbackType_LOAD_BIOS, true);
+        mgb.on_file_cb(mgb.user, config->path, CallbackType_LOAD_BIOS, true);
     }
 
     mgb.has_bios = true;
@@ -198,7 +219,7 @@ fail:
 
     if (mgb.on_file_cb)
     {
-        mgb.on_file_cb(config->path, CallbackType_LOAD_BIOS, false);
+        mgb.on_file_cb(mgb.user, config->path, CallbackType_LOAD_BIOS, false);
     }
 
     mgb.has_bios = false;
@@ -281,7 +302,7 @@ static bool loadrom(const struct LoadRomConfig* config)
 
     if (mgb.on_file_cb)
     {
-        mgb.on_file_cb(config->path, CallbackType_LOAD_ROM, true);
+        mgb.on_file_cb(mgb.user, config->path, CallbackType_LOAD_ROM, true);
     }
 
     // try loading any saves if possible
@@ -300,7 +321,7 @@ fail:
 
     if (mgb.on_file_cb)
     {
-        mgb.on_file_cb(config->path, CallbackType_LOAD_ROM, false);
+        mgb.on_file_cb(mgb.user, config->path, CallbackType_LOAD_ROM, false);
     }
 
     mgb.has_rom = false;
@@ -455,7 +476,7 @@ bool mgb_save_save_file(const char* path)
                     mgb_log("[MGB] saved game: %s size: %zu\n", ss.str, save_size);
                     if (mgb.on_file_cb)
                     {
-                        mgb.on_file_cb(ss.str, CallbackType_SAVE_SAVE, true);
+                        mgb.on_file_cb(mgb.user, ss.str, CallbackType_SAVE_SAVE, true);
                     }
                     return true;
                 }
@@ -479,7 +500,7 @@ bool mgb_save_save_file(const char* path)
     fail:
         if (mgb.on_file_cb)
         {
-            mgb.on_file_cb(ss.str, CallbackType_SAVE_SAVE, false);
+            mgb.on_file_cb(mgb.user, ss.str, CallbackType_SAVE_SAVE, false);
         }
         return false;
     }
@@ -490,7 +511,15 @@ bool mgb_save_save_file(const char* path)
 bool mgb_save_state_file(const char* path)
 {
     IFile_t* file = NULL;
+    void* state = NULL;
+    struct StateMeta meta = {0};
     struct SafeString ss = {0};
+
+    if (!mgb_has_rom())
+    {
+        mgb_log_err("[MGB] tried to save state without rom\n");
+        goto fail;
+    }
 
     if (path)
     {
@@ -498,40 +527,85 @@ bool mgb_save_state_file(const char* path)
     }
     else
     {
-        ss = util_create_state_path(mgb.state_folder, mgb.rom_path);
+        ss = util_create_state_path(mgb_get_state_folder(), mgb_rom_path());
     }
 
     if (!ss_valid(&ss))
     {
+        mgb_log_err("ss invalid\n");
         goto fail;
     }
 
-    file = igzip_open(ss.str, IFileMode_WRITE, 0);
+    file = icfile_open(ss.str, IFileMode_WRITE, 0);
     if (!file)
     {
         mgb_log_err("[MGB] failed to open\n");
         goto fail;
     }
 
-    if (!SMS_savestate(mgb.sms, &mgb.state))
+    meta.magic = STATE_MAGIC;
+    strcpy(meta.platform_string, "linux dev");
+    meta.timestamp = time(NULL);
+    meta.state_size = SMS_get_state_size();
+    state = malloc(meta.state_size);
+
+    if (!SMS_savestate(mgb.sms, state, SMS_get_state_size(), false))
     {
         mgb_log_err("[MGB] failed to state\n");
         goto fail;
     }
 
-    if (!ifile_write(file, &mgb.state, sizeof(mgb.state)))
+    // compress state file
+    {
+        const uLong bound = compressBound(meta.state_size);
+        uLongf dst_len = bound;
+        void* compressed_state = malloc(dst_len);
+        if (Z_OK != compress(compressed_state, &dst_len, state, meta.state_size))
+        {
+            free(compressed_state);
+            goto fail;
+        }
+        meta.state_compressed_size = dst_len;
+
+        free(state);
+        state = realloc(compressed_state, meta.state_compressed_size);
+    }
+
+    if (mgb.on_png_convert_cb)
+    {
+        int pixels_w;
+        int pixels_h;
+        int pixels_channels;
+        void* pixels = mgb.on_png_convert_cb(mgb.user, &pixels_w, &pixels_h, &pixels_channels);
+        if (pixels)
+        {
+            unsigned png_size;
+            void* png = png_compress(pixels, pixels_w, pixels_h, pixels_channels, &png_size);
+            if (png)
+            {
+                ifile_write(file, png, png_size);
+                free(png);
+            }
+            free(pixels);
+        }
+    }
+
+    // const uint32_t meta_offset = ifile_tell(file);
+    if (!ifile_write(file, &meta, sizeof(meta)))
+    {
+        mgb_log_err("[MGB] failed to write\n");
+        goto fail;
+    }
+
+    if (!ifile_write(file, state, meta.state_compressed_size))
     {
         mgb_log_err("[MGB] failed to write\n");
         goto fail;
     }
 
     ifile_close(file);
+    free(state);
     mgb_log("[MGB] saved to save state file: %s\n", ss.str);
-
-    if (mgb.on_file_cb)
-    {
-        mgb.on_file_cb(ss.str, CallbackType_SAVE_STATE, true);
-    }
 
     return true;
 
@@ -541,9 +615,9 @@ fail:
         ifile_close(file);
     }
 
-    if (mgb.on_file_cb)
+    if (state)
     {
-        mgb.on_file_cb(ss.str, CallbackType_SAVE_STATE, false);
+        free(state);
     }
 
     mgb_log_err("[MGB] failed to save state file: %s\n", ss.str);
@@ -554,7 +628,16 @@ fail:
 bool mgb_load_state_file(const char* path)
 {
     IFile_t* file = NULL;
+    void* state = NULL;
+    void* state_compressed = NULL;
+    struct StateMeta meta = {0};
     struct SafeString ss = {0};
+
+    if (!mgb_has_rom())
+    {
+        mgb_log_err("[MGB] tried to load state without rom\n");
+        goto fail;
+    }
 
     if (path)
     {
@@ -562,7 +645,7 @@ bool mgb_load_state_file(const char* path)
     }
     else
     {
-        ss = util_create_state_path(mgb.state_folder, mgb.rom_path);
+        ss = util_create_state_path(mgb_get_state_folder(), mgb_rom_path());
     }
 
     if (!ss_valid(&ss))
@@ -572,32 +655,80 @@ bool mgb_load_state_file(const char* path)
 
     mgb_log("[MGB] trying to load state from: %s\n", ss.str);
 
-    file = igzip_open(ss.str, IFileMode_READ, 0);
+    file = icfile_open(ss.str, IFileMode_READ, 0);
     if (!file)
     {
         mgb_log_err("[MGB] failed to open file: %s\n", ss.str);
         goto fail;
     }
 
-    // todo: error check this
-    if (!ifile_read(file, &mgb.state, sizeof(mgb.state)))
+    // check for png data by reading header
+    uint8_t png_header[PNG_HEADER_SIZE];
+    if (!ifile_read(file, png_header, sizeof(png_header)))
     {
         mgb_log_err("[MGB] failed to read file: %s\n", ss.str);
         goto fail;
     }
 
-    if (!SMS_loadstate(mgb.sms, &mgb.state))
+    const uint32_t png_size = png_get_absolute_size(png_header, sizeof(png_header));
+
+    // skip over png data
+    if (!ifile_seek(file, png_size, SEEK_SET))
+    {
+        mgb_log_err("[MGB] failed to read file: %s\n", ss.str);
+        goto fail;
+    }
+
+    // read meta data
+    if (!ifile_read(file, &meta, sizeof(meta)))
+    {
+        mgb_log_err("[MGB] failed to read file: %s\n", ss.str);
+        goto fail;
+    }
+
+    // todo: check values here...
+    // todo: compare state size with sms
+    if (meta.magic != STATE_MAGIC)
+    {
+        mgb_log("bad state magic...\n");
+        goto fail;
+    }
+
+    const time_t timestamp = meta.timestamp;
+    const struct tm* tm = localtime(&timestamp);
+    if (tm) {
+        mgb_log("savestate date: %02u/%02u/%04u %02u:%02u\n", tm->tm_mday, tm->tm_mon + 1, tm->tm_year + 1900, tm->tm_hour, tm->tm_min);
+    } else {
+        mgb_log_err("bad time... %zu\n", meta.timestamp);
+    }
+
+    uLongf dst_len = meta.state_size;
+    state_compressed = malloc(meta.state_compressed_size);
+
+    if (!ifile_read(file, state_compressed, meta.state_compressed_size))
+    {
+        mgb_log_err("[MGB] failed to read file: %s\n", ss.str);
+        goto fail;
+    }
+
+    state = malloc(dst_len);
+
+    if (Z_OK != uncompress(state, &dst_len, state_compressed, meta.state_compressed_size))
+    {
+        mgb_log_err("failed to decompress state\n");
+        goto fail;
+    }
+
+    // if (!SMS_loadstate(sms, state, dst_len))
+    if (!SMS_loadstate(mgb.sms, state, SMS_get_state_size()))
     {
         mgb_log_err("[MGB] GB failed to loadstate: %s\n", ss.str);
         goto fail;
     }
 
     ifile_close(file);
-
-    if (mgb.on_file_cb)
-    {
-        mgb.on_file_cb(ss.str, CallbackType_LOAD_STATE, true);
-    }
+    free(state);
+    free(state_compressed);
 
     return true;
 
@@ -607,9 +738,14 @@ fail:
         ifile_close(file);
     }
 
-    if (mgb.on_file_cb)
+    if (state)
     {
-        mgb.on_file_cb(ss.str, CallbackType_LOAD_STATE, false);
+        free(state);
+    }
+
+    if (state_compressed)
+    {
+        free(state_compressed);
     }
 
     mgb_log_err("[MGB] failed to load state from: %s\n", ss.str);
@@ -655,6 +791,11 @@ bool mgb_has_rom(void)
     return mgb.has_rom;
 }
 
+const char* mgb_rom_path(void)
+{
+    return mgb.rom_path;
+}
+
 void mgb_set_save_folder(const char* path)
 {
     mgb.save_folder = strdup(path);
@@ -688,21 +829,33 @@ const char* mgb_get_state_folder(void)
     return mgb.state_folder;
 }
 
-void mgb_set_on_file_callback(void (*cb)(const char*, enum CallbackType, bool))
+void mgb_set_userdata(void* user)
+{
+    mgb.user = user;
+}
+
+void mgb_set_on_file_callback(set_on_file_callback_func cb)
 {
     mgb.on_file_cb = cb;
 }
 
+void mgb_set_on_convert_pixels_to_png_format(convert_pixels_to_png_format_func cb)
+{
+    mgb.on_png_convert_cb = cb;
+}
+
+// commented out as state code is being replaced
+#if 0
 #include "rewind.h"
 #include "compressors.h"
 
 static struct RewindState rewind_state = {0};
 static struct Rewind rewinder = {0};
 
-bool mgb_rewind_init(size_t seconds)
+bool mgb_rewind_init(size_t frames)
 {
-    rewind_init(&rewinder, seconds);
-    rewind_add_compressor(&rewinder, Zlib, Zlib_size);
+    rewind_init(&rewinder, Zlib, Zlib_size, frames);
+    // rewind_add_compressor(&rewinder, Zlib, Zlib_size);
     // rewind_add_compressor(&rewinder, Zstd, Zstd_size);
     // rewind_add_compressor(&rewinder, Lz4, Lz4_size);
     return true;
@@ -743,3 +896,4 @@ bool mgb_rewind_pop_frame(void* pixels, size_t size)
 
     return false;
 }
+#endif

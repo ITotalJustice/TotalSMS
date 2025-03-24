@@ -30,7 +30,6 @@ endif()
 
 target_link_libraries(${myname} PRIVATE
     TotalSMS
-    SDL2::SDL2main
     mgb
 )
 
@@ -117,6 +116,10 @@ if (VCPKG_TOOLCHAIN)
     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux" OR ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
         set(sdl2_static TRUE)
     endif()
+endif()
+
+if (TARGET SDL2::SDL2main)
+    target_link_libraries(${myname} PRIVATE SDL2::SDL2main)
 endif()
 
 if (sdl2_static)

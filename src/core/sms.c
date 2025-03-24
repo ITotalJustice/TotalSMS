@@ -1,4 +1,5 @@
 #include "sms.h"
+#include "scheduler.h"
 #include "sms_internal.h"
 #include "sms_types.h"
 #include "sms_rom_database.h"
@@ -39,6 +40,29 @@ static const char* const region_code_string[0x10] =
     [0x7] = "GG International",
 };
 
+static void frame_event(void* user, unsigned id, unsigned late)
+{
+    UNUSED(id);
+    UNUSED(late);
+    struct SMS_Core* sms = user;
+    sms->frame_end = true;
+}
+
+void timeout_event(void* user, unsigned id, unsigned late)
+{
+    printf("inside scheduler reset event\n");
+    struct SMS_Core* sms = user;
+    printf("got user data\n");
+
+    // adust anything that uses timestamps
+    psg_update_timestamp(sms->psg, -SCHEDULER_TIMEOUT_CYCLES);
+    printf("did psg\n");
+    scheduler_reset_event(&sms->scheduler);
+    printf("did reset event\n");
+    scheduler_add_absolute(&sms->scheduler, id, SCHEDULER_TIMEOUT_CYCLES, timeout_event, user);
+    printf("added absolute yes\n");
+}
+
 static uint16_t find_rom_header_offset(const uint8_t* data)
 {
     // loop until we find the magic num
@@ -72,9 +96,10 @@ static uint16_t find_rom_header_offset(const uint8_t* data)
 /* SOURCE: https://web.archive.org/web/20190108202303/http://www.hackersdelight.org/hdcodetxt/crc.c.txt */
 uint32_t SMS_crc32(const void* data, size_t size)
 {
+    #if 0
     int crc;
-    unsigned int byte, c;
-    const unsigned int g0 = 0xEDB88320,    g1 = g0>>1,
+    unsigned byte, c;
+    const unsigned g0 = 0xEDB88320,    g1 = g0>>1,
         g2 = g0>>2, g3 = g0>>3, g4 = g0>>4, g5 = g0>>5,
         g6 = (g0>>6)^g0, g7 = ((g0>>6)^g0)>>1;
 
@@ -89,6 +114,39 @@ uint32_t SMS_crc32(const void* data, size_t size)
         crc = ((unsigned)crc >> 8) ^ c;
     }
     return ~crc;
+    #else
+    int j;
+    unsigned int i, byte, crc, mask;
+    const unsigned char* message = data;
+
+    i = 0;
+    crc = 0xFFFFFFFF;
+    while (i < size) {
+        byte = message[i];            // Get next byte.
+        crc = crc ^ byte;
+        for (j = 7; j >= 0; j--) {    // Do eight times.
+            mask = -(crc & 1);
+            crc = (crc >> 1) ^ (0xEDB88320 & mask);
+        }
+        i = i + 1;
+    }
+    return ~crc;
+    #endif
+}
+
+bool SMS_get_skip_audio(const struct SMS_Core* sms)
+{
+    return sms->skip_audio;
+}
+
+bool SMS_get_skip_frame(const struct SMS_Core* sms)
+{
+    return sms->skip_frame;
+}
+
+void SMS_skip_audio(struct SMS_Core* sms, bool enable)
+{
+    sms->skip_audio = enable;
 }
 
 void SMS_skip_frame(struct SMS_Core* sms, bool enable)
@@ -121,12 +179,7 @@ bool SMS_is_system_type_sg(const struct SMS_Core* sms)
     return SMS_get_system_type(sms) == SMS_System_SG1000;
 }
 
-bool SMS_is_spiderman_int_hack_enabled(const struct SMS_Core* sms)
-{
-    return sms->crc == 0xEBE45388;
-}
-
-struct SMS_RomHeader SMS_parse_rom_header(const uint8_t* data, uint16_t offset)
+static struct SMS_RomHeader SMS_parse_rom_header(const uint8_t* data, uint16_t offset)
 {
     struct SMS_RomHeader header = {0};
 
@@ -173,9 +226,35 @@ bool SMS_init(struct SMS_Core* sms)
         return false;
     }
 
-    memset(sms, 0, sizeof(struct SMS_Core));
+    memset(sms, 0, sizeof(*sms));
+    SMS_set_mode1_max_sprites(sms, SMS_MODE1_MAX_SPRITES);
+    SMS_set_mode4_max_sprites(sms, SMS_MODE4_MAX_SPRITES);
+
+    if (scheduler_init(&sms->scheduler, SchedulerID_MAX))
+    {
+        return false;
+    }
+
+    if (!(sms->psg = psg_init(SMS_CPU_CLOCK, 44100)))
+
+    for (int i = 0; i < 4; i++)
+    {
+        sms->volume[i] = 1.0;
+    }
+
+    sms->master_volume = 0.5;
 
     return true;
+}
+
+void SMS_quit(struct SMS_Core* sms)
+{
+    if (sms)
+    {
+        psg_quit(sms->psg);
+        scheduler_quit(&sms->scheduler);
+        memset(sms, 0, sizeof(*sms));
+    }
 }
 
 static void SMS_reset(struct SMS_Core* sms)
@@ -185,12 +264,23 @@ static void SMS_reset(struct SMS_Core* sms)
     memset(sms->wmap, 0, sizeof(sms->wmap));
     memset(&sms->cpu, 0, sizeof(sms->cpu));
     memset(&sms->vdp, 0, sizeof(sms->vdp));
-    memset(&sms->psg, 0, sizeof(sms->psg));
+    // memset(&sms->psg, 0, sizeof(sms->psg));
     memset(&sms->port, 0, sizeof(sms->port));
     memset(sms->system_ram, 0, sizeof(sms->system_ram));
 
+    // setup scheduler
+    scheduler_reset(&sms->scheduler, 0, timeout_event, sms);
+
     z80_init(sms);
-    psg_init(sms);
+    if (SMS_is_system_type_sg(sms))
+    {
+        psg_reset(sms->psg, Sn76489LfsrTappedBit_SG, Sn76489LfsrFeedBit_SG);
+    }
+    else
+    {
+        psg_reset(sms->psg, Sn76489LfsrTappedBit_SMS, Sn76489LfsrFeedBit_SMS);
+    }
+    psg_set_master_volume(sms->psg, 0.5);
     vdp_init(sms);
 
     // enable everything in control
@@ -211,6 +301,7 @@ static void SMS_reset(struct SMS_Core* sms)
     if (SMS_is_system_type_gg(sms))
     {
         sms->port.gg_regs[0x0] = 0xC0;
+        sms->port.gg_regs[0x0] = 0x40;
         sms->port.gg_regs[0x1] = 0x7F;
         sms->port.gg_regs[0x2] = 0xFF;
         sms->port.gg_regs[0x3] = 0x00;
@@ -245,7 +336,7 @@ static bool sg_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, in
     sms->rom = rom;
     sms->rom_size = size;
     sms->rom_mask = size / 0x400; // this works because size is always pow2
-    sms->cart.max_bank_mask = (size / 0x4000) - 1;
+    sms->cart.max_bank_mask = size / 0x4000;
     sms->crc = SMS_crc32(rom, size);
 
     SMS_log("crc32 0x%08X\n", sms->crc);
@@ -267,7 +358,7 @@ static bool loadrom2(struct SMS_Core* sms, struct RomEntry* entry, const uint8_t
     sms->rom = rom;
     sms->rom_size = size;
     sms->rom_mask = size / 0x400; // this works because size is always pow2
-    sms->cart.max_bank_mask = (size / 0x4000) - 1;
+    sms->cart.max_bank_mask = size / 0x4000;
     sms->crc = entry->crc;
 
     SMS_set_system_type(sms, entry->sys);
@@ -339,7 +430,7 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int syst
     sms->rom = rom;
     sms->rom_size = size;
     sms->rom_mask = size / 0x400; // this works because size is always pow2
-    sms->cart.max_bank_mask = (size / 0x4000) - 1;
+    sms->cart.max_bank_mask = size / 0x4000;
     sms->crc = crc;
 
     SMS_log("crc32 0x%08X\n", sms->crc);
@@ -383,11 +474,38 @@ bool SMS_used_sram(const struct SMS_Core* sms)
     return sms->cart.sram_used;
 }
 
-void SMS_set_pixels(struct SMS_Core* sms, void* pixels, uint16_t pitch, uint8_t bpp)
+void SMS_set_mode1_max_sprites(struct SMS_Core* sms, uint8_t value)
+{
+    if (value > ARRAY_SIZE(sms->vdp.sprites))
+    {
+        sms->mode1_max_spirtes = ARRAY_SIZE(sms->vdp.sprites);
+    } else
+    {
+        sms->mode1_max_spirtes = value;
+    }
+}
+
+void SMS_set_mode4_max_sprites(struct SMS_Core* sms, uint8_t value)
+{
+    if (value > ARRAY_SIZE(sms->vdp.sprites))
+    {
+        sms->mode4_max_spirtes = ARRAY_SIZE(sms->vdp.sprites);
+    } else
+    {
+        sms->mode4_max_spirtes = value;
+    }
+}
+
+void SMS_set_pixels(struct SMS_Core* sms, void* pixels, uint16_t stride, uint8_t bpp)
 {
     sms->pixels = pixels;
-    sms->pitch = pitch;
+    sms->stride = stride;
     sms->bpp = bpp;
+}
+
+void SMS_set_builtin_palette(struct SMS_Core* sms, const uint32_t palette[16])
+{
+    memcpy(sms->builtin_palette, palette, sizeof(sms->builtin_palette));
 }
 
 void SMS_set_userdata(struct SMS_Core* sms, void* userdata)
@@ -395,21 +513,27 @@ void SMS_set_userdata(struct SMS_Core* sms, void* userdata)
     sms->userdata = userdata;
 }
 
-void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, struct SMS_ApuSample* samples, uint32_t size, uint32_t freq)
+void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t freq)
 {
-    // avoid div by 0
-    if (cb && samples && size && freq)
+    if (cb && freq)
     {
+        psg_quit(sms->psg);
+        sms->psg = psg_init(SMS_CPU_CLOCK, freq);
+
+        if (SMS_is_system_type_sg(sms))
+        {
+            psg_reset(sms->psg, Sn76489LfsrTappedBit_SG, Sn76489LfsrFeedBit_SG);
+        }
+        else
+        {
+            psg_reset(sms->psg, Sn76489LfsrTappedBit_SMS, Sn76489LfsrFeedBit_SMS);
+        }
+
         sms->apu_callback = cb;
-        sms->apu_callback_freq = (SMS_CPU_CLOCK / freq);
-        sms->apu_samples = samples;
-        sms->apu_sample_size = size;
-        sms->apu_sample_index = 0;
     }
     else
     {
         sms->apu_callback = NULL;
-        sms->apu_callback_freq = 0;
     }
 }
 
@@ -423,81 +547,14 @@ void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb)
     sms->colour_callback = cb;
 }
 
-void SMS_set_better_drums(struct SMS_Core* sms, bool enable)
+void SMS_set_input_callback(struct SMS_Core* sms, sms_input_callback_t cb)
 {
-    sms->better_drums = enable;
-}
-
-enum { STATE_MAGIC = 0x5E6A };
-enum { STATE_VERSION = 2 };
-
-// for savestates, we don't save the port
-bool SMS_savestate(const struct SMS_Core* sms, struct SMS_State* state)
-{
-    state->header.magic = STATE_MAGIC;
-    state->header.version = STATE_VERSION;
-    state->header.crc = sms->crc;
-
-    memcpy(&state->cpu, &sms->cpu, sizeof(sms->cpu));
-    memcpy(&state->vdp, &sms->vdp, sizeof(sms->vdp));
-    memcpy(&state->psg, &sms->psg, sizeof(sms->psg));
-    memcpy(&state->cart, &sms->cart, sizeof(sms->cart));
-    memcpy(&state->memory_control, &sms->memory_control, sizeof(sms->memory_control));
-    memcpy(state->system_ram, sms->system_ram, sizeof(sms->system_ram));
-
-    return true;
-}
-
-bool SMS_loadstate(struct SMS_Core* sms, const struct SMS_State* state)
-{
-    if (state->header.magic != STATE_MAGIC)
-    {
-        SMS_log("bad savestate, invalid magic. got: 0x%04X wanted: 0x%04X\n", state->header.magic, STATE_MAGIC);
-        return false;
-    }
-
-    if (state->header.version != STATE_VERSION)
-    {
-        SMS_log("bad savestate, invalid version. got: 0x%04X wanted: 0x%04X\n", state->header.version, STATE_VERSION);
-        return false;
-    }
-
-    if (state->header.crc != sms->crc)
-    {
-        SMS_log("bad savestate, invalid crc. got: 0x%04X wanted: 0x%04X\n", state->header.crc, sms->crc);
-        return false;
-    }
-
-    memcpy(&sms->cpu, &state->cpu, sizeof(sms->cpu));
-    memcpy(&sms->vdp, &state->vdp, sizeof(sms->vdp));
-    memcpy(&sms->psg, &state->psg, sizeof(sms->psg));
-    memcpy(&sms->cart, &state->cart, sizeof(sms->cart));
-    memcpy(&sms->memory_control, &state->memory_control, sizeof(sms->memory_control));
-    memcpy(sms->system_ram, state->system_ram, sizeof(sms->system_ram));
-
-    // we need to reload the mapper pointers!
-    mapper_update(sms);
-    vdp_mark_palette_dirty(sms);
-
-    return true;
-}
-
-bool SMS_parity16(uint16_t value)
-{
-    #if HAS_BUILTIN(__builtin_parity) && !defined(N64)
-        return !__builtin_parity(value);
-    #else
-        // SOURCE: https://graphics.stanford.edu/~seander/bithacks.html#ParityParallel
-        value ^= value >> 8; // 16-bit
-        value ^= value >> 4; // 8-bit
-        value &= 0xF;
-        return !((0x6996 >> value) & 0x1);
-    #endif
+    sms->input_callback = cb;
 }
 
 bool SMS_parity8(uint8_t value)
 {
-    #if HAS_BUILTIN(__builtin_parity) && !defined(N64)
+    #if HAS_BUILTIN(__builtin_parity)
         return !__builtin_parity(value);
     #else
         // SOURCE: https://graphics.stanford.edu/~seander/bithacks.html#ParityParallel
@@ -509,14 +566,33 @@ bool SMS_parity8(uint8_t value)
 
 void SMS_run(struct SMS_Core* sms, size_t cycles)
 {
-    for (size_t i = 0; i < cycles; i += sms->cpu.cycles)
-    {
-        z80_run(sms);
-        vdp_run(sms, sms->cpu.cycles);
-        psg_run(sms, sms->cpu.cycles);
+    sms->frame_end = false;
+    scheduler_add(&sms->scheduler, SchedulerID_FRAME, cycles, frame_event, sms);
 
-        assert(sms->cpu.cycles != 0);
+    if (sms->cpu.execution_mode == Z80_ExecutionMode_HALT)
+    {
+        z80_halt_loop(sms);
     }
 
-    psg_sync(sms);
+    if (!sms->frame_end)
+    {
+        for (;;)
+        {
+            z80_run(sms);
+            // scheduler_tick(&sms->scheduler, sms->cpu.cycles);
+            if (scheduler_should_fire(&sms->scheduler))
+            {
+                scheduler_fire(&sms->scheduler);
+                if (sms->frame_end)
+                {
+                    break;
+                }
+
+                if (sms->cpu.execution_mode == Z80_ExecutionMode_HALT)
+                {
+                    z80_halt_loop(sms);
+                }
+            }
+        }
+    }
 }

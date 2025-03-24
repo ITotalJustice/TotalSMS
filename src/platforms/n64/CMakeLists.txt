@@ -22,4 +22,6 @@ n64_create_dfs(
 n64_create_z64(TotalSMS_N64
     NAME "TotalSMS_N64"
     DFS "roms.dfs"
+    SAVETYPE "sram256k"
+    REGIONFREE
 )

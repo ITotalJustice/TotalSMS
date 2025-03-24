@@ -1,5 +1,4 @@
 #include "cfile.h"
-#include "../../util.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,8 +159,6 @@ static ctx_t* internal_open_fd(int fd, const char* mode)
 
 static IFile_t* internal_open(const struct Config* config, enum IFileMode mode, int flags)
 {
-    UNUSED(flags);
-
     IFile_t* ifile = NULL;
     ctx_t* ctx = NULL;
 

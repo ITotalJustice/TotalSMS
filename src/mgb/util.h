@@ -33,9 +33,9 @@ enum ExtensionType {
     ExtensionType_UPS   = 1 << 10,
     ExtensionType_BPS   = 1 << 11,
 
-    ExtensionType_SMS   = 1 << 1,
-    ExtensionType_GG   = 1 << 2,
-    ExtensionType_SG   = 1 << 3,
+    ExtensionType_SMS   = 1 << 12,
+    ExtensionType_GG   = 1 << 13,
+    ExtensionType_SG   = 1 << 14,
     ExtensionType_ROM = ExtensionType_SMS | ExtensionType_GG | ExtensionType_SG,
 
     ExtensionType_REGULAR = ExtensionType_UNK | ExtensionType_ROM |

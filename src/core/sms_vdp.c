@@ -31,7 +31,92 @@ enum
 
     NTSC_CYCLES_PER_LINE = 228, // SMS_CPU_CLOCK / NTSC_VCOUNT_MAX / NTSC_FPS, // ~228
 
-    SPRITE_EOF = 208,
+    // rounded up
+    NTSC_ACTIVE_DISPLAY_CYCLES = 171, // 512 mclks / 3 = ~170
+    // rounded down
+    NTSC_BLANKING_BORDER_CYCLES = 57, // 172 mclks / 3 = ~57
+    // rounded up
+    NTSC_FRAME_INTERRUPT_CYCLES = 203, // 607 mclks / 3 = ~202
+    // rounded up
+    NTSC_LINE_INTERRUPT_CYCLES = 203, // 608 mclks / 3 = ~202
+};
+
+enum NtscHeightMode {
+    NtscHeightMode_192,
+    NtscHeightMode_224,
+    NtscHeightMode_240,
+};
+
+// values returned when reading vcount io port for each height mode
+static const int NTSC_VCOUNT_PORT[3][NTSC_VCOUNT_MAX] = {
+    [NtscHeightMode_192] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+        0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+        0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+        0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
+        0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+        0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F,
+        0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F,
+        0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+        0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+        0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+        0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, /* wrap around */
+        0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF, 0xE0, 0xE1, 0xE2, 0xE3, 0xE4,
+        0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xF0, 0xF1, 0xF2, 0xF3, 0xF4,
+        0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+    },
+    [NtscHeightMode_224] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+        0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+        0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+        0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
+        0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+        0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F,
+        0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F,
+        0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+        0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+        0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+        0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+        0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, /* wrap around */
+        0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xF0, 0xF1, 0xF2, 0xF3, 0xF4,
+        0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+    },
+    [NtscHeightMode_240] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+        0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+        0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+        0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
+        0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+        0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F,
+        0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F,
+        0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+        0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+        0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+        0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+        0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
+        0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05
+    },
+};
+
+static const int NTSC_ACTIVE_DISPLAY_HEIGHT[3] = {
+    [NtscHeightMode_192] = 192,
+    [NtscHeightMode_224] = 224,
+    [NtscHeightMode_240] = 240,
+};
+
+static const int NTSC_NEXT_EVENT_CYCLES[2] = {
+    [VdpState_ACTIVE] = NTSC_ACTIVE_DISPLAY_CYCLES,
+    [VdpState_BLANKING] = NTSC_BLANKING_BORDER_CYCLES,
 };
 
 // SOURCE: https://www.smspower.org/forums/8161-SMSDisplayTiming
@@ -40,56 +125,63 @@ enum
 // frame_int 202 cycles into line 192 (607 mclks)
 // line_int 202 cycles into triggering (608 mclks)
 
-static FORCE_INLINE bool vdp_is_line_irq_wanted(const struct SMS_Core* sms)
+static inline bool vdp_is_line_irq_wanted(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x0], 4);
 }
 
-static FORCE_INLINE bool vdp_is_vblank_irq_wanted(const struct SMS_Core* sms)
+static inline bool vdp_is_vblank_irq_wanted(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x1], 5);
 }
 
-static FORCE_INLINE bool vdp_is_screen_size_change_enabled(const struct SMS_Core* sms)
+static bool vdp_is_screen_size_change_enabled(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x0], 1);
 }
 
-static FORCE_INLINE uint16_t vdp_get_nametable_base_addr(const struct SMS_Core* sms)
+static bool vdp_is_mode4(const struct SMS_Core* sms)
 {
-    if (SMS_is_system_type_sg(sms))
+    return IS_BIT_SET(VDP.registers[0x0], 2) && !SMS_is_system_type_sg(sms);
+}
+
+static uint16_t vdp_get_nametable_base_addr(const struct SMS_Core* sms)
+{
+    if (vdp_is_mode4(sms))
+    {
+        // todo: handle mask bit on sms1
+        return (VDP.registers[0x2] & 0xE) << 10;
+    }
+    else
     {
         return (VDP.registers[0x2] & 0xF) << 10;
     }
-    else
-    {
-        return (VDP.registers[0x2] & 0xE) << 10;
-    }
 }
 
-static FORCE_INLINE uint16_t vdp_get_sprite_attribute_base_addr(const struct SMS_Core* sms)
+static uint16_t vdp_get_sprite_attribute_base_addr(const struct SMS_Core* sms)
 {
-    if (SMS_is_system_type_sg(sms))
+    if (vdp_is_mode4(sms))
+    {
+        // todo: handle mask bit on sms1
+        return (VDP.registers[0x5] & 0x7E) * 128;
+    }
+    else
     {
         return (VDP.registers[0x5] & 0x7F) * 128;
     }
-    else
-    {
-        return (VDP.registers[0x5] & 0x7E) * 128;
-    }
 }
 
-static FORCE_INLINE bool vdp_get_sprite_pattern_select(const struct SMS_Core* sms)
+static bool vdp_get_sprite_pattern_select(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x6], 2);
 }
 
-static FORCE_INLINE bool vdp_is_display_enabled(const struct SMS_Core* sms)
+static bool vdp_is_display_enabled(const struct SMS_Core* sms)
 {
     return IS_BIT_SET(VDP.registers[0x1], 6);
 }
 
-static FORCE_INLINE uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
+static uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
 {
     const bool doubled_sprites = IS_BIT_SET(VDP.registers[0x1], 0);
     const uint8_t sprite_size = IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
@@ -97,25 +189,24 @@ static FORCE_INLINE uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
     return sprite_size << doubled_sprites;
 }
 
-// returns the hieght of the screen
-static uint16_t vdp_get_screen_height(const struct SMS_Core* sms)
+// returns the height of the screen
+static enum NtscHeightMode ntsc_get_height_mode(const struct SMS_Core* sms)
 {
-    if (!vdp_is_screen_size_change_enabled(sms))
+    if (vdp_is_mode4(sms) && vdp_is_screen_size_change_enabled(sms))
     {
-        return 192;
+        if (IS_BIT_SET(VDP.registers[1], 4))
+        {
+            assert(!"screen mode not impelented!");
+            return NtscHeightMode_224;
+        }
+        else if (IS_BIT_SET(VDP.registers[1], 3))
+        {
+            assert(!"screen mode not impelented!");
+            return NtscHeightMode_240;
+        }
     }
-    else if (IS_BIT_SET(VDP.registers[1], 4))
-    {
-        return 224;
-    }
-    else if (IS_BIT_SET(VDP.registers[1], 3))
-    {
-        return 240;
-    }
-    else
-    {
-        return 192;
-    }
+
+    return NtscHeightMode_192;
 }
 
 static uint8_t vdp_get_overscan_colour(const struct SMS_Core* sms)
@@ -131,7 +222,7 @@ struct VDP_region
     uint16_t pixely;
 };
 
-static FORCE_INLINE struct VDP_region vdp_get_region(const struct SMS_Core* sms)
+static struct VDP_region vdp_get_region(const struct SMS_Core* sms)
 {
     if (SMS_is_system_type_gg(sms))
     {
@@ -155,7 +246,7 @@ static FORCE_INLINE struct VDP_region vdp_get_region(const struct SMS_Core* sms)
     }
 }
 
-static FORCE_INLINE bool vdp_is_display_active(const struct SMS_Core* sms)
+static bool vdp_is_display_active(const struct SMS_Core* sms)
 {
     if (SMS_is_system_type_gg(sms))
     {
@@ -163,7 +254,7 @@ static FORCE_INLINE bool vdp_is_display_active(const struct SMS_Core* sms)
     }
     else
     {
-        return VDP.vcount < 192;
+        return VDP.vcount < NTSC_ACTIVE_DISPLAY_HEIGHT[ntsc_get_height_mode(sms)];
     }
 }
 
@@ -174,7 +265,7 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
     {
         case 1:
         case 8: {
-            uint8_t* pixels = &((uint8_t*)sms->pixels)[sms->pitch * y];
+            uint8_t* pixels = &((uint8_t*)sms->pixels)[sms->stride * y];
             for (int i = 0; i < SMS_SCREEN_WIDTH; ++i)
             {
                 pixels[i] = (uint8_t)scanline[i];
@@ -184,7 +275,7 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
         case 2:
         case 15:
         case 16: {
-            uint16_t* pixels = ((uint16_t*)sms->pixels) + (sms->pitch * y);
+            uint16_t* pixels = ((uint16_t*)sms->pixels) + (sms->stride * y);
             for (int i = 0; i < SMS_SCREEN_WIDTH; ++i)
             {
                 pixels[i] = (uint16_t)scanline[i];
@@ -194,7 +285,7 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
         case 4:
         case 24:
         case 32: {
-            uint32_t* pixels = &((uint32_t*)sms->pixels)[sms->pitch * y];
+            uint32_t* pixels = &((uint32_t*)sms->pixels)[sms->stride * y];
             for (int i = 0; i < SMS_SCREEN_WIDTH; ++i)
             {
                 pixels[i] = (uint32_t)scanline[i];
@@ -208,44 +299,116 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
 }
 #endif
 
-uint8_t vdp_status_flag_read(struct SMS_Core* sms)
+uint8_t vdp_io_read_vcounter(const struct SMS_Core* sms)
 {
-    if (SMS_is_system_type_sg(sms))
+    return NTSC_VCOUNT_PORT[ntsc_get_height_mode(sms)][sms->vdp.vcount];
+}
+
+uint8_t vdp_io_read_hcounter(const struct SMS_Core* sms)
+{
+    const int event_cycles = scheduler_get_event_cycles(&sms->scheduler, SchedulerID_VDP);
+    int elsaped = 0;
+
+    switch (VDP.state)
     {
-        uint8_t v = 0;
+        case VdpState_ACTIVE:
+            elsaped = NTSC_ACTIVE_DISPLAY_CYCLES - event_cycles;
+            break;
 
-        v |= VDP.frame_interrupt_pending << 7;
-        v |= VDP.sprite_overflow << 6;
-        v |= VDP.sprite_collision << 5;
-        v |= VDP.fifth_sprite_num;
+        case VdpState_BLANKING:
+            elsaped = NTSC_ACTIVE_DISPLAY_CYCLES + NTSC_BLANKING_BORDER_CYCLES - event_cycles;
+            break;
+    }
 
-        // these are reset on read
-        VDP.frame_interrupt_pending = false;
-        VDP.sprite_overflow = false;
-        VDP.sprite_collision = false;
-        VDP.fifth_sprite_num = 0;
+    // assert(!"reading hcounter is properly unimplemented...");
+    // the difference between is how many cycles elapsed since start of line.
+    uint16_t value = elsaped;
+    // ppu is 1.5x faster than the cpu.
+    value = (float)value * 1.5F;
+    // docs say that this is a 9-bit counter, but only upper 8-bits read.
+    return value >> 1;
+}
 
-        return v;
+uint8_t vdp_io_data_read(struct SMS_Core* sms)
+{
+    sms->vdp.control_latch = false;
+
+    const uint8_t data = sms->vdp.buffer_read_data;
+
+    sms->vdp.buffer_read_data = sms->vdp.vram[sms->vdp.addr];
+    sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
+
+    return data;
+}
+
+uint8_t vdp_io_status_read(struct SMS_Core* sms)
+{
+    sms->vdp.control_latch = false;
+
+    uint8_t v = 0;
+    v |= VDP.frame_interrupt_pending << 7;
+    v |= VDP.sprite_overflow << 6;
+    v |= VDP.sprite_collision << 5;
+
+    // these are reset on read
+    VDP.frame_interrupt_pending = false;
+    VDP.line_interrupt_pending = false;
+    VDP.sprite_overflow = false;
+    VDP.sprite_collision = false;
+
+    if (vdp_is_mode4(sms))
+    {
+        v |= 31; // unused bits 1,2,3,4
     }
     else
     {
-        uint8_t v = 31; // unused bits 1,2,3,4
+        v |= VDP.fifth_sprite_num;
+        VDP.fifth_sprite_num = 0;
+    }
 
-        v |= VDP.frame_interrupt_pending << 7;
-        v |= VDP.sprite_overflow << 6;
-        v |= VDP.sprite_collision << 5;
+    return v;
+}
 
-        // these are reset on read
-        VDP.frame_interrupt_pending = false;
-        VDP.line_interrupt_pending = false;
-        VDP.sprite_overflow = false;
-        VDP.sprite_collision = false;
+static void IO_vdp_cram_gg_write(struct SMS_Core* sms, const uint8_t value)
+{
+    // even addr stores byte to latch, odd writes 2 bytes
+    if (sms->vdp.addr & 1)
+    {
+        const uint8_t rg_index = (sms->vdp.addr - 1) & 0x3F;
+        const uint8_t b_index = sms->vdp.addr & 0x3F;
 
-        return v;
+        // check is the colour has changed, if so, set dirty
+        if (sms->vdp.cram[rg_index] != sms->vdp.cram_gg_latch || sms->vdp.cram[b_index] != value)
+        {
+            sms->vdp.dirty_cram_min = SMS_MIN(sms->vdp.dirty_cram_min, rg_index);
+            sms->vdp.dirty_cram_max = SMS_MAX(sms->vdp.dirty_cram_max, rg_index+1);
+            sms->vdp.dirty_cram[rg_index] = true;
+        }
+
+        sms->vdp.cram[rg_index] = sms->vdp.cram_gg_latch;
+        sms->vdp.cram[b_index] = value;
+    }
+    else
+    {
+        // latches the r,g values
+        sms->vdp.cram_gg_latch = value;
     }
 }
 
-void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
+static void IO_vdp_cram_sms_write(struct SMS_Core* sms, const uint8_t value)
+{
+    const uint8_t index = sms->vdp.addr & 0x1F;
+
+    if (sms->vdp.cram[index] != value)
+    {
+        sms->vdp.cram[index] = value;
+        sms->vdp.dirty_cram[index] = true;
+        sms->vdp.dirty_cram_min = SMS_MIN(sms->vdp.dirty_cram_min, index);
+        sms->vdp.dirty_cram_max = SMS_MAX(sms->vdp.dirty_cram_max, index+1);
+    }
+}
+
+static void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
 {
     if (SMS_is_system_type_sg(sms))
     {
@@ -256,18 +419,28 @@ void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
         switch (addr & 0xF)
         {
             case 0x0:
-                assert(IS_BIT_SET(value, 2) && "not mode4, using TMS9918 modes!");
-                assert(IS_BIT_SET(value, 1) && !IS_BIT_SET(VDP.registers[1], 3) && "240 height mode set");
-                assert(IS_BIT_SET(value, 1) && !IS_BIT_SET(VDP.registers[1], 4) && "224 height mode set");
+                // assert(IS_BIT_SET(value, 2) && "not mode4, using TMS9918 modes!");
+                // assert(IS_BIT_SET(value, 1) && !IS_BIT_SET(VDP.registers[1], 3) && "240 height mode set");
+                // assert(IS_BIT_SET(value, 1) && !IS_BIT_SET(VDP.registers[1], 4) && "224 height mode set");
                 break;
 
             case 0x1:
-                assert(!IS_BIT_SET(value, 3) && IS_BIT_SET(VDP.registers[0], 1) && "240 height mode set");
-                assert(!IS_BIT_SET(value, 4) && IS_BIT_SET(VDP.registers[0], 1) && "224 height mode set");
+                // assert(!IS_BIT_SET(value, 3) && IS_BIT_SET(VDP.registers[0], 1) && "240 height mode set");
+                // assert(!IS_BIT_SET(value, 4) && IS_BIT_SET(VDP.registers[0], 1) && "224 height mode set");
                 break;
 
             case 0x3:
-                assert(value == 0xFF && "colour table bits not all set");
+                if (vdp_is_mode4(sms) && value != 0xFF)
+                {
+                    assert(value == 0xFF && "colour table bits not all set");
+                }
+                break;
+
+            case 0x4:
+                if (vdp_is_mode4(sms) && (value & 0x7) != 0x7)
+                {
+                    // assert((value & 0x7) == 0x7 && "low 3 bits should be set in m4");
+                }
                 break;
 
             // unused registers
@@ -280,6 +453,84 @@ void vdp_io_write(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
         }
 
         VDP.registers[addr & 0xF] = value;
+    }
+
+    z80_check_for_irq(sms);
+}
+
+void vdp_io_data_write(struct SMS_Core* sms, const uint8_t value)
+{
+    sms->vdp.control_latch = false;
+    // writes store the new value in the buffered_data
+    sms->vdp.buffer_read_data = value;
+
+    switch (sms->vdp.code)
+    {
+        case VDP_CODE_VRAM_WRITE_LOAD:
+        case VDP_CODE_VRAM_WRITE:
+        case VDP_CODE_REG_WRITE:
+            // mark entry as dirty if modified
+            sms->vdp.dirty_vram[sms->vdp.addr >> 2] |= sms->vdp.vram[sms->vdp.addr] != value;
+            sms->vdp.vram[sms->vdp.addr] = value;
+            sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
+            break;
+
+        case VDP_CODE_CRAM_WRITE:
+            switch (SMS_get_system_type(sms))
+            {
+                case SMS_System_SMS:
+                    IO_vdp_cram_sms_write(sms, value);
+                    break;
+
+                case SMS_System_GG:
+                    IO_vdp_cram_gg_write(sms, value);
+                    break;
+
+                case SMS_System_SG1000:
+                    assert(!"sg1000 cram write, check what should happen here!");
+                    break;
+            }
+
+            sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
+            break;
+    }
+}
+
+void vdp_io_control_write(struct SMS_Core* sms, const uint8_t value)
+{
+    if (sms->vdp.control_latch)
+    {
+        sms->vdp.control_word = (sms->vdp.control_word & 0xFF) | (value << 8);
+        sms->vdp.code = (value >> 6) & 3;
+        sms->vdp.control_latch = false;
+
+        switch (sms->vdp.code)
+        {
+            // code0 immediatley loads a byte from vram into buffer
+            case VDP_CODE_VRAM_WRITE_LOAD:
+                sms->vdp.addr = sms->vdp.control_word & 0x3FFF;
+                sms->vdp.buffer_read_data = sms->vdp.vram[sms->vdp.addr];
+                sms->vdp.addr = (sms->vdp.addr + 1) & 0x3FFF;
+                break;
+
+            case VDP_CODE_VRAM_WRITE:
+                sms->vdp.addr = sms->vdp.control_word & 0x3FFF;
+                break;
+
+            case VDP_CODE_REG_WRITE:
+                vdp_io_write(sms, value & 0xF, sms->vdp.control_word & 0xFF);
+                break;
+
+            case VDP_CODE_CRAM_WRITE:
+                sms->vdp.addr = sms->vdp.control_word & 0x3FFF;
+                break;
+        }
+    }
+    else
+    {
+        sms->vdp.addr = (sms->vdp.addr & 0x3F00) | value;
+        sms->vdp.control_word = value;
+        sms->vdp.control_latch = true;
     }
 }
 
@@ -318,7 +569,7 @@ static void vdp_mode2_render_background(struct SMS_Core* sms, pixel_width_t* sca
 
             uint8_t colour = IS_BIT_SET(pattern_line, 7 - x) ? fg_color : bg_color;
             colour = (colour > 0) ? colour : overscan_colour;
-            scanline[x_index] = sms->vdp.colour[colour];
+            scanline[x_index] = sms->builtin_palette[colour];
         }
     }
 }
@@ -352,7 +603,7 @@ static void vdp_mode1_render_background(struct SMS_Core* sms, pixel_width_t* sca
 
             uint8_t colour = IS_BIT_SET(pattern_line, 7 - x) ? fg_color : bg_color;
             colour = (colour > 0) ? colour : overscan_colour;
-            scanline[x_index] = sms->vdp.colour[colour];
+            scanline[x_index] = sms->builtin_palette[colour];
         }
     }
 }
@@ -525,33 +776,20 @@ void SMS_get_pixel_region(const struct SMS_Core* sms, int* x, int* y, int* w, in
     }
 }
 
-struct SgSpriteEntry
+static void vdp_parse_sg_sprites(struct SMS_Core* sms, int line)
 {
-    int16_t y;
-    int16_t x;
-    uint8_t tile_num;
-    uint8_t colour;
-};
+    memset(VDP.sprites, 0, sizeof(VDP.sprites));
+    VDP.sprites_count = 0;
 
-struct SgSpriteEntries
-{
-    struct SgSpriteEntry entry[32];
-    uint8_t count;
-};
-
-static struct SgSpriteEntries vdp_parse_sg_sprites(struct SMS_Core* sms)
-{
     if (!SMS_is_system_type_sg(sms))
     {
-        assert(IS_BIT_SET(VDP.registers[0x5], 0) && "needs lower index for oam");
-        assert((VDP.registers[0x6] & 0x3) == 0x3 && "Sprite Pattern Generator Base Address");
+        // assert(IS_BIT_SET(VDP.registers[0x5], 0) && "needs lower index for oam");
+        // assert((VDP.registers[0x6] & 0x3) == 0x3 && "Sprite Pattern Generator Base Address");
     }
 
-    struct SgSpriteEntries sprites = {0};
-
-    const uint8_t line = VDP.vcount;
     const uint16_t sprite_attribute_base_addr = vdp_get_sprite_attribute_base_addr(sms);
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
+    const int sprite_eof = 208;
 
     for (uint8_t i = 0; i < 128; i += 4)
     {
@@ -559,12 +797,14 @@ static struct SgSpriteEntries vdp_parse_sg_sprites(struct SMS_Core* sms)
         int16_t y = VDP.vram[sprite_attribute_base_addr + i + 0] + 1;
 
         // special number used to stop sprite parsing!
-        if (y == SPRITE_EOF + 1)
+        if (y == sprite_eof + 1)
         {
             break;
         }
 
-        if (y > 192)
+        // todo: is this based on the screen height
+        // if (y > 192)
+        if (y > 240)
         {
             y -= 256;
         }
@@ -575,16 +815,15 @@ static struct SgSpriteEntries vdp_parse_sg_sprites(struct SMS_Core* sms)
             const uint8_t tile_num = VDP.vram[sprite_attribute_base_addr + i + 2];
             const uint8_t colour = VDP.vram[sprite_attribute_base_addr + i + 3];
 
-            sprites.entry[sprites.count].y = y;
+            struct VdpSpriteEntry* sprite = &VDP.sprites[VDP.sprites_count];
+            sprite->y = y;
             // note: docs say its shifted 32 pixels NOT 8!
-            sprites.entry[sprites.count].x = x - (IS_BIT_SET(colour, 7) ? 32 : 0);
-            sprites.entry[sprites.count].tile_num = sprite_size > 8 ? tile_num & ~0x3 : tile_num;
-            sprites.entry[sprites.count].colour = colour & 0xF;
-            sprites.count++;
+            sprite->x = x - (IS_BIT_SET(colour, 7) ? 32 : 0);
+            sprite->tile_num = sprite_size > 8 ? tile_num & ~0x3 : tile_num;
+            sprite->colour = colour & 0xF;
+            VDP.sprites_count++;
         }
     }
-
-    return sprites;
 }
 
 static void vdp_mode1_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline)
@@ -592,13 +831,14 @@ static void vdp_mode1_render_sprites(struct SMS_Core* sms, pixel_width_t* scanli
     const uint8_t line = VDP.vcount;
     const uint16_t tile_addr = (VDP.registers[0x6] & 0x7) * 0x800;
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
-    const struct SgSpriteEntries sprites = vdp_parse_sg_sprites(sms);
+    // const struct SgSpriteEntries sprites = vdp_parse_sg_sprites(sms);
     bool drawn_sprites[SMS_SCREEN_WIDTH] = {0};
     uint8_t sprite_rendered_count = 0;
+    const uint8_t max_sprites = sms->mode1_max_spirtes;
 
-    for (uint8_t i = 0; i < sprites.count; i++)
+    for (uint8_t i = 0; i < VDP.sprites_count; i++)
     {
-        const struct SgSpriteEntry* sprite = &sprites.entry[i];
+        const struct VdpSpriteEntry* sprite = &VDP.sprites[i];
 
         if (sprite->colour == 0)
         {
@@ -649,8 +889,12 @@ static void vdp_mode1_render_sprites(struct SMS_Core* sms, pixel_width_t* scanli
             if (sprite_rendered_count < 4) // max of 4 sprites lol
             {
                 did_draw_a_sprite = true;
+            }
+
+            if (sprite_rendered_count < max_sprites)
+            {
                 drawn_sprites[x_index] = true;
-                scanline[x_index] = sms->vdp.colour[sprite->colour];//sms->colour_callback(NULL, c.r, c.g, c.b);
+                scanline[x_index] = sms->builtin_palette[sprite->colour];
             }
         }
 
@@ -665,83 +909,88 @@ static void vdp_mode1_render_sprites(struct SMS_Core* sms, pixel_width_t* scanli
     }
 }
 
-struct SpriteEntry
+// todo: spirtes are pasrsed 1 line ahead!
+static void vdp_mode4_parse_sprites(struct SMS_Core* sms, int line)
 {
-    int16_t y;
-    uint8_t xn_index;
-};
+    assert(vdp_is_mode4(sms) && "called the wrong function 4head");
+    assert(!SMS_is_system_type_sg(sms) && "read above message");
 
-struct SpriteEntries
-{
-    struct SpriteEntry entry[8];
-    uint8_t count;
-};
+    memset(VDP.sprites, 0, sizeof(VDP.sprites));
+    VDP.sprites_count = 0;
 
-static struct SpriteEntries vdp_parse_sprites(struct SMS_Core* sms)
-{
-    // assert((VDP.registers[0x6] & 0x3) == 0x3 && "Sprite Pattern Generator Base Address");
-
-    struct SpriteEntries sprites = {0};
-
-    const uint8_t line = VDP.vcount;
     const uint16_t sprite_attribute_base_addr = vdp_get_sprite_attribute_base_addr(sms);
     const uint8_t sprite_attribute_x_index = IS_BIT_SET(VDP.registers[0x5], 0) ? 128 : 0;
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
+    const uint8_t max_sprites = sms->mode4_max_spirtes;
+
+    static const int ntsc_eof_table[3] = {
+        [NtscHeightMode_192] = 208,
+        // todo: check what the values for each mode are !
+        [NtscHeightMode_224] = 208,
+        [NtscHeightMode_240] = 208,
+    };
+
+    const int sprite_eof = ntsc_eof_table[ntsc_get_height_mode(sms)];
 
     for (uint8_t i = 0; i < 64; ++i)
     {
         // todo: find out how the sprite y wrapping works!
         int16_t y = VDP.vram[sprite_attribute_base_addr + i] + 1;
+        // int16_t y = VDP.vram[sprite_attribute_base_addr + i];// + 1;
 
         // special number used to stop sprite parsing!
-        if (y == SPRITE_EOF + 1)
+        // todo:
+        if (y == sprite_eof + 1)
+        // if (y == sprite_eof)
         {
             break;
         }
 
         // docs (TMS9918.pdf) state that y is partially signed (-31, 0) which
         // is line 224 im not sure if this is correct, as it likely isn't as
-        // theres a 240 hieght mode, meaning no sprites could be displayed past 224...
+        // theres a 240 height mode, meaning no sprites could be displayed past 224...
         // so maybe this should reset on 240? or maybe it depends of the
         // the height mode selected, ie, 192, 224 and 240
         #if 0
         if (y > 224)
         #else
         if (y > 192)
+        // if (y > 240) // untested
         #endif
         {
             y -= 256;
         }
 
+        // todo: offscreen sprites can still collide
         if (line >= y && line < (y + sprite_size))
         {
-            if (sprites.count < 8)
-            {
-                sprites.entry[sprites.count].y = y;
-                // xn values are either low (0) or high (128) end of SAT
-                sprites.entry[sprites.count].xn_index = sprite_attribute_x_index + (i * 2);
-                sprites.count++;
-            }
-
             // if we have filled the sprite array, we need to keep checking further
             // entries just in case another sprite falls on the same line, in which
             // case, the sprite overflow flag is set for stat.
+            if (VDP.sprites_count >= 8)
+            {
+                VDP.sprite_overflow = true;
+            }
+
+            if (VDP.sprites_count < max_sprites)
+            {
+                struct VdpSpriteEntry* sprite = &VDP.sprites[VDP.sprites_count];
+                sprite->y = y;
+                // xn values are either low (0) or high (128) end of SAT
+                sprite->x = sprite_attribute_x_index + (i * 2);
+                VDP.sprites_count++;
+            }
             else
             {
-                if (!SMS_is_system_type_sg(sms))
-                {
-                    VDP.sprite_overflow = true;
-                }
                 break;
             }
         }
     }
-
-    return sprites;
 }
 
 static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, const struct PriorityBuf* prio)
 {
+    // vdp_mode4_parse_sprites(sms);
     const struct VDP_region region = vdp_get_region(sms);
 
     const uint8_t line = VDP.vcount;
@@ -751,23 +1000,23 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
     // if set, sprites start 8 to the left
     const int8_t sprite_x_offset = IS_BIT_SET(VDP.registers[0x0], 3) ? -8 : 0;
 
-    const struct SpriteEntries sprites = vdp_parse_sprites(sms);
+    // const struct SpriteEntries sprites = vdp_mode4_parse_sprites(sms);
 
     bool drawn_sprites[SMS_SCREEN_WIDTH] = {0};
 
-    for (uint8_t i = 0; i < sprites.count; ++i)
+    for (uint8_t i = 0; i < VDP.sprites_count; ++i)
     {
-        const struct SpriteEntry* sprite = &sprites.entry[i];
+        const struct VdpSpriteEntry* sprite = &VDP.sprites[i];
 
         // signed because the sprite can be negative if -8!
-        const int16_t sprite_x = VDP.vram[attr_addr + sprite->xn_index + 0] + sprite_x_offset;
+        const int16_t sprite_x = VDP.vram[attr_addr + sprite->x + 0] + sprite_x_offset;
 
         if (sprite_x+8 < region.startx || sprite_x>=region.endx)
         {
             continue;
         }
 
-        uint16_t pattern_index = VDP.vram[attr_addr + sprite->xn_index + 1] + pattern_select;
+        uint16_t pattern_index = VDP.vram[attr_addr + sprite->x + 1] + pattern_select;
 
         // docs state that if bit1 of reg1 is set (should always), bit0 is ignored
         // i am not sure if this is applied to the final value of the value
@@ -878,63 +1127,17 @@ static void vdp_update_gg_colours(struct SMS_Core* sms)
     sms->vdp.dirty_cram_min = sms->vdp.dirty_cram_max = 0;
 }
 
-static void vdp_update_sg_colours(struct SMS_Core* sms)
-{
-    struct Colour { uint8_t r,g,b; };
-    // https://www.smspower.org/uploads/Development/sg1000.txt
-    static const struct Colour SG_COLOUR_TABLE[] =
-    {
-        {0x00, 0x00, 0x00}, // 0: transparent
-        {0x00, 0x00, 0x00}, // 1: black
-        {0x20, 0xC0, 0x20}, // 2: green
-        {0x60, 0xE0, 0x60}, // 3: bright green
-        {0x20, 0x20, 0xE0}, // 4: blue
-        {0x40, 0x60, 0xE0}, // 5: bright blue
-        {0xA0, 0x20, 0x20}, // 6: dark red
-        {0x40, 0xC0, 0xE0}, // 7: cyan (?)
-        {0xE0, 0x20, 0x20}, // 8: red
-        {0xE0, 0x60, 0x60}, // 9: bright red
-        {0xC0, 0xC0, 0x20}, // 10: yellow
-        {0xC0, 0xC0, 0x80}, // 11: bright yellow
-        {0x20, 0x80, 0x20}, // 12: dark green
-        {0xC0, 0x40, 0xA0}, // 13: pink
-        {0xA0, 0xA0, 0xA0}, // 14: gray
-        {0xE0, 0xE0, 0xE0}, // 15: white
-    };
-
-    // the dirty_* values are only set on romload and
-    // loadstate. so we can check this value and if set
-    // then update the colours.
-    if (sms->vdp.dirty_cram_max == 0)
-    {
-        return;
-    }
-
-    for (int i = 0; i < 16; i++)
-    {
-        const struct Colour c = SG_COLOUR_TABLE[i];
-        sms->vdp.colour[i] = sms->colour_callback(NULL, c.r, c.g, c.b);
-    }
-
-    sms->vdp.dirty_cram_min = sms->vdp.dirty_cram_max = 0;
-    memset(sms->vdp.dirty_cram, false, sizeof(sms->vdp.dirty_cram));
-}
-
 static void vdp_update_palette(struct SMS_Core* sms)
 {
-    if (sms->colour_callback)
+    if (sms->colour_callback && vdp_is_mode4(sms))
     {
-        switch (SMS_get_system_type(sms))
+        if (SMS_is_system_type_gg(sms))
         {
-            case SMS_System_SMS:
-                vdp_update_sms_colours(sms);
-                break;
-            case SMS_System_GG:
-                vdp_update_gg_colours(sms);
-                break;
-            case SMS_System_SG1000:
-                vdp_update_sg_colours(sms);
-                break;
+            vdp_update_gg_colours(sms);
+        }
+        else
+        {
+            vdp_update_sms_colours(sms);
         }
     }
 }
@@ -942,6 +1145,7 @@ static void vdp_update_palette(struct SMS_Core* sms)
 void vdp_mark_palette_dirty(struct SMS_Core* sms)
 {
     memset(sms->vdp.dirty_cram, true, sizeof(sms->vdp.dirty_cram));
+    memset(sms->vdp.dirty_vram, true, sizeof(sms->vdp.dirty_vram));
     sms->vdp.dirty_cram_min = 0;
 
     if (SMS_is_system_type_gg(sms))
@@ -964,36 +1168,17 @@ bool vdp_has_interrupt(const struct SMS_Core* sms)
     return frame_interrupt || line_interrupt;
 }
 
-static void vdp_advance_line_counter(struct SMS_Core* sms)
-{
-    // i don't think sg has line interrupt
-    if (!SMS_is_system_type_sg(sms))
-    {
-        VDP.line_counter--;
-
-        // reloads / fires irq (if enabled) on underflow
-        if (VDP.line_counter == 0xFF)
-        {
-            VDP.line_interrupt_pending = true;
-            VDP.line_counter = VDP.registers[0xA];
-        }
-    }
-}
-
 static void vdp_render_frame(struct SMS_Core* sms)
 {
     // only render if display is enabled
     if (!vdp_is_display_enabled(sms))
     {
-        // on sms/gg, sprite overflow still happens with display disabled
-        if (!SMS_is_system_type_sg(sms))
-        {
-            vdp_parse_sprites(sms);
-        }
         return;
     }
 
     // exit early if we have no pixels (this will break games that need sprite overflow and collision)
+    // todo: still render spirtes as far as detection even with
+    // the screen disabled!
     if (!sms->pixels || sms->skip_frame)
     {
         return;
@@ -1003,24 +1188,74 @@ static void vdp_render_frame(struct SMS_Core* sms)
     #ifndef SMS_PIXEL_WIDTH
         pixel_width_t scanline[SMS_SCREEN_WIDTH] = {0};
     #else
-        pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->pitch);
+        pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->stride);
     #endif
 
-    if (SMS_is_system_type_sg(sms))
-    {
-        // this isn't correct, but it works :)
-        if ((VDP.registers[0] & 0x7) == 0)
-        {
-            vdp_mode1_render_background(sms, scanline);
-        }
-        else
-        {
-            vdp_mode2_render_background(sms, scanline);
-        }
+    const bool m1 = IS_BIT_SET(VDP.registers[1], 4);
+    const bool m2 = IS_BIT_SET(VDP.registers[0], 1);
+    const bool m3 = IS_BIT_SET(VDP.registers[1], 3);
+    const bool m4 = IS_BIT_SET(VDP.registers[0], 2) && !SMS_is_system_type_sg(sms);
 
+    if (!m4 && !m3 && !m2 && !m1) // Graphic I
+    {
+        vdp_mode1_render_background(sms, scanline);
         vdp_mode1_render_sprites(sms, scanline);
     }
-    else // sms / gg render
+    else if (!m4 && !m3 && !m2 && m1) // Text
+    {
+    }
+    else if (!m4 && !m3 && m2 && !m1) // Graphic II
+    {
+        vdp_mode2_render_background(sms, scanline);
+        vdp_mode1_render_sprites(sms, scanline);
+    }
+    else if (!m4 && !m3 && m2 && m1) // Mode 1+2
+    {
+    }
+    else if (!m4 && m3 && !m2 && !m1) // Mulicolor
+    {
+    }
+    else if (!m4 && m3 && !m2 && m1) // Mode 1+3
+    {
+    }
+    else if (!m4 && m3 && m2 && !m1) // Mode 2+3
+    {
+    }
+    else if (!m4 && m3 && m2 && m1) // Mode 1+2+3
+    {
+    }
+    else if (m4 && !m3 && !m2 && !m1) // Mode 4
+    {
+        vdp_render_background(sms, scanline, &prio);
+        vdp_render_sprites(sms, scanline, &prio);
+    }
+    else if (m4 && !m3 && !m2 && m1) // Invalid text mode
+    {
+    }
+    else if (m4 && !m3 && m2 && !m1) // Mode 4
+    {
+        vdp_render_background(sms, scanline, &prio);
+        vdp_render_sprites(sms, scanline, &prio);
+    }
+    else if (m4 && !m3 && m2 && !1) // Mode 4 (224-line display)
+    {
+        vdp_render_background(sms, scanline, &prio);
+        vdp_render_sprites(sms, scanline, &prio);
+    }
+    else if (m4 && m3 && !m2 && !m1) // Mode 4
+    {
+        vdp_render_background(sms, scanline, &prio);
+        vdp_render_sprites(sms, scanline, &prio);
+    }
+    else if (m4 && m3 && !m2 && m1) // Invalid text mode
+    {
+    }
+    else if (m4 && m3 && m2 && !m1) // Mode 4 (240-line display)
+    {
+        vdp_render_background(sms, scanline, &prio);
+        vdp_render_sprites(sms, scanline, &prio);
+    }
+    else if (m4 && m3 && m2 && m1) // Mode 4
     {
         vdp_render_background(sms, scanline, &prio);
         vdp_render_sprites(sms, scanline, &prio);
@@ -1031,32 +1266,49 @@ static void vdp_render_frame(struct SMS_Core* sms)
     #endif
 }
 
-static void vdp_tick(struct SMS_Core* sms)
+// draws a scanline, if in range.
+static void on_active_event(struct SMS_Core* sms)
 {
-    if (LIKELY(vdp_is_display_active(sms)))
+    VDP.state = VdpState_BLANKING;
+
+    if (vdp_is_display_active(sms))
     {
         vdp_update_palette(sms);
         vdp_render_frame(sms);
     }
-    else
-    {
-        VDP.vertical_scroll = VDP.registers[0x9];
-    }
 
-    // advance line counter on lines 0-191 and 192
-    if (LIKELY(VDP.vcount <= 192))
+    // sprite parsing happens 1 line ahead :)
+    if (VDP.vcount == 261 || VDP.vcount < 192 - 1)
     {
-        vdp_advance_line_counter(sms);
+        // calculate the next line
+        const int line = (VDP.vcount + 1) % NTSC_VCOUNT_MAX;
+        // on sms/gg, sprite overflow still happens with display disabled
+        if (vdp_is_mode4(sms))
+        {
+            vdp_mode4_parse_sprites(sms, line);
+        }
+        // todo: are sprites still parsed in other modes when enabled?
+        else if (vdp_is_display_enabled(sms))
+        {
+            vdp_parse_sg_sprites(sms, line);
+        }
     }
-    else
-    {
-        VDP.line_counter = VDP.registers[0xA];
-    }
+}
 
-    if (VDP.vcount == 192) // vblank. TODO: support diff hieght modes
+// called at the end of a scanline, advances vcount
+static void on_blanking_event(struct SMS_Core* sms)
+{
+    VDP.state = VdpState_ACTIVE;
+    VDP.vcount++;
+
+    const enum NtscHeightMode height_mode = ntsc_get_height_mode(sms);
+    const int display_height = NTSC_ACTIVE_DISPLAY_HEIGHT[height_mode];
+
+    // vblank is generated on the next line
+    if (VDP.vcount == display_height + 1)
     {
-        SMS_skip_frame(sms, false);
         VDP.frame_interrupt_pending = true;
+        z80_check_for_irq(sms);
 
         if (sms->vblank_callback)
         {
@@ -1064,37 +1316,73 @@ static void vdp_tick(struct SMS_Core* sms)
         }
     }
 
-    if (VDP.vcount == 193 && SMS_is_spiderman_int_hack_enabled(sms) && vdp_is_vblank_irq_wanted(sms)) // hack for spiderman, will remove soon
+    // nmi is asserted at the start of line 261
+    if (VDP.vcount == 261 && VDP.nmi_pending)
     {
-        z80_irq(sms);
+        VDP.nmi_pending = false;
+        z80_nmi(sms);
     }
-
-    if (VDP.vcount == 218) // see description in types.h for the jump back value
-    {
-        VDP.vcount_port = 212;
-    }
-
-    if (VDP.vcount == 261) // end of frame. TODO: support pal height
+    // end of frame.
+    else if (VDP.vcount == NTSC_VCOUNT_MAX)
     {
         VDP.vcount = 0;
-        VDP.vcount_port = 0;
+        VDP.vertical_scroll = VDP.registers[0x9];
+        VDP.line_counter = VDP.registers[0xA];
+
+        psg_end_frame(sms->psg, scheduler_get_ticks(&sms->scheduler));
+        if (!sms->skip_audio && sms->apu_callback)
+        {
+            const int samples_size = sizeof(sms->samples) / sizeof(sms->samples[0]);
+            while (psg_samples_avaliable(sms->psg) >= samples_size)
+            {
+                const int r = psg_read_samples(sms->psg, sms->samples, samples_size);
+                assert(r == samples_size);
+                sms->apu_callback(sms->userdata, sms->samples, samples_size);
+            }
+        }
+        else
+        {
+            psg_clear_samples(sms->psg);
+        }
     }
-    else
+
+    // the line counter is decremented on every line within the display
+    // region, including the next line.
+    if (VDP.vcount <= display_height && !SMS_is_system_type_sg(sms))
     {
-        VDP.vcount++;
-        VDP.vcount_port++;
+        if (VDP.line_counter == 0)
+        {
+            // reloads / fires irq (if enabled) on underflow
+            VDP.line_counter = VDP.registers[0xA];
+            VDP.line_interrupt_pending = true;
+            z80_check_for_irq(sms);
+        }
+        else
+        {
+            VDP.line_counter--;
+        }
     }
 }
 
-void vdp_run(struct SMS_Core* sms, const uint8_t cycles)
+static void vdp_tick(struct SMS_Core* sms)
 {
-    VDP.cycles += cycles;
-
-    if (UNLIKELY(VDP.cycles >= NTSC_CYCLES_PER_LINE))
+    switch (sms->vdp.state)
     {
-        VDP.cycles -= NTSC_CYCLES_PER_LINE;
-        vdp_tick(sms);
+        case VdpState_ACTIVE:
+            on_active_event(sms);
+            break;
+
+        case VdpState_BLANKING:
+            on_blanking_event(sms);
+            break;
     }
+}
+
+void vdp_on_event(void* user, unsigned id, unsigned late)
+{
+    struct SMS_Core* sms = user;
+    vdp_tick(sms);
+    scheduler_add(&sms->scheduler, id, NTSC_NEXT_EVENT_CYCLES[VDP.state] - late, vdp_on_event, user);
 }
 
 void vdp_init(struct SMS_Core* sms)
@@ -1125,4 +1413,8 @@ void vdp_init(struct SMS_Core* sms)
     }
 
     VDP.line_counter = 0xFF;
+    VDP.state = VdpState_ACTIVE;
+    VDP.nmi_pending = false;
+
+    scheduler_add(&sms->scheduler, SchedulerID_VDP, NTSC_NEXT_EVENT_CYCLES[VDP.state], vdp_on_event, sms);
 }

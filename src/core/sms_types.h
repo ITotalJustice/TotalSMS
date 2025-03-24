@@ -20,20 +20,21 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "scheduler/scheduler.h"
+#include "sn76489/sn76489.h"
 
 
 // fwd
 struct SMS_Ports;
-struct SMS_ApuSample;
 struct SMS_MemoryControlRegister;
 struct SMS_Core;
 
 
 // callback types
-typedef void (*sms_apu_callback_t)(void* user, struct SMS_ApuSample* samples, uint32_t size);
+typedef void (*sms_apu_callback_t)(void* user, int16_t* samples, uint32_t size);
 typedef void (*sms_vblank_callback_t)(void* user);
 typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t r, uint8_t g, uint8_t b);
-
+typedef void (*sms_input_callback_t)(void* user, int port);
 
 enum
 {
@@ -49,7 +50,13 @@ enum
     // this value was taken for sms power docs
     SMS_CPU_CLOCK = 3579545,
 
-    SMS_CYCLES_PER_FRAME = SMS_CPU_CLOCK / 60,
+    // 228 * 262
+    SMS_CYCLES_PER_FRAME = 59736,
+    // SMS_CYCLES_PER_FRAME = SMS_CPU_CLOCK / 60,
+
+    // default max sprites
+    SMS_MODE1_MAX_SPRITES = 4,
+    SMS_MODE4_MAX_SPRITES = 8,
 };
 
 enum SMS_System
@@ -58,16 +65,6 @@ enum SMS_System
     SMS_System_GG,
     SMS_System_SG1000,
 };
-
-// this is currently unused!
-// enum SMS_SystemMode
-// {
-//     SMS_SystemMode_SMS1,
-//     SMS_SystemMode_SMS2,
-
-//     SMS_SystemMode_GG_SMS, // GG sys, in sms mode
-//     SMS_SystemMode_GG, // GG sys in GG mode
-// };
 
 struct Z80_GeneralRegisterSet
 {
@@ -90,6 +87,11 @@ struct Z80_GeneralRegisterSet
         bool Z : 1;
         bool S : 1;
     } flags;
+};
+
+enum Z80_ExecutionMode {
+    Z80_ExecutionMode_RUNNING,
+    Z80_ExecutionMode_HALT,
 };
 
 struct Z80
@@ -116,18 +118,19 @@ struct Z80
     struct Z80_GeneralRegisterSet alt;
 
     // interrupt flipflops
-    bool IFF1 : 1;
-    bool IFF2 : 1;
-    bool ei_delay : 1; // like the gb, ei is delayed by 1 instructions
-    bool halt : 1;
+    bool IFF1;
+    bool IFF2;
+    bool ei_delay; // like the gb, ei is delayed by 1 instructions
 
-    bool interrupt_requested : 1;
+    enum Z80_ExecutionMode execution_mode;
+    // bool halt;
 };
 
 enum SMS_MapperType
 {
     MAPPER_TYPE_SEGA, // nomal sega mapper (can have sram)
-    MAPPER_TYPE_CODEMASTERS, // todo:
+    MAPPER_TYPE_CODEMASTERS,
+    MAPPER_TYPE_KOREAN,
     MAPPER_TYPE_NONE, // 8K - 48K
     // https://segaretro.org/8kB_RAM_Adapter
     // https://www.smspower.org/forums/13579-Taiwan8KBRAMAdapterForPlayingMSXPortsOnSG1000II
@@ -143,15 +146,7 @@ enum SMS_MapperType
 
 struct SMS_SegaMapper
 {
-    struct // control
-    {
-        bool rom_write_enable;
-        bool ram_enable_c0000;
-        bool ram_enable_80000;
-        bool ram_bank_select;
-        uint8_t bank_shift;
-    } fffc;
-
+    uint8_t fffc;
     uint8_t fffd;
     uint8_t fffe;
     uint8_t ffff;
@@ -163,6 +158,11 @@ struct SMS_CodemastersMapper
     bool ram_mapped; // ernie els golf features 8k on cart ram
 };
 
+struct SMS_KoreanMapper
+{
+    uint8_t slot2;
+};
+
 struct SMS_Cart
 {
     enum SMS_MapperType mapper_type;
@@ -171,6 +171,7 @@ struct SMS_Cart
     {
         struct SMS_SegaMapper sega;
         struct SMS_CodemastersMapper codemasters;
+        struct SMS_KoreanMapper korean;
     } mappers;
 
     // some games have 8-16-32KiB ram
@@ -215,11 +216,33 @@ struct CachedPalette
     uint32_t normal;
 };
 
+// see vdp.c for details
+enum VdpState
+{
+    VdpState_ACTIVE,
+    VdpState_BLANKING,
+};
+
+struct VdpSpriteEntry
+{
+    int16_t y;
+    int16_t x;
+    // below are not used in mode 4.
+    uint8_t tile_num;
+    uint8_t colour;
+};
+
 struct SMS_Vdp
 {
     // this is used for vram r/w and cram writes.
     uint16_t addr;
     enum VDP_Code code;
+
+    // we allow for more sprites than normal
+    // as this reduces flicker in most games.
+    struct VdpSpriteEntry sprites[16];
+    // max mode4 = 8, otherwise max = 4.
+    uint8_t sprites_count;
 
     uint8_t vram[1024 * 16];
     bool dirty_vram[(1024 * 16) / 4];
@@ -249,18 +272,8 @@ struct SMS_Vdp
     // not when the register is updated!
     uint8_t vertical_scroll;
 
-    int16_t cycles;
     uint16_t hcount;
     uint16_t vcount;
-
-    // this differ from above in that this is what will be read on the port.
-    // due to the fact that scanlines can be 262 or 312, the value would
-    // would eventually overflow, so scanline 256 would read as 0!
-    // internally this does not actually wrap around, instead, at set
-    // values (differes between ntsc and pal), it will jump back to a
-    // previous value, for example, on ntsc, it'll jump from value
-    // 218 back to 213, though i am unsure if it keeps jumping...
-    uint8_t vcount_port;
 
     // used for interrupts, reloaded at 0
     uint8_t line_counter;
@@ -274,21 +287,26 @@ struct SMS_Vdp
     uint16_t control_word;
 
     // set if already have lo byte
-    bool control_latch : 1;
+    bool control_latch;
 
     // (all of below is cleared upon reading stat)
     // set on vblank
-    bool frame_interrupt_pending : 1;
+    bool frame_interrupt_pending;
     // set on line counter underflow
-    bool line_interrupt_pending : 1;
+    bool line_interrupt_pending;
     // set when there's more than 8(sms)/4(sg) sprites on a line
-    bool sprite_overflow : 1;
+    bool sprite_overflow;
     // set when a sprite collides
-    bool sprite_collision : 1;
+    bool sprite_collision;
     // 5th sprite number sg-1000
-    uint8_t fifth_sprite_num : 5;
+    uint8_t fifth_sprite_num;
+
+    enum VdpState state;
+    bool nmi_pending;
 };
 
+// todo: replace ports with buttons.
+#if 0
 enum SMS_Button
 {
     SMS_Button_JOY1_UP      = 1 << 0,
@@ -307,6 +325,7 @@ enum SMS_Button
     SMS_Button_RESET        = 1 << 12,
     SMS_Button_PAUSE        = 1 << 13,
 };
+#endif
 
 enum SMS_PortA
 {
@@ -337,53 +356,14 @@ struct SMS_Ports
     uint8_t b;
 };
 
-struct SMS_ApuSample
-{
-    uint8_t tone0[2];
-    uint8_t tone1[2];
-    uint8_t tone2[2];
-    uint8_t noise[2];
-};
-
-struct SMS_Psg
-{
-    uint32_t cycles; // elapsed cycles since last psg_sync()
-
-    struct
-    {
-        int16_t counter; // 10-bits
-        uint16_t tone; // 10-bits
-    } tone[3];
-
-    struct
-    {
-        int16_t counter; // 10-bits
-        uint16_t lfsr; // can be either 16-bit or 15-bit...
-        uint8_t mode; // 1-bits
-        uint8_t shift_rate; // 2-bits
-        bool flip_flop;
-    } noise;
-
-    uint8_t volume[4];
-    uint8_t polarity[4];
-
-    // which of the 4 channels are latched.
-    uint8_t latched_channel;
-    // vol or tone (or mode + shift instead of tone for noise).
-    uint8_t latched_type;
-
-    // GG has stereo switches for each channel
-    bool channel_enable[4][2];
-};
-
 struct SMS_MemoryControlRegister
 {
-    bool exp_slot_disable : 1;
-    bool cart_slot_disable : 1;
-    bool card_slot_disable : 1;
-    bool work_ram_disable : 1;
-    bool bios_rom_disable : 1;
-    bool io_chip_disable : 1;
+    bool exp_slot_disable;
+    bool cart_slot_disable;
+    bool card_slot_disable;
+    bool work_ram_disable;
+    bool bios_rom_disable;
+    bool io_chip_disable;
 };
 
 struct SMS_Core
@@ -393,9 +373,10 @@ struct SMS_Core
     const uint8_t* rmap[0x10000 / 0x400]; // 64
     uint8_t* wmap[0x10000 / 0x400]; // 64
 
+    struct Scheduler scheduler;
     struct Z80 cpu;
     struct SMS_Vdp vdp;
-    struct SMS_Psg psg;
+    Sn76489* psg;
     struct SMS_Cart cart;
     struct SMS_Ports port;
     struct SMS_MemoryControlRegister memory_control;
@@ -412,41 +393,29 @@ struct SMS_Core
     size_t bios_size;
 
     void* pixels;
-    uint16_t pitch;
+    uint16_t stride;
     uint8_t bpp;
+    uint8_t mode1_max_spirtes;
+    uint8_t mode4_max_spirtes;
+    bool skip_audio;
     bool skip_frame;
+
+    bool frame_end;
+
+    uint32_t builtin_palette[16];
 
     sms_vblank_callback_t vblank_callback;
     sms_colour_callback_t colour_callback;
     sms_apu_callback_t apu_callback;
+    sms_input_callback_t input_callback;
     void* userdata;
 
-    struct SMS_ApuSample* apu_samples; // sample buffer
-    uint32_t apu_sample_size; // number of samples
-    uint32_t apu_sample_index; // index into the buffer
-    uint32_t apu_callback_freq; // sample rate
-    uint32_t apu_callback_counter; // how many cpu cycles until sample
-
-    // enable to have better sounding drums in most games!
-    bool better_drums;
-};
-
-struct SMS_State
-{
-    struct SMS_StateHeader
-    {
-        uint16_t magic;
-        uint16_t version;
-        uint32_t crc;
-        // uint32_t size;
-    } header;
-
-    struct Z80 cpu;
-    struct SMS_Vdp vdp;
-    struct SMS_Psg psg;
-    struct SMS_Cart cart;
-    struct SMS_MemoryControlRegister memory_control;
-    uint8_t system_ram[0x2000];
+    // max sample rate / 60 frames * stereo
+    int16_t samples[48000 / 60 * 2];
+    // set by the frontend, 0 - 2.0
+    float volume[4];
+    // master volume override, 0 - 2.0
+    float master_volume;
 };
 
 #ifdef __cplusplus

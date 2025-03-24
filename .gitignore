@@ -73,3 +73,6 @@ old/
 imgui.ini
 .vscode
 CMakeUserPresets.json
+
+sdl3
+src/platforms/blip

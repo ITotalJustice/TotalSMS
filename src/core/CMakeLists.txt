@@ -1,38 +1,53 @@
 cmake_minimum_required(VERSION 3.13.4)
 
+project(TotalSMS LANGUAGES C)
+
+# fetch libraries
+include(FetchContent)
+
+# apu
+FetchContent_Declare(sn76489
+    GIT_REPOSITORY https://github.com/ITotalJustice/sn76489.git
+    GIT_TAG        master
+    GIT_PROGRESS   TRUE
+)
+
+# scheduler
+FetchContent_Declare(scheduler
+    GIT_REPOSITORY https://github.com/ITotalJustice/scheduler.git
+    GIT_TAG        v1.1.0
+    GIT_PROGRESS   TRUE
+)
+
+set(SN76489_CXX OFF)
+FetchContent_MakeAvailable(sn76489 scheduler)
+
 list(APPEND src_all
     sms_bus.c
     sms_z80.c
     sms_joypad.c
     sms.c
-    sms_psg.c
     sms_vdp.c
     sms_rom_database.c
+    sms_savestate.c
 )
 
 list(APPEND src_single sms_single.c)
 
-if (PLATFORM_PSX)
-    if (SMS_SINGLE_FILE)
-        psn00bsdk_add_library(TotalSMS OBJECT ${src_single})
-    else()
-        psn00bsdk_add_library(TotalSMS OBJECT ${src_all})
-    endif()
+if (SMS_SINGLE_FILE)
+    add_library(TotalSMS ${src_single})
 else()
-    if (SMS_SINGLE_FILE)
-        add_library(TotalSMS ${src_single})
-    else()
-        add_library(TotalSMS ${src_all})
-    endif()
+    add_library(TotalSMS ${src_all})
 endif()
 
 target_include_directories(TotalSMS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(TotalSMS PROPERTIES C_STANDARD 99)
 
 target_add_common_cflags(TotalSMS PRIVATE)
 target_apply_lto_in_release(TotalSMS)
 
 # enable sanitizer_flags
-if (SNES_DEV)
+if (SMS_DEV)
     set(SMS_DEBUG ON)
 
     list(APPEND sanitizer_flags
@@ -44,8 +59,8 @@ if (SNES_DEV)
         -fstack-protector-all
     )
 
-    add_compiler_flags(sanitizer_flags PUBLIC)
-    add_linker_flags(sanitizer_flags PUBLIC)
+    target_add_compiler_flags(TotalSMS sanitizer_flags PUBLIC)
+    target_add_linker_flags(TotalSMS sanitizer_flags PUBLIC)
 endif()
 
 if (DEFINED SMS_PIXEL_WIDTH)
@@ -57,4 +72,7 @@ target_compile_definitions(TotalSMS PRIVATE
     SMS_ENABLE_FORCE_INLINE=$<BOOL:${SMS_FORCE_INLINE}>
     SMS_SINGLE_FILE=$<BOOL:${SMS_SINGLE_FILE}>
     SMS_DISBALE_AUDIO=$<BOOL:${SMS_DISBALE_AUDIO}>
+    SMS_FAST_AUDIO=$<BOOL:${SMS_FAST_AUDIO}>
 )
+
+target_link_libraries(TotalSMS PRIVATE sn76489 scheduler)
