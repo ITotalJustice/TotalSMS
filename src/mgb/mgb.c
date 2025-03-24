@@ -300,6 +300,9 @@ static bool loadrom(const struct LoadRomConfig* config)
     // save the path
     strncpy(mgb.rom_path, config->path, sizeof(mgb.rom_path) - 1);
 
+    // report that the rom has loade before calling the callback.
+    mgb.has_rom = true;
+
     if (mgb.on_file_cb)
     {
         mgb.on_file_cb(mgb.user, config->path, CallbackType_LOAD_ROM, true);
@@ -308,7 +311,6 @@ static bool loadrom(const struct LoadRomConfig* config)
     // try loading any saves if possible
     loadsave();
     // mgb_load_state_file(NULL);
-    mgb.has_rom = true;
 
     return true;
 

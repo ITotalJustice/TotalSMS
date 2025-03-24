@@ -1,5 +1,5 @@
-#include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <sms.h>
 #include <mgb.h>
@@ -49,6 +49,7 @@ typedef struct {
     bool stretch_screen;
 
     bool paused;
+    bool focus;
     bool quit;
 } App;
 
@@ -78,6 +79,8 @@ static void on_fullscreen_toggle(App* app);
 static void on_screen_stretch_toggle(App* app);
 static void on_frame_blending_toggle(App* app);
 static void on_set_pause(App* app, bool enable);
+static void on_update_sound_playback_state(App* app);
+static bool should_emu_run(const App* app);
 
 static const struct KeyMap KEY_MAP[] = {
     { SDLK_UP, 0, JOY1_UP_BUTTON },
@@ -269,13 +272,13 @@ static void* mgb_on_convert_pixels_to_png_format(void* user, int* out_w, int* ou
         return false;
     }
 
-    const int result = SDL_ConvertPixels(
+    const bool result = SDL_ConvertPixels(
         rect.w, rect.h,
         src_format, (const uint8_t*)app->pixel_buffer + src_yoff, SMS_SCREEN_WIDTH * src_bpp,
         dst_format, dst, rect.w * *out_channels
     );
 
-    if (result)
+    if (!result)
     {
         SDL_Log("failed to convert pixels: %s\n", SDL_GetError());
         free(dst);
@@ -363,12 +366,19 @@ static void on_frame_blending_toggle(App* app) {
 
 static void on_set_pause(App* app, bool enable) {
     app->paused = enable;
+    on_update_sound_playback_state(app);
+}
 
-    if (app->paused) {
-        SDL_PauseAudioDevice(SDL_GetAudioStreamDevice(app->audio_stream));
+static void on_update_sound_playback_state(App* app) {
+    if (should_emu_run(app)) {
+        SDL_ResumeAudioStreamDevice(app->audio_stream);
     } else {
-        SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(app->audio_stream));
+        SDL_PauseAudioStreamDevice(app->audio_stream);
     }
+}
+
+static bool should_emu_run(const App* app) {
+    return mgb_has_rom() && !app->paused && app->focus;
 }
 
 static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b) {
@@ -606,13 +616,8 @@ static void emulator_render(App* app) {
 }
 
 static void run(App* app, double delta) {
-    // don't run if a rom isn't loaded
-    if (!mgb_has_rom()) {
-        return;
-    }
-
-    // don't run if paused
-    if (app->paused) {
+    // don't run if a rom isn't loaded, paused or lost focus.
+    if (!should_emu_run(app)) {
         return;
     }
 
@@ -633,12 +638,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SDL_Log("Hello World: %s\n", SDL_GetPlatform());
 
     if (!SDL_SetAppMetadata("TotalSMS", "1.0.0", "com.example.totalsms")) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     App* app = SDL_calloc(1, sizeof(*app));
     if (!app) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
     *appstate = app;
 
@@ -650,23 +655,23 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     app->quit = false;
 
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
     if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
     if (!display_id) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     const SDL_DisplayMode* display_mode = SDL_GetCurrentDisplayMode(display_id);
     if (!display_mode) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     SDL_Log("Display info:\n");
@@ -682,42 +687,61 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     // setup video and textures
     app->window = SDL_CreateWindow("TotalSMS", app->window_w, app->window_h, SDL_WINDOW_HIGH_PIXEL_DENSITY|SDL_WINDOW_RESIZABLE);
     if (!app->window) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     app->renderer = SDL_CreateRenderer(app->window, NULL);
     if (!app->renderer) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     if (!SDL_SetRenderVSync(app->renderer, 1)) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     app->pixel_format = SDL_GetWindowPixelFormat(app->window);
     app->pixel_format_details = SDL_GetPixelFormatDetails(app->pixel_format);
     if (!app->pixel_format_details) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     app->pixel_buffer = SDL_calloc(app->pixel_format_details->bytes_per_pixel, SMS_SCREEN_WIDTH * SMS_SCREEN_HEIGHT);
     if (!app->pixel_buffer) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     app->texture_current = SDL_CreateTexture(app->renderer, app->pixel_format, SDL_TEXTUREACCESS_STREAMING, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT);
     app->texture_previous = SDL_CreateTexture(app->renderer, app->pixel_format, SDL_TEXTUREACCESS_STREAMING, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT);
     if (!app->texture_current || !app->texture_previous) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
 
     SDL_SetTextureScaleMode(app->texture_current, SDL_SCALEMODE_NEAREST);
     SDL_SetTextureScaleMode(app->texture_previous, SDL_SCALEMODE_NEAREST);
 
-    const SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, 48000 };
-    app->audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    app->audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL, sdl_audio_callback, app);
     if (!app->audio_stream) {
-        goto fail;
+        return SDL_APP_FAILURE;
+    }
+
+    if (!SDL_PauseAudioStreamDevice(app->audio_stream)) {
+        return SDL_APP_FAILURE;
+    }
+
+    SDL_AudioSpec spec;
+    if (!SDL_GetAudioStreamFormat(app->audio_stream, NULL, &spec)) {
+        return SDL_APP_FAILURE;
+    }
+
+    SDL_Log("AUDIO format: %d\n", spec.format);
+    SDL_Log("AUDIO channels: %d\n", spec.channels);
+    SDL_Log("AUDIO freq: %d\n", spec.freq);
+
+    // allow for any frequency as blip_buf will handle re-sampling.
+    spec.format = SDL_AUDIO_S16;
+    spec.channels = 2;
+    if (!SDL_SetAudioStreamFormat(app->audio_stream, &spec, NULL)) {
+        return SDL_APP_FAILURE;
     }
 
     generate_palette(app, sms_converted_palette, SMS_BPP);
@@ -725,7 +749,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     generate_sg_palette(app, sg_converted_palette);
 
     if (!SMS_init(&app->sms)) {
-        goto fail;
+        return SDL_APP_FAILURE;
     }
     SMS_set_userdata(&app->sms, app);
     SMS_set_colour_callback(&app->sms, core_colour_callback);
@@ -760,12 +784,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         });
     );
 
-    return SDL_APP_CONTINUE;
+    app->focus = SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS;
+    on_update_sound_playback_state(app);
 
-fail:
-    SDL_LogError(SDL_LOG_CATEGORY_ERROR, "failed: %s\n", SDL_GetError());
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", SDL_GetError(), NULL);
-    return SDL_APP_FAILURE;
+    return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
@@ -833,7 +855,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
         case SDL_EVENT_WINDOW_FOCUS_LOST:
-            on_set_pause(app, event->type == SDL_EVENT_WINDOW_FOCUS_LOST);
+            app->focus = event->type == SDL_EVENT_WINDOW_FOCUS_GAINED;
+            on_update_sound_playback_state(app);
             break;
     }
 
@@ -844,9 +867,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
-    App* app = appstate;
     SDL_Log("Exiting...");
+    if (result == SDL_APP_FAILURE) {
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "failed: %s\n", SDL_GetError());
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", SDL_GetError(), NULL);
+    }
 
+    App* app = appstate;
     if (app) {
         mgb_exit();
         SMS_quit(&app->sms);
