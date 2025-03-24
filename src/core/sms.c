@@ -50,17 +50,12 @@ static void frame_event(void* user, unsigned id, unsigned late)
 
 void timeout_event(void* user, unsigned id, unsigned late)
 {
-    printf("inside scheduler reset event\n");
     struct SMS_Core* sms = user;
-    printf("got user data\n");
 
     // adust anything that uses timestamps
     psg_update_timestamp(sms->psg, -SCHEDULER_TIMEOUT_CYCLES);
-    printf("did psg\n");
     scheduler_reset_event(&sms->scheduler);
-    printf("did reset event\n");
     scheduler_add_absolute(&sms->scheduler, id, SCHEDULER_TIMEOUT_CYCLES, timeout_event, user);
-    printf("added absolute yes\n");
 }
 
 static uint16_t find_rom_header_offset(const uint8_t* data)

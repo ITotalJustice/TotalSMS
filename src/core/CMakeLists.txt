@@ -75,4 +75,4 @@ target_compile_definitions(TotalSMS PRIVATE
     SMS_FAST_AUDIO=$<BOOL:${SMS_FAST_AUDIO}>
 )
 
-target_link_libraries(TotalSMS PRIVATE sn76489 scheduler)
+target_link_libraries(TotalSMS PUBLIC sn76489 scheduler)

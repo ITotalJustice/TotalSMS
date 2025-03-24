@@ -20,8 +20,8 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include "scheduler/scheduler.h"
-#include "sn76489/sn76489.h"
+#include <scheduler.h>
+#include <sn76489.h>
 
 
 // fwd
