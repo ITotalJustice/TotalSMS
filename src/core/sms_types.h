@@ -16,7 +16,6 @@ extern "C" {
     #define SMS_SINGLE_FILE 0
 #endif
 
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -305,8 +304,8 @@ struct SMS_Vdp
     bool nmi_pending;
 };
 
-// todo: replace ports with buttons.
-#if 0
+// the actual impl is there are two ports (joy1/joy2)
+// i expose the both ports as a single u16 to simplify the frontend code.
 enum SMS_Button
 {
     SMS_Button_JOY1_UP      = 1 << 0,
@@ -324,29 +323,6 @@ enum SMS_Button
     SMS_Button_JOY2_B       = 1 << 11,
     SMS_Button_RESET        = 1 << 12,
     SMS_Button_PAUSE        = 1 << 13,
-};
-#endif
-
-enum SMS_PortA
-{
-    JOY1_UP_BUTTON      = 1 << 0,
-    JOY1_DOWN_BUTTON    = 1 << 1,
-    JOY1_LEFT_BUTTON    = 1 << 2,
-    JOY1_RIGHT_BUTTON   = 1 << 3,
-    JOY1_A_BUTTON       = 1 << 4,
-    JOY1_B_BUTTON       = 1 << 5,
-    JOY2_UP_BUTTON      = 1 << 6,
-    JOY2_DOWN_BUTTON    = 1 << 7,
-};
-
-enum SMS_PortB
-{
-    JOY2_LEFT_BUTTON    = 1 << 0,
-    JOY2_RIGHT_BUTTON   = 1 << 1,
-    JOY2_A_BUTTON       = 1 << 2,
-    JOY2_B_BUTTON       = 1 << 3,
-    RESET_BUTTON        = 1 << 4,
-    PAUSE_BUTTON        = 1 << 5,
 };
 
 struct SMS_Ports

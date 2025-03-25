@@ -57,12 +57,6 @@ void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb);
 void SMS_set_input_callback(struct SMS_Core* sms, sms_input_callback_t cb);
 void SMS_set_userdata(struct SMS_Core* sms, void* userdata);
 
-// void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t freq, bool stereo);
-
-// // reads out the samples, call this during apu callback.
-// // all remaining samples are removed, so be sure to read everything out!
-// uint32_t SMS_read_samples(int16_t* samples, uint32_t size);
-
 size_t SMS_get_state_size(void);
 bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, bool fast);
 bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size);
@@ -76,8 +70,7 @@ bool SMS_is_system_type_sg(const struct SMS_Core* sms);
 void SMS_get_pixel_region(const struct SMS_Core* sms, int* x, int* y, int* w, int* h);
 
 // [INPUT]
-void SMS_set_port_a(struct SMS_Core* sms, enum SMS_PortA pin, bool down);
-void SMS_set_port_b(struct SMS_Core* sms, enum SMS_PortB pin, bool down);
+void SMS_set_buttons(struct SMS_Core* sms, uint16_t buttons, bool down);
 
 uint32_t SMS_crc32(const void* data, size_t size);
 

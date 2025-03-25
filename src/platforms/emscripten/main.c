@@ -6,7 +6,7 @@
 #include <emscripten.h>
 
 struct Input {
-    uint8_t port[2];
+    uint16_t button;
 };
 
 struct Gamepad {
@@ -55,8 +55,7 @@ typedef struct {
 
 struct KeyMap {
     SDL_Keycode key;
-    uint8_t port;
-    uint8_t button;
+    enum SMS_Button button;
 };
 
 struct HotKeyMap {
@@ -67,8 +66,7 @@ struct HotKeyMap {
 
 struct GamepadButtonMap {
     SDL_GamepadButton key;
-    uint8_t port;
-    uint8_t button;
+    enum SMS_Button button;
 };
 
 static void on_file_picker(App* app);
@@ -83,19 +81,19 @@ static void on_update_sound_playback_state(App* app);
 static bool should_emu_run(const App* app);
 
 static const struct KeyMap KEY_MAP[] = {
-    { SDLK_UP, 0, JOY1_UP_BUTTON },
-    { SDLK_LEFT, 0, JOY1_LEFT_BUTTON },
-    { SDLK_DOWN, 0, JOY1_DOWN_BUTTON },
-    { SDLK_RIGHT, 0, JOY1_RIGHT_BUTTON },
-    { SDLK_Z, 0, JOY1_B_BUTTON },
-    { SDLK_X, 0, JOY1_A_BUTTON },
-    { SDLK_RETURN, 1, PAUSE_BUTTON },
+    { SDLK_UP, SMS_Button_JOY1_UP },
+    { SDLK_LEFT, SMS_Button_JOY1_LEFT },
+    { SDLK_DOWN, SMS_Button_JOY1_DOWN },
+    { SDLK_RIGHT, SMS_Button_JOY1_RIGHT },
+    { SDLK_Z, SMS_Button_JOY1_B },
+    { SDLK_X, SMS_Button_JOY1_A },
+    { SDLK_RETURN, SMS_Button_PAUSE },
 
-    { SDLK_KP_8, 0, JOY1_UP_BUTTON },
-    { SDLK_KP_4, 0, JOY1_LEFT_BUTTON },
-    { SDLK_KP_2, 0, JOY1_DOWN_BUTTON },
-    { SDLK_KP_6, 0, JOY1_RIGHT_BUTTON },
-    { SDLK_KP_ENTER, 1, PAUSE_BUTTON },
+    { SDLK_KP_8, SMS_Button_JOY1_UP },
+    { SDLK_KP_4, SMS_Button_JOY1_LEFT },
+    { SDLK_KP_2, SMS_Button_JOY1_DOWN },
+    { SDLK_KP_6, SMS_Button_JOY1_RIGHT },
+    { SDLK_KP_ENTER, SMS_Button_PAUSE },
 };
 
 static const struct HotKeyMap HOT_KEY_MAP[] = {
@@ -109,13 +107,13 @@ static const struct HotKeyMap HOT_KEY_MAP[] = {
 };
 
 static const struct GamepadButtonMap GAMEPAD_BUTTON_MAP[] = {
-    { SDL_GAMEPAD_BUTTON_DPAD_UP, 0, JOY1_UP_BUTTON },
-    { SDL_GAMEPAD_BUTTON_DPAD_LEFT, 0, JOY1_LEFT_BUTTON },
-    { SDL_GAMEPAD_BUTTON_DPAD_DOWN, 0, JOY1_DOWN_BUTTON },
-    { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 0, JOY1_RIGHT_BUTTON },
-    { SDL_GAMEPAD_BUTTON_SOUTH, 0, JOY1_B_BUTTON },
-    { SDL_GAMEPAD_BUTTON_EAST, 0, JOY1_A_BUTTON },
-    { SDL_GAMEPAD_BUTTON_START, 1, PAUSE_BUTTON },
+    { SDL_GAMEPAD_BUTTON_DPAD_UP, SMS_Button_JOY1_UP },
+    { SDL_GAMEPAD_BUTTON_DPAD_LEFT, SMS_Button_JOY1_LEFT },
+    { SDL_GAMEPAD_BUTTON_DPAD_DOWN, SMS_Button_JOY1_DOWN },
+    { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, SMS_Button_JOY1_RIGHT },
+    { SDL_GAMEPAD_BUTTON_SOUTH, SMS_Button_JOY1_B },
+    { SDL_GAMEPAD_BUTTON_EAST, SMS_Button_JOY1_A },
+    { SDL_GAMEPAD_BUTTON_START, SMS_Button_PAUSE },
 };
 
 enum {
@@ -177,27 +175,25 @@ static void flushsave(void) {
     }
 }
 
-static void input_set(App* app, bool down, uint8_t port, uint8_t value) {
+static void input_set(App* app, bool down, uint16_t value) {
     if (down) {
-        app->inputs[0].port[port] |= value;
+        app->inputs[0].button |= value;
     } else {
-        app->inputs[0].port[port] &= ~value;
+        app->inputs[0].button &= ~value;
     }
 }
 
 static bool input_is_dirty(const App* app) {
-    return app->inputs[0].port[0] != app->inputs[1].port[0] || app->inputs[0].port[1] != app->inputs[1].port[1];
+    return app->inputs[0].button != app->inputs[1].button;
 }
 
 static void input_apply(App* app) {
-    if (!mgb_has_rom()) {
+    if (!should_emu_run(app)) {
         return;
     }
 
-    SMS_set_port_a(&app->sms, app->inputs[0].port[0], true);
-    SMS_set_port_a(&app->sms, ~app->inputs[0].port[0], false);
-    SMS_set_port_b(&app->sms, app->inputs[0].port[1], true);
-    SMS_set_port_b(&app->sms, ~app->inputs[0].port[1], false);
+    SMS_set_buttons(&app->sms, app->inputs[0].button, true);
+    SMS_set_buttons(&app->sms, ~app->inputs[0].button, false);
     app->inputs[1] = app->inputs[0];
 }
 
@@ -479,7 +475,7 @@ static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
         for (size_t i = 0; i < SDL_arraysize(KEY_MAP); i++) {
             const struct KeyMap* p = &KEY_MAP[i];
             if (p->key == e->key) {
-                input_set(app, e->down, p->port, p->button);
+                input_set(app, e->down, p->button);
             }
         }
     }
@@ -487,7 +483,6 @@ static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
 
 static void sdl_on_gamepad_axis_event(App* app, const struct SDL_GamepadAxisEvent* e)
 {
-    #if 1
     // sdl recommends deadzone of 8000
     // auto& controller = app->controllers[e->which];
     struct Gamepad* controller = &app->gamepad;
@@ -498,31 +493,30 @@ static void sdl_on_gamepad_axis_event(App* app, const struct SDL_GamepadAxisEven
         const bool down = controller->last_axis[e->axis];
 
         if (e->axis == SDL_GAMEPAD_AXIS_LEFTX) {
-            input_set(app, false, 0, JOY1_LEFT_BUTTON|JOY1_RIGHT_BUTTON);
+            input_set(app, false, SMS_Button_JOY1_LEFT|SMS_Button_JOY1_RIGHT);
 
             if (e->value < 0) {
                 SDL_Log("setting left: %d\n", e->value);
-                input_set(app, down, 0, JOY1_LEFT_BUTTON);
+                input_set(app, down, SMS_Button_JOY1_LEFT);
             }
             else if (e->value > 0) {
                 SDL_Log("setting right: %d\n", e->value);
-                input_set(app, down, 0, JOY1_RIGHT_BUTTON);
+                input_set(app, down, SMS_Button_JOY1_RIGHT);
             }
         }
         else if (e->axis == SDL_GAMEPAD_AXIS_LEFTY) {
-            input_set(app, false, 0, JOY1_UP_BUTTON|JOY1_DOWN_BUTTON);
+            input_set(app, false, SMS_Button_JOY1_UP|SMS_Button_JOY1_DOWN);
 
             if (e->value < 0) {
                 SDL_Log("setting up: %d\n", e->value);
-                input_set(app, down, 0, JOY1_UP_BUTTON);
+                input_set(app, down, SMS_Button_JOY1_UP);
             }
             else if (e->value > 0) {
                 SDL_Log("setting down: %d\n", e->value);
-                input_set(app, down, 0, JOY1_DOWN_BUTTON);
+                input_set(app, down, SMS_Button_JOY1_DOWN);
             }
         }
     }
-    #endif
 }
 
 static void sdl_on_gamepad_device_event(App* app, const SDL_GamepadDeviceEvent* e)
@@ -567,7 +561,7 @@ static void sdl_on_gamepad_button_event(App* app, const struct SDL_GamepadButton
         for (size_t i = 0; i < SDL_arraysize(GAMEPAD_BUTTON_MAP); i++) {
             const struct GamepadButtonMap* p = &GAMEPAD_BUTTON_MAP[i];
             if (p->key == e->button) {
-                input_set(app, e->down, p->port, p->button);
+                input_set(app, e->down, p->button);
             }
         }
     }
