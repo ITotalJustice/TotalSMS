@@ -418,7 +418,6 @@ static void core_audio_callback(void* user, int16_t* samples, uint32_t size) {
 }
 
 static void core_input_callback(void* user, int port) {
-    App* app = user;
 }
 
 static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount) {
@@ -442,17 +441,6 @@ static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int addi
     const float dynamicFrequency = ((1.0F - maxDelta) + 2.0F * fillLevel * maxDelta) * freq;
     const float ratio = SDL_clamp(freq / dynamicFrequency, 0.50F, 10.0F);
     SDL_SetAudioStreamFrequencyRatio(stream, ratio);
-}
-
-static void sdl_dialog_file_callback(void *userdata, const char * const *filelist, int filter) {
-    if (!filelist) {
-        SDL_Log("dialog error: %s\n", SDL_GetError());
-        return;
-    }
-
-    for (unsigned i = 0; filelist[i]; i++) {
-        SDL_Log("got: %s\n", filelist[i]);
-    }
 }
 
 static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)

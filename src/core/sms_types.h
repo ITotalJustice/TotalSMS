@@ -16,6 +16,36 @@ extern "C" {
     #define SMS_SINGLE_FILE 0
 #endif
 
+// Generic helper definitions for shared library support
+// SEE: https://gcc.gnu.org/wiki/Visibility
+#if defined _WIN32 || defined __CYGWIN__
+  #define SMS_HELPER_DLL_IMPORT __declspec(dllimport)
+  #define SMS_HELPER_DLL_EXPORT __declspec(dllexport)
+  #define SMS_HELPER_DLL_LOCAL
+#else
+  #if __GNUC__ >= 4
+    #define SMS_HELPER_DLL_IMPORT __attribute__ ((visibility ("default")))
+    #define SMS_HELPER_DLL_EXPORT __attribute__ ((visibility ("default")))
+    #define SMS_HELPER_DLL_LOCAL  __attribute__ ((visibility ("hidden")))
+  #else
+    #define SMS_HELPER_DLL_IMPORT
+    #define SMS_HELPER_DLL_EXPORT
+    #define SMS_HELPER_DLL_LOCAL
+  #endif
+#endif
+
+#ifdef SMS_DLL /* defined if SMS is compiled as a DLL */
+  #ifdef SMS_DLL_EXPORTS /* defined if we are building the SMS DLL (instead of using it) */
+    #define SMS_API SMS_HELPER_DLL_EXPORT
+  #else
+    #define SMS_API SMS_HELPER_DLL_IMPORT
+  #endif /* SMS_DLL_EXPORTS */
+  #define SMS_LOCAL SMS_HELPER_DLL_LOCAL
+#else /* SMS_DLL is not defined: this means SMS is a static lib. */
+  #define SMS_API
+  #define SMS_LOCAL
+#endif /* SMS_DLL */
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>

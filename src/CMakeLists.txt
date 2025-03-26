@@ -9,7 +9,6 @@ list(APPEND gcc_flags
     -Wfatal-errors
     -Wpedantic
     -Wshadow
-    -Wdouble-promotion
     -Wformat=2
     -Wformat-overflow=2
     -Wformat-truncation=1
@@ -30,7 +29,6 @@ list(APPEND gcc_flags
     -Wcast-qual
     -Wcast-align=strict
     -Wunused-macros
-    -Wbad-function-cast
 )
 
 list(APPEND clang_flags
@@ -40,7 +38,6 @@ list(APPEND clang_flags
     -Wfatal-errors
     -Wpedantic
     -Wshadow
-    -Wdouble-promotion
     -Wformat=2
     -Wundef
     -Wmissing-include-dirs
@@ -56,10 +53,19 @@ list(APPEND clang_flags
     -Wcast-align
     -Wunused-macros
     -Wreserved-id-macro
-    -Wbad-function-cast
     -Wbitwise-op-parentheses
     -Wbitfield-enum-conversion
     -Wno-missing-braces # false positive
+
+    # disabled due to too much noise, its not worth poluting code with UNUSED macro just to silence this
+    -Wno-unused-parameter
+    -Wno-variadic-macro-arguments-omitted
+    # disabled due to zlib const casting
+    -Wno-cast-qual
+    # disabled again due to zlib
+    -Wno-reserved-macro-identifier
+    # disabled due to printf with floats causing this to warn without a cast
+    -Wno-double-promotion
 
     # can try enabling this just to see what breaks (still compiles as of clang 11)
     # be sure to enable (well, disable) the below flags else a *lot* of "errors"

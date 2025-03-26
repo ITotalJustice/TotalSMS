@@ -7,6 +7,8 @@ extern "C" {
 #include "sms_types.h"
 #include <assert.h>
 
+#pragma GCC visibility push(hidden)
+
 // if neither set, check compiler, else, default to little
 #if !defined(SMS_LITTLE_ENDIAN) && !defined(SMS_BIG_ENDIAN)
     #if defined(__BYTE_ORDER)
@@ -59,13 +61,13 @@ extern "C" {
 #endif
 
 #if SMS_SINGLE_FILE
-    #define SMS_STATIC static
-    #define SMS_INLINE static inline
-    #define SMS_FORCE_INLINE static FORCE_INLINE
+    #define SMS_STATIC static SMS_LOCAL
+    #define SMS_INLINE static inline SMS_LOCAL
+    #define SMS_FORCE_INLINE static FORCE_INLINE SMS_LOCAL
 #else
-    #define SMS_STATIC
-    #define SMS_INLINE
-    #define SMS_FORCE_INLINE
+    #define SMS_STATIC SMS_LOCAL
+    #define SMS_INLINE SMS_LOCAL
+    #define SMS_FORCE_INLINE SMS_LOCAL
 #endif // SMS_SINGLE_FILE
 
 #if defined(__has_builtin)
@@ -150,11 +152,6 @@ SMS_STATIC void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 SMS_STATIC void mapper_init(struct SMS_Core* sms);
 SMS_STATIC void mapper_update(struct SMS_Core* sms);
 
-// [APU]
-// SMS_STATIC void psg_reg_write(struct SMS_Core* sms, uint8_t value);
-// SMS_STATIC void psg_init(struct SMS_Core* sms);
-// SMS_STATIC void psg_end_frame(struct SMS_Core* sms);
-
 // [VDP]
 SMS_STATIC void vdp_init(struct SMS_Core* sms);
 SMS_STATIC uint8_t vdp_io_read_vcounter(const struct SMS_Core* sms);
@@ -174,6 +171,8 @@ SMS_STATIC void timeout_event(void* user, unsigned id, unsigned late);
 
 SMS_STATIC void joypad_poll(struct SMS_Core* sms, int port);
 SMS_STATIC uint8_t joypad_read(struct SMS_Core* sms, int port);
+
+#pragma GCC visibility pop
 
 #ifdef __cplusplus
 }

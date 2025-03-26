@@ -67,7 +67,7 @@ struct SafeString util_create_save_path(const char* dir, const char* str);
 struct SafeString util_create_rtc_path(const char* dir, const char* str);
 struct SafeString util_create_state_path(const char* dir, const char* str);
 
-struct SafeString ss_build(const char* a, ...);
+struct SafeString ss_build(const char* a, ...) __attribute__((format(printf, 1, 2)));
 struct SafeString util_append_string(const char* a, const char* b);
 
 // appends ext extension to str
