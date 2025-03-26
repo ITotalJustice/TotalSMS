@@ -500,6 +500,19 @@ bool SMS_used_sram(const struct SMS_Core* sms)
     return sms->cart.sram_used;
 }
 
+bool SMS_is_sram_dirty(struct SMS_Core* sms, bool clear)
+{
+    const bool flag = sms->cart.sram_dirty;
+
+    if (clear)
+    {
+        // check if sram is mounted, if so, re-enable dirty flag.
+        sms->cart.sram_dirty = mapper_is_sram_mapped(sms);
+    }
+
+    return flag;
+}
+
 void SMS_set_mode1_max_sprites(struct SMS_Core* sms, uint8_t value)
 {
     if (value > ARRAY_SIZE(sms->vdp.sprites))

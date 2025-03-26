@@ -124,7 +124,7 @@ static uint32_t sms_converted_palette[1 << SMS_BPP * 3];
 static uint32_t gg_converted_palette[1 << GG_BPP * 3];
 static uint32_t sg_converted_palette[1 << 4];
 
-static bool syncfs_running = false;
+static volatile bool syncfs_running = false;
 
 EMSCRIPTEN_KEEPALIVE void on_syncfs(void) {
     syncfs_running = false;
@@ -169,9 +169,7 @@ static void syncfs(void) {
 }
 
 static void flushsave(void) {
-    if (mgb_save_save_file(NULL)) {
-        syncfs();
-    }
+    mgb_save_save_file(NULL);
 }
 
 static void input_set(App* app, bool down, uint16_t value) {

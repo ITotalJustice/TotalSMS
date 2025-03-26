@@ -208,6 +208,7 @@ struct SMS_Cart
 
     uint8_t max_bank_mask;
     bool sram_used; // set when game uses sram at any point
+    bool sram_dirty; // set whilst sram is mapped.
 };
 
 struct SMS_RomHeader

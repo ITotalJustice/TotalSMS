@@ -81,6 +81,7 @@ static void sega_mapper_update_slot2(struct SMS_Core* sms)
 static void sega_mapper_update_ram0(struct SMS_Core* sms)
 {
     sms->cart.sram_used = true;
+    sms->cart.sram_dirty = true;
     const bool ram_bank_select = sega_mapper_control_ram_bank_select(sms);
 
     for (size_t i = 0; i < 0x10; i++)
@@ -727,6 +728,11 @@ void mapper_init(struct SMS_Core* sms)
     }
 
     mapper_update(sms);
+}
+
+bool mapper_is_sram_mapped(const struct SMS_Core* sms)
+{
+    return sms->cart.mapper_type == MAPPER_TYPE_SEGA && sega_mapper_control_ram_enable_80000(sms);
 }
 
 uint8_t SMS_read8(struct SMS_Core* sms, const uint16_t addr)

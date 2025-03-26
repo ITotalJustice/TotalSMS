@@ -151,6 +151,7 @@ SMS_STATIC void SMS_write_io(struct SMS_Core* sms, uint8_t addr, uint8_t value);
 // [MAPPER]
 SMS_STATIC void mapper_init(struct SMS_Core* sms);
 SMS_STATIC void mapper_update(struct SMS_Core* sms);
+SMS_STATIC bool mapper_is_sram_mapped(const struct SMS_Core* sms);
 
 // [VDP]
 SMS_STATIC void vdp_init(struct SMS_Core* sms);

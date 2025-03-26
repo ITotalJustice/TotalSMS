@@ -450,7 +450,7 @@ bool mgb_save_save_file(const char* path)
         return false;
     }
 
-    if (SMS_used_sram(mgb.sms))
+    if (SMS_used_sram(mgb.sms) && SMS_is_sram_dirty(mgb.sms, true))
     {
         struct SafeString ss = {0};
 

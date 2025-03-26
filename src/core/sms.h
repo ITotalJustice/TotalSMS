@@ -30,7 +30,10 @@ SMS_API bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, 
 SMS_API void SMS_run(struct SMS_Core* sms, size_t cycles);
 
 SMS_API bool SMS_loadsave(struct SMS_Core* sms, const uint8_t* data, size_t size);
+// set when the game has used / has sram.
 SMS_API bool SMS_used_sram(const struct SMS_Core* sms);
+// set when sram modified, set clear to true to clear dirty flag.
+SMS_API bool SMS_is_sram_dirty(struct SMS_Core* sms, bool clear);
 
 SMS_API bool SMS_get_skip_audio(const struct SMS_Core* sms);
 SMS_API bool SMS_get_skip_frame(const struct SMS_Core* sms);
