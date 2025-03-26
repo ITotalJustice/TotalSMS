@@ -88,6 +88,31 @@ static uint16_t find_rom_header_offset(const uint8_t* data)
     return 0;
 }
 
+static bool init_auio(struct SMS_Core* sms, uint32_t freq)
+{
+    // re-init psg if it doesn't exist of sample rate changed.
+    if (!sms->psg || sms->sample_freq != freq)
+    {
+        sms->sample_freq = freq;
+        psg_quit(sms->psg);
+
+        if (!(sms->psg = psg_init(SMS_CPU_CLOCK, freq)))
+        {
+            return false;
+        }
+    }
+
+    // re-apply volume settings
+    psg_set_master_volume(sms->psg, sms->master_volume);
+
+    for (size_t i = 0; i < ARRAY_SIZE(sms->volume); i++)
+    {
+        psg_set_channel_volume(sms->psg, i, sms->volume[i]);
+    }
+
+    return true;
+}
+
 /* SOURCE: https://web.archive.org/web/20190108202303/http://www.hackersdelight.org/hdcodetxt/crc.c.txt */
 uint32_t SMS_crc32(const void* data, size_t size)
 {
@@ -222,22 +247,28 @@ bool SMS_init(struct SMS_Core* sms)
     }
 
     memset(sms, 0, sizeof(*sms));
+
+    // set default vdp sprites.
     SMS_set_mode1_max_sprites(sms, SMS_MODE1_MAX_SPRITES);
     SMS_set_mode4_max_sprites(sms, SMS_MODE4_MAX_SPRITES);
+
+    // set default volume settings.
+    sms->master_volume = 0.5;
+    for (size_t i = 0; i < ARRAY_SIZE(sms->volume); i++)
+    {
+        sms->volume[i] = 1.0;
+    }
 
     if (scheduler_init(&sms->scheduler, SchedulerID_MAX))
     {
         return false;
     }
 
-    if (!(sms->psg = psg_init(SMS_CPU_CLOCK, 44100)))
-
-    for (int i = 0; i < 4; i++)
+    // init audio with most common audio output freq.
+    if (!init_auio(sms, 48000))
     {
-        sms->volume[i] = 1.0;
+        return false;
     }
-
-    sms->master_volume = 0.5;
 
     return true;
 }
@@ -508,12 +539,14 @@ void SMS_set_userdata(struct SMS_Core* sms, void* userdata)
     sms->userdata = userdata;
 }
 
-void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t freq)
+bool SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, int16_t* data, size_t size, uint32_t freq)
 {
-    if (cb && freq)
+    if (cb && freq && data && size)
     {
-        psg_quit(sms->psg);
-        sms->psg = psg_init(SMS_CPU_CLOCK, freq);
+        if (!init_auio(sms, freq))
+        {
+            return false;
+        }
 
         if (SMS_is_system_type_sg(sms))
         {
@@ -525,11 +558,15 @@ void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t 
         }
 
         sms->apu_callback = cb;
+        sms->samples = data;
+        sms->sample_size = size;
     }
     else
     {
         sms->apu_callback = NULL;
     }
+
+    return true;
 }
 
 void SMS_set_vblank_callback(struct SMS_Core* sms, sms_vblank_callback_t cb)
@@ -574,7 +611,6 @@ void SMS_run(struct SMS_Core* sms, size_t cycles)
         for (;;)
         {
             z80_run(sms);
-            // scheduler_tick(&sms->scheduler, sms->cpu.cycles);
             if (scheduler_should_fire(&sms->scheduler))
             {
                 scheduler_fire(&sms->scheduler);
@@ -589,5 +625,20 @@ void SMS_run(struct SMS_Core* sms, size_t cycles)
                 }
             }
         }
+    }
+
+    // flush audio.
+    psg_end_frame(sms->psg, scheduler_get_ticks(&sms->scheduler));
+    if (!sms->skip_audio && sms->apu_callback && sms->samples && sms->sample_size)
+    {
+        while (psg_samples_avaliable(sms->psg))
+        {
+            const int sample_count = psg_read_samples(sms->psg, sms->samples, sms->sample_size);
+            sms->apu_callback(sms->userdata, sms->samples, sample_count);
+        }
+    }
+    else
+    {
+        psg_clear_samples(sms->psg);
     }
 }

@@ -52,7 +52,7 @@ SMS_API void SMS_set_mode4_max_sprites(struct SMS_Core* sms, uint8_t value);
 
 SMS_API void SMS_set_pixels(struct SMS_Core* sms, void* pixels, uint16_t stride, uint8_t bpp);
 SMS_API void SMS_set_builtin_palette(struct SMS_Core* sms, const uint32_t palette[16]);
-SMS_API void SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, uint32_t freq);
+SMS_API bool SMS_set_apu_callback(struct SMS_Core* sms, sms_apu_callback_t cb, int16_t* data, size_t size, uint32_t freq);
 SMS_API void SMS_set_vblank_callback(struct SMS_Core* sms, sms_vblank_callback_t cb);
 SMS_API void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t cb);
 SMS_API void SMS_set_input_callback(struct SMS_Core* sms, sms_input_callback_t cb);

@@ -1328,22 +1328,6 @@ static void on_blanking_event(struct SMS_Core* sms)
         VDP.vcount = 0;
         VDP.vertical_scroll = VDP.registers[0x9];
         VDP.line_counter = VDP.registers[0xA];
-
-        psg_end_frame(sms->psg, scheduler_get_ticks(&sms->scheduler));
-        if (!sms->skip_audio && sms->apu_callback)
-        {
-            const int samples_size = sizeof(sms->samples) / sizeof(sms->samples[0]);
-            while (psg_samples_avaliable(sms->psg) >= samples_size)
-            {
-                const int r = psg_read_samples(sms->psg, sms->samples, samples_size);
-                assert(r == samples_size);
-                sms->apu_callback(sms->userdata, sms->samples, samples_size);
-            }
-        }
-        else
-        {
-            psg_clear_samples(sms->psg);
-        }
     }
 
     // the line counter is decremented on every line within the display

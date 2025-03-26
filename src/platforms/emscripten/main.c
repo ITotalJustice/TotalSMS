@@ -36,9 +36,8 @@ typedef struct {
     void* pixel_buffer;
     struct Input inputs[2]; // [0] current [1 previous]
 
-    char rom_path[4096];
-    void* rom_data;
-    size_t rom_size;
+    // allocated sample buffer for audio callbacks.
+    int16_t* sample_data;
 
     // config
     int sms_scale;
@@ -726,6 +725,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
+    const size_t sample_data_size = spec.freq / 10 * 2;
+    app->sample_data = SDL_malloc(sample_data_size * sizeof(*app->sample_data));
+    if (!app->sample_data) {
+        return SDL_APP_FAILURE;
+    }
+
     generate_palette(app, sms_converted_palette, SMS_BPP);
     generate_palette(app, gg_converted_palette, GG_BPP);
     generate_sg_palette(app, sg_converted_palette);
@@ -736,7 +741,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SMS_set_userdata(&app->sms, app);
     SMS_set_colour_callback(&app->sms, core_colour_callback);
     SMS_set_vblank_callback(&app->sms, core_vblank_callback);
-    SMS_set_apu_callback(&app->sms, core_audio_callback, spec.freq);
+    SMS_set_apu_callback(&app->sms, core_audio_callback, app->sample_data, sample_data_size, spec.freq);
     SMS_set_input_callback(&app->sms, core_input_callback);
     SMS_set_pixels(&app->sms, app->pixel_buffer, SMS_SCREEN_WIDTH, app->pixel_format_details->bytes_per_pixel);
     SMS_set_builtin_palette(&app->sms, sg_converted_palette);
@@ -860,6 +865,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
         mgb_exit();
         SMS_quit(&app->sms);
 
+        if (app->sample_data) {
+            SDL_free(app->sample_data);
+        }
         if (app->gamepad.pad) {
             SDL_CloseGamepad(app->gamepad.pad);
         }

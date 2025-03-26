@@ -416,8 +416,12 @@ struct SMS_Core
     sms_input_callback_t input_callback;
     void* userdata;
 
-    // max sample rate / 60 frames * stereo
-    int16_t samples[48000 / 60 * 2];
+    // set by frontend via SMS_set_apu_callback().
+    int16_t* samples;
+    // number of stereo samples.
+    size_t sample_size;
+    // set by frontend
+    uint32_t sample_freq;
     // set by the frontend, 0 - 2.0
     float volume[4];
     // master volume override, 0 - 2.0
