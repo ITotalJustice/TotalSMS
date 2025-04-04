@@ -72,10 +72,6 @@ struct mgb
     char* rtc_folder;
     char* state_folder;
 
-    // copy of state is here so we don't waste time
-    // malloc / dealloc
-    struct SMS_State state;
-
     char rom_path[0x304];
     uint8_t rom_data[SMS_ROM_SIZE_MAX];
     size_t rom_size;
@@ -500,10 +496,10 @@ bool mgb_save_state_file(const char* path)
     meta.magic = STATE_MAGIC;
     strcpy(meta.platform_string, "linux dev");
     meta.timestamp = time(NULL);
-    meta.state_size = SMS_get_state_size();
+    meta.state_size = SMS_get_state_size(mgb.sms, NULL);
     state = malloc(meta.state_size);
 
-    if (!SMS_savestate(mgb.sms, state, SMS_get_state_size(), false))
+    if (!SMS_savestate(mgb.sms, state, meta.state_size, NULL))
     {
         mgb_log_err("[MGB] failed to state\n");
         goto fail;
@@ -674,7 +670,7 @@ bool mgb_load_state_file(const char* path)
     }
 
     // if (!SMS_loadstate(sms, state, dst_len))
-    if (!SMS_loadstate(mgb.sms, state, SMS_get_state_size()))
+    if (!SMS_loadstate(mgb.sms, state, SMS_get_state_size(mgb.sms, NULL), NULL))
     {
         mgb_log_err("[MGB] GB failed to loadstate: %s\n", ss.str);
         goto fail;

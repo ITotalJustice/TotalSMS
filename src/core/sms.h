@@ -16,12 +16,6 @@ extern "C" {
 // on rom load, check if has bios, before resetting regs
 // on rom map change, check if has bios AND if bios is mapped
 
-// todo: remove this (needs mgb frontend changes)
-struct SMS_State
-{
-    uint8_t data[58764];
-};
-
 SMS_API bool SMS_init(struct SMS_Core* sms);
 SMS_API void SMS_quit(struct SMS_Core* sms);
 
@@ -63,9 +57,9 @@ SMS_API void SMS_set_colour_callback(struct SMS_Core* sms, sms_colour_callback_t
 SMS_API void SMS_set_input_callback(struct SMS_Core* sms, sms_input_callback_t cb);
 SMS_API void SMS_set_userdata(struct SMS_Core* sms, void* userdata);
 
-SMS_API size_t SMS_get_state_size(void);
-SMS_API bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, bool fast);
-SMS_API bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size);
+SMS_API size_t SMS_get_state_size(const struct SMS_Core* sms, const struct SMS_StateConfig* config);
+SMS_API bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, const struct SMS_StateConfig* config);
+SMS_API bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size, const struct SMS_StateConfig* config);
 
 SMS_API void SMS_set_system_type(struct SMS_Core* sms, enum SMS_System system);
 SMS_API enum SMS_System SMS_get_system_type(const struct SMS_Core* sms);

@@ -140,25 +140,45 @@ struct Rts
 
 enum { STATE_MAGIC = 0x5E6A0535 };
 enum { STATE_VERSION_MAJOR = 2 };
-enum { STATE_VERSION_MINOR = 0 };
+enum { STATE_VERSION_MINOR = 1 };
 
-sms_static_assert(sizeof(struct Rts) <= sizeof(struct SMS_State), "state size is broken");
+sms_static_assert(sizeof(struct Rts) == 58764, "state size is broken");
 
-size_t SMS_get_state_size(void)
+static const struct SMS_StateConfig DEFAULT_CONFIG = {
+    .fast = false,
+    .include_psg_blip = false,
+};
+
+static const struct SMS_StateConfig* state_get_config(const struct SMS_StateConfig* config)
 {
-    return sizeof(struct Rts);
+    return config ? config : &DEFAULT_CONFIG;
 }
 
-bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, bool fast)
+size_t SMS_get_state_size(const struct SMS_Core* sms, const struct SMS_StateConfig* config)
 {
-    const size_t state_size = SMS_get_state_size();
+    config = state_get_config(config);
+    size_t size = sizeof(struct Rts);
+
+    if (config->include_psg_blip)
+    {
+        size += psg_state_size(sms->psg, config->include_psg_blip);
+    }
+
+    return size;
+}
+
+bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, const struct SMS_StateConfig* config)
+{
+    config = state_get_config(config);
+
+    const size_t state_size = SMS_get_state_size(sms, config);
     if (size < state_size)
     {
         return false;
     }
 
     struct Rts* rts = data;
-    if (!fast)
+    if (!config->fast)
     {
         memset(rts, 0, sizeof(*rts));
     }
@@ -289,15 +309,22 @@ bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, bool fas
 
     /* ---apu---*/
     {
-        assert(psg_state_size() < sizeof(rts->psg));
-        psg_save_state(sms->psg, rts->psg, sizeof(rts->psg));
+        assert(psg_state_size(sms->psg, false) < sizeof(rts->psg));
+        if (config->include_psg_blip)
+        {
+            // write to the end of state.
+            psg_save_state(sms->psg, (uint8_t*)data + sizeof(struct Rts), state_size, config->include_psg_blip);
+        }
+        else
+        {
+            psg_save_state(sms->psg, rts->psg, sizeof(rts->psg), config->include_psg_blip);
+        }
     }
 
     /* ---scheduler---*/
     {
         assert(scheduler_state_size(&sms->scheduler) < sizeof(rts->scheduler));
         scheduler_save_state(&sms->scheduler, rts->scheduler, sizeof(rts->scheduler));
-
     }
 
     /* ---system_ram---*/
@@ -308,9 +335,11 @@ bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, bool fas
     return true;
 }
 
-bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size)
+bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size, const struct SMS_StateConfig* config)
 {
-    const size_t state_size = SMS_get_state_size();
+    config = state_get_config(config);
+
+    const size_t state_size = SMS_get_state_size(sms, config);
     if (size < state_size)
     {
         return false;
@@ -450,9 +479,18 @@ bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size)
 
     /* ---apu---*/
     {
-        assert(psg_state_size() < sizeof(rts->psg));
-        psg_load_state(sms->psg, rts->psg, sizeof(rts->psg));
+        assert(psg_state_size(sms->psg, false) < sizeof(rts->psg));
+        if (config->include_psg_blip)
+        {
+            // load from the end of state.
+            psg_load_state(sms->psg, (const uint8_t*)data + sizeof(struct Rts), state_size, config->include_psg_blip);
+        }
+        else
+        {
+            psg_load_state(sms->psg, rts->psg, sizeof(rts->psg), config->include_psg_blip);
+        }
     }
+
 
     /* ---scheduler---*/
     {

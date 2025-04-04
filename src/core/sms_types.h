@@ -373,6 +373,12 @@ struct SMS_MemoryControlRegister
     bool io_chip_disable;
 };
 
+struct SMS_StateConfig
+{
+    bool fast;
+    bool include_psg_blip;
+};
+
 struct SMS_Core
 {
     // mapped every 0x400 due to how sega mapper works with the first

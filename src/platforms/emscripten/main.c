@@ -24,8 +24,9 @@ enum ArgsId {
     ArgsId_vsync,
     ArgsId_frame_blending,
 
-    // input
+    // latency
     ArgsId_runahead,
+    ArgsId_runahead_lazy,
 };
 
 #define ARGS_ENTRY(_key, _type, _single) \
@@ -44,6 +45,21 @@ static const struct ArgsMeta ARGS_META[] = {
     ARGS_ENTRY(frame_blending, ArgsValueType_STR, 0)
 
     ARGS_ENTRY(runahead, ArgsValueType_INT, 0)
+    ARGS_ENTRY(runahead_lazy, ArgsValueType_NONE, 0)
+};
+
+static const struct SMS_StateConfig RUNAHEAD_STATE_CONFIG = {
+    .fast = true,
+    .include_psg_blip = true,
+};
+
+struct Runahead {
+    uint8_t** states;
+    unsigned count;
+    unsigned frames;
+    size_t state_size;
+    bool lock_input; // if true, locks input.
+    bool lazy; // if true, uses more optimised version.
 };
 
 struct Input {
@@ -74,6 +90,7 @@ typedef struct {
     // vars
     struct SMS_Core sms;
     void* pixel_buffer;
+    struct Runahead runahead;
     struct Input inputs[2]; // [0] current [1 previous]
 
     // allocated sample buffer for audio callbacks.
@@ -84,7 +101,6 @@ typedef struct {
     int gg_scale;
     int window_w;
     int window_h;
-    int runahead;
     bool frame_blending;
     bool stretch_screen;
 
@@ -119,6 +135,11 @@ static void on_frame_blending_toggle(App* app);
 static void on_set_pause(App* app, bool enable);
 static void on_update_sound_playback_state(App* app);
 static bool should_emu_run(const App* app);
+
+static void runahead_init(App* app, unsigned frames);
+static void runahead_exit(App* app);
+static bool runahead_is_enabled(const App* app);
+static void runahead_run_frame(App* app, double delta);
 
 static const struct KeyMap KEY_MAP[] = {
     { SDLK_UP, SMS_Button_JOY1_UP },
@@ -491,6 +512,11 @@ static void sdl_poll_emu_inputs(App* app) {
 static void core_input_callback(void* user, int port) {
     App* app = user;
 
+    // disabled whilst input is locked, used for catching up frames in runahead.
+    if (app->runahead.lock_input) {
+        return;
+    }
+
     // https://github.com/higan-emu/emulation-articles/tree/master/input/latency
     static uint64_t last_poll_time = 0;
     const uint64_t new_poll_time = SDL_GetTicks();
@@ -596,6 +622,36 @@ static void sdl_on_gamepad_device_event(App* app, const SDL_GamepadDeviceEvent* 
 
 static void sdl_on_gamepad_button_event(App* app, const struct SDL_GamepadButtonEvent* e)
 {
+}
+
+// NOTE: this WILL be called on any thread that pushes an event to the queue.
+// this is called as soon as an event is pushed, not when events are pumped.
+// as such, it is able to handle specific events which cause the main thread
+// to no longer be called, as it's being terminated or is the background.
+// locks should be used to touch any shared data.
+static bool sdl_on_watch_event(void *userdata, SDL_Event *event) {
+    switch (event->type) {
+        case SDL_EVENT_TERMINATING:
+            SDL_Log("[SDL_EVENT_TERMINATING]\n");
+            break;
+        case SDL_EVENT_LOW_MEMORY:
+            SDL_Log("[SDL_EVENT_LOW_MEMORY]\n");
+            break;
+        case SDL_EVENT_WILL_ENTER_BACKGROUND:
+            SDL_Log("[SDL_EVENT_WILL_ENTER_BACKGROUND]\n");
+            break;
+        case SDL_EVENT_DID_ENTER_BACKGROUND:
+            SDL_Log("[SDL_EVENT_DID_ENTER_BACKGROUND]\n");
+            break;
+        case SDL_EVENT_WILL_ENTER_FOREGROUND:
+            SDL_Log("[SDL_EVENT_WILL_ENTER_FOREGROUND]\n");
+            break;
+        case SDL_EVENT_DID_ENTER_FOREGROUND:
+            SDL_Log("[SDL_EVENT_DID_ENTER_FOREGROUND]\n");
+            break;
+    }
+
+    return true;
 }
 
 static void on_file_picker(App* app) {
@@ -707,7 +763,55 @@ static void emulator_render(App* app) {
     }
 }
 
-static void run(App* app, double delta) {
+static void emulator_run(App* app, size_t cycles, bool skip_audio, bool skip_video, bool lock_input) {
+    app->runahead.lock_input = lock_input;
+    SMS_skip_audio(&app->sms, skip_audio);
+    SMS_skip_frame(&app->sms, skip_video);
+    SMS_run(&app->sms, cycles);
+}
+
+static void runahead_init(App* app, unsigned frames) {
+    if (!frames) {
+        runahead_exit(app);
+        return;
+    }
+
+    app->runahead.frames = frames;
+    app->runahead.count = 0;
+    app->runahead.states = SDL_malloc(frames * sizeof(*app->runahead.states));
+    app->runahead.state_size = SMS_get_state_size(&app->sms, &RUNAHEAD_STATE_CONFIG);
+    for (unsigned i = 0; i < app->runahead.frames; i++) {
+        app->runahead.states[i] = SDL_malloc(app->runahead.state_size);
+    }
+}
+
+static void runahead_exit(App* app) {
+    if (app->runahead.states) {
+        for (unsigned i = 0; i < app->runahead.frames; i++) {
+            SDL_free(app->runahead.states[i]);
+        }
+
+        SDL_free(app->runahead.states);
+    }
+
+    SDL_memset(&app->runahead, 0, sizeof(app->runahead));
+}
+
+static bool runahead_is_enabled(const App* app) {
+    return app->runahead.frames > 0;
+}
+
+// clears frame count so that all new frames must be generated.
+// this should be called on input change, loadstate and loadrom.
+static void runahead_clear_frames(App* app) {
+    app->runahead.count = 0;
+}
+
+// run the emulate for a single frame.
+// will exit early if the emulate is paused or no rom etc.
+// if runahead is disabled, then it will run a frame as normal.
+// otherwise, it will
+static void runahead_run_frame(App* app, double delta) {
     // don't run if a rom isn't loaded, paused or lost focus.
     if (!should_emu_run(app)) {
         return;
@@ -718,12 +822,58 @@ static void run(App* app, double delta) {
     // maybe keep track of deltas here to get an average?
     // delta = SDL_min(delta, 1.333333);
     delta = SDL_min(delta, 3.0);
-    const double cycles = (double)SMS_CYCLES_PER_FRAME * delta;
+    const size_t cycles = SDL_floor((double)SMS_CYCLES_PER_FRAME * delta);
+    // const size_t cycles = SMS_CYCLES_PER_FRAME;
 
-    if (input_is_dirty(app)) {
-        input_apply(app);
+    if (!runahead_is_enabled(app)) {
+        // run frame as normal
+        emulator_run(app, cycles, false, false, false);
+    } else {
+        sdl_poll_emu_inputs(app);
+
+        if (app->runahead.lazy) {
+            if (input_is_dirty(app)) {
+                // only loadstate if it's valid
+                if (app->runahead.count) {
+                    SMS_loadstate(&app->sms, app->runahead.states[0], app->runahead.state_size, &RUNAHEAD_STATE_CONFIG);
+                }
+
+                input_apply(app);
+                runahead_clear_frames(app);
+            }
+
+            // emulate ahead, fill up state array
+            if (app->runahead.count < app->runahead.frames) {
+                while (app->runahead.count < app->runahead.frames) {
+                    emulator_run(app, cycles, true, true, true);
+                    SMS_savestate(&app->sms, app->runahead.states[app->runahead.count], app->runahead.state_size, &RUNAHEAD_STATE_CONFIG);
+                    app->runahead.count++;
+                }
+            } else {
+                // otherwise, move state array down, over-writting oldest state
+                for (unsigned i = 0; i < app->runahead.count - 1; i++) {
+                    uint8_t* temp = app->runahead.states[i];
+                    app->runahead.states[i] = app->runahead.states[i + 1];
+                    app->runahead.states[i + 1] = temp;
+                }
+
+                // add new state
+                SMS_savestate(&app->sms, app->runahead.states[app->runahead.count - 1], app->runahead.state_size, &RUNAHEAD_STATE_CONFIG);
+            }
+
+            emulator_run(app, cycles, false, false, true);
+        } else {
+            emulator_run(app, cycles, true, true, false);
+            SMS_savestate(&app->sms, app->runahead.states[0], app->runahead.state_size, &RUNAHEAD_STATE_CONFIG);
+
+            for (unsigned i = 1; i < app->runahead.frames; i++) {
+                emulator_run(app, cycles, true, true, true);
+            }
+
+            emulator_run(app, cycles, false, false, true);
+            SMS_loadstate(&app->sms, app->runahead.states[0], app->runahead.state_size, &RUNAHEAD_STATE_CONFIG);
+        }
     }
-    SMS_run(&app->sms, cycles);
 }
 
 static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
@@ -751,6 +901,10 @@ static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
         "    --scaler\n"
         "        nearest            Sharp pixels.\n"
         "        bilinear           Bilinear interpolation.\n\n"
+
+        "Latency Options:\n"
+        "    --runahead FRAMES      Runahead n frames, 0 to disable.\n"
+        "    --runahead_lazy        More efficient runahead implementation.\n"
     };
 
     SDL_Log("%s", s);
@@ -775,6 +929,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
     const char* rom_file = NULL;
     const char* bios_file = NULL;
+    int vsync = 1;
+    int runahead = 0;
     bool fullscreen = false;
     bool loadstate = false;
 
@@ -802,6 +958,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
             case ArgsId_fullscreen:
                 fullscreen = true;
+                break;
+
+            case ArgsId_vsync:
+                vsync = arg_data.value.i;
+                break;
+
+            case ArgsId_runahead:
+                runahead = arg_data.value.i;
                 break;
         }
     }
@@ -859,6 +1023,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
+    // certian events must be handeld in the below callback.
+    if (!SDL_AddEventWatch(sdl_on_watch_event, app)) {
+        return SDL_APP_FAILURE;
+    }
+
     SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
     if (!display_id) {
         return SDL_APP_FAILURE;
@@ -890,7 +1059,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_SetRenderVSync(app->renderer, 1)) {
+    if (!SDL_SetRenderVSync(app->renderer, vsync)) {
         return SDL_APP_FAILURE;
     }
 
@@ -1004,6 +1173,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         on_fullscreen_toggle(app);
     }
 
+    runahead_init(app, runahead);
+
     app->focus = SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS;
     on_update_sound_playback_state(app);
 
@@ -1013,8 +1184,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     static Uint64 start = 0;
     static Uint64 now = 0;
-    static const double TARGET_FRAME_TIME = 1000.0 / 60;
-    static double delta = TARGET_FRAME_TIME;
+    // const double TARGET_FRAME_TIME = 1.0 / 60;
+    // pal
+    // const double TARGET_FRAME_TIME = 1.0 / 49.701459;
+    // ntsc
+    const double TARGET_FRAME_TIME = 1.0 / 59.922743;
+    double delta = TARGET_FRAME_TIME;
 
     App* app = appstate;
 
@@ -1022,7 +1197,11 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         start = SDL_GetPerformanceCounter();
     }
 
-    run(app, delta / TARGET_FRAME_TIME);
+    now = SDL_GetPerformanceCounter();
+    delta = (double)(now - start) / (double)SDL_GetPerformanceFrequency();
+    start = now;
+
+    runahead_run_frame(app, delta / TARGET_FRAME_TIME);
 
     if (!SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255)) {
         return SDL_APP_FAILURE;
@@ -1038,13 +1217,20 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         return SDL_APP_FAILURE;
     }
 
+    int vsync;
+    if (!SDL_GetRenderVSync(app->renderer, &vsync)) {
+        return SDL_APP_FAILURE;
+    }
+
 #ifdef EMSCRIPTEN
     flushsave();
 #endif
 
-    now = SDL_GetPerformanceCounter();
-    delta = (double)((now - start) * 1000ULL) / (double)SDL_GetPerformanceFrequency();
-    start = now;
+    // the below are for testing / simulating different fps targets.
+    if (!vsync) {
+        // SDL_DelayPrecise(1000000000ULL / 144ULL);
+        SDL_DelayPrecise(1000000000ULL / 59.922743);
+    }
 
     return SDL_APP_CONTINUE;
 }
@@ -1102,6 +1288,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 
     App* app = appstate;
     if (app) {
+        runahead_exit(app);
         mgb_exit();
         SMS_quit(&app->sms);
 

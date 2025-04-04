@@ -8,7 +8,7 @@ include(FetchContent)
 # apu
 FetchContent_Declare(sn76489
     GIT_REPOSITORY https://github.com/ITotalJustice/sn76489.git
-    GIT_TAG        master
+    GIT_TAG        v1.1.0
     GIT_PROGRESS   TRUE
 )
 
