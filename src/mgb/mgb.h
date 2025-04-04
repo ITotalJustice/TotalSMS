@@ -48,13 +48,11 @@ const char* mgb_get_save_folder(void);
 const char* mgb_get_rtc_folder(void);
 const char* mgb_get_state_folder(void);
 
-// bool mgb_load_bios_filedialog(void);
 bool mgb_load_bios_file(const char* path);
 // bool mgb_load_bios_fd(int fd, bool own, const char* path);
 // bool mgb_load_bios_data(const char* path, const uint8_t* data, size_t size);
 
 
-bool mgb_load_rom_filedialog(void);
 bool mgb_load_rom_file(const char* path);
 bool mgb_load_rom_fd(int fd, bool own, const char* path);
 bool mgb_load_rom_data(const char* path, const uint8_t* data, size_t size);
@@ -69,9 +67,6 @@ bool mgb_load_state_file(const char* path);
 // bool mgb_load_save_data(const uint8_t* data, size_t size);
 // bool mgb_load_rtc_data(const uint8_t* data, size_t size);
 // bool mgb_load_state_data(const uint8_t* data, size_t size);
-
-bool mgb_load_state_filedialog(void);
-bool mgb_save_state_filedialog(void);
 
 bool mgb_save_save_file(const char* path);
 // bool mgb_save_rtc_file(const char* path);

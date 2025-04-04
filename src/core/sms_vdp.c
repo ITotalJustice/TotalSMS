@@ -22,6 +22,12 @@
     #endif
 #endif
 
+enum VdpScanlineRenderType {
+    VdpScanlineRenderType_8bit = 1,
+    VdpScanlineRenderType_16bit = 2,
+    VdpScanlineRenderType_32bit = 4,
+};
+
 enum
 {
     NTSC_HCOUNT_MAX = 342,
@@ -118,6 +124,11 @@ static const int NTSC_NEXT_EVENT_CYCLES[2] = {
     [VdpState_ACTIVE] = NTSC_ACTIVE_DISPLAY_CYCLES,
     [VdpState_BLANKING] = NTSC_BLANKING_BORDER_CYCLES,
 };
+
+// used to render pixels before converting to frontend native format.
+// this buffer isn't used if pixel_width_t matches the frontend bpp.
+// in that case, the frontend pixel buffer is used directly.
+static pixel_width_t SCANLINE_BUFFER[SMS_SCREEN_WIDTH];
 
 // SOURCE: https://www.smspower.org/forums/8161-SMSDisplayTiming
 // (divide mclks by 3)
@@ -259,12 +270,33 @@ static bool vdp_is_display_active(const struct SMS_Core* sms)
 }
 
 #ifndef SMS_PIXEL_WIDTH
-static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* scanline, const uint8_t y)
+static enum VdpScanlineRenderType get_scanline_type(const struct SMS_Core* sms)
 {
     switch (sms->bpp)
     {
         case 1:
-        case 8: {
+        case 8:
+            return VdpScanlineRenderType_8bit;
+
+        case 2:
+        case 15:
+        case 16:
+            return VdpScanlineRenderType_16bit;
+
+        case 4:
+        case 24:
+        case 32:
+            return VdpScanlineRenderType_32bit;
+    }
+
+    return -1;
+}
+
+static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* scanline, const uint8_t y)
+{
+    switch (get_scanline_type(sms))
+    {
+        case VdpScanlineRenderType_8bit: {
             uint8_t* pixels = &((uint8_t*)sms->pixels)[sms->stride * y];
             for (int i = 0; i < SMS_SCREEN_WIDTH; ++i)
             {
@@ -272,9 +304,7 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
             }
         }   break;
 
-        case 2:
-        case 15:
-        case 16: {
+        case VdpScanlineRenderType_16bit: {
             uint16_t* pixels = ((uint16_t*)sms->pixels) + (sms->stride * y);
             for (int i = 0; i < SMS_SCREEN_WIDTH; ++i)
             {
@@ -282,9 +312,7 @@ static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* s
             }
         }   break;
 
-        case 4:
-        case 24:
-        case 32: {
+        case VdpScanlineRenderType_32bit: {
             uint32_t* pixels = &((uint32_t*)sms->pixels)[sms->stride * y];
             for (int i = 0; i < SMS_SCREEN_WIDTH; ++i)
             {
@@ -708,9 +736,7 @@ static void vdp_render_background(struct SMS_Core* sms, pixel_width_t* scanline,
             nametable = &VDP.vram[vdp_get_nametable_base_addr(sms) + vertical_offset];
         }
 
-        const uint16_t tile =
-            nametable[horizontal_offset + 0] << 0 |
-            nametable[horizontal_offset + 1] << 8 ;
+        const uint16_t tile = mem_read16(nametable + horizontal_offset);
 
         // if set, background will display over sprites
         const bool priority = IS_BIT_SET(tile, 12);
@@ -1186,7 +1212,12 @@ static void vdp_render_frame(struct SMS_Core* sms)
 
     struct PriorityBuf prio = {0};
     #ifndef SMS_PIXEL_WIDTH
-        pixel_width_t scanline[SMS_SCREEN_WIDTH] = {0};
+        const bool is_native_width = get_scanline_type(sms) == sizeof(pixel_width_t);
+        pixel_width_t* scanline = SCANLINE_BUFFER;
+        if (is_native_width)
+        {
+            scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->stride);
+        }
     #else
         pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->stride);
     #endif
@@ -1262,7 +1293,10 @@ static void vdp_render_frame(struct SMS_Core* sms)
     }
 
     #ifndef SMS_PIXEL_WIDTH
-        write_scanline_to_frame(sms, scanline, VDP.vcount);
+        if (!is_native_width)
+        {
+            write_scanline_to_frame(sms, scanline, VDP.vcount);
+        }
     #endif
 }
 

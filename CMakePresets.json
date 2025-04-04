@@ -50,6 +50,16 @@
             }
         },
         {
+            "name": "sdl3-debug",
+            "displayName": "sdl3-debug",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "SDL3": true,
+                "SMS_SINGLE_FILE": true
+            }
+        },
+        {
             "name": "sdl3-dev",
             "displayName": "sdl3-dev",
             "binaryDir": "${sourceDir}/build/${presetName}",

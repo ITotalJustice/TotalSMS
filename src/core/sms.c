@@ -340,7 +340,12 @@ static void SMS_reset(struct SMS_Core* sms)
 bool SMS_has_bios(const struct SMS_Core* sms)
 {
     // bios should be at least 1-page size in size
-    return sms->bios && sms->bios_size >= 1024 && sms->bios_size <= 1024*32;
+    return sms->bios && sms->bios_size >= 1024 && sms->bios_size <= SMS_ROM_SIZE_MAX;
+}
+
+bool SMS_has_rom(const struct SMS_Core* sms)
+{
+    return sms->rom != NULL;
 }
 
 bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size)
@@ -349,7 +354,21 @@ bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size)
     sms->bios_size = size;
 
     // todo: hash all known bios to know exactly what bios is being loaded
-    return SMS_has_bios(sms);
+    if (!SMS_has_bios(sms))
+    {
+        return false;
+    }
+
+    // todo: impl below
+    // if bios is greater than a page, then it likely has rom builtin
+#if 0
+    if (sms->bios_size > 1024 * 32)
+    {
+        SMS_loadrom(sms, bios + 1024 * 0, sms->bios_size - 1024 * 0, -1);
+    }
+#endif
+
+    return true;
 }
 
 static bool sg_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int system_hint)

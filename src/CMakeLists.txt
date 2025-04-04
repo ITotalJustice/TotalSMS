@@ -29,6 +29,9 @@ list(APPEND gcc_flags
     -Wcast-qual
     -Wcast-align=strict
     -Wunused-macros
+
+    # disabled due to too much noise, its not worth poluting code with UNUSED macro just to silence this
+    -Wno-unused-parameter
 )
 
 list(APPEND clang_flags
@@ -206,8 +209,8 @@ if (PLATFORM_SDL)
 endif()
 
 if (PLATFORM_SDL3)
-    add_subdirectory(platforms/sdl3)
-    set(USE_MGB OFF)
+    add_subdirectory(platforms/emscripten)
+    set(USE_MGB ON)
 endif()
 
 if (PLATFORM_PSX)

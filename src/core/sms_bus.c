@@ -10,17 +10,18 @@
 
 // this is mapped to any address space which is unmapped
 // and *not* mirrored, such as sega mapper writing to 0x0-0x8000 range
-static uint8_t UNUSED_BANK[0x400];
+static const uint8_t READ_UNUSED_BANK[0x400];
+static uint8_t WRITE_UNUSED_BANK[0x400];
 
-// static bool sega_mapper_control_rom_write_enable(const struct SMS_Core* sms)
-// {
-//     return IS_BIT_SET(sms->cart.mappers.sega.fffc, 7);
-// }
+static bool sega_mapper_control_rom_write_enable(const struct SMS_Core* sms)
+{
+    return IS_BIT_SET(sms->cart.mappers.sega.fffc, 7);
+}
 
-// static bool sega_mapper_control_ram_enable_c0000(const struct SMS_Core* sms)
-// {
-//     return IS_BIT_SET(sms->cart.mappers.sega.fffc, 4);
-// }
+static bool sega_mapper_control_ram_enable_c0000(const struct SMS_Core* sms)
+{
+    return IS_BIT_SET(sms->cart.mappers.sega.fffc, 4);
+}
 
 static bool sega_mapper_control_ram_enable_80000(const struct SMS_Core* sms)
 {
@@ -32,10 +33,10 @@ static bool sega_mapper_control_ram_bank_select(const struct SMS_Core* sms)
     return IS_BIT_SET(sms->cart.mappers.sega.fffc, 2);
 }
 
-// static uint8_t sega_mapper_control_bank_shift(const struct SMS_Core* sms)
-// {
-//     return sms->cart.mappers.sega.fffc & 0x3;
-// }
+static uint8_t sega_mapper_control_bank_shift(const struct SMS_Core* sms)
+{
+    return sms->cart.mappers.sega.fffc & 0x3;
+}
 
 static void sega_mapper_update_slot0(struct SMS_Core* sms)
 {
@@ -74,7 +75,7 @@ static void sega_mapper_update_slot2(struct SMS_Core* sms)
     for (size_t i = 0; i < 0x10; i++)
     {
         sms->rmap[i + 0x20] = sms->rom + offset + (0x400 * i);
-        sms->wmap[i + 0x20] = UNUSED_BANK;
+        sms->wmap[i + 0x20] = WRITE_UNUSED_BANK;
     }
 }
 
@@ -93,10 +94,10 @@ static void sega_mapper_update_ram0(struct SMS_Core* sms)
 
 static void setup_mapper_unused_ram(struct SMS_Core* sms)
 {
-    for (int i = 0; i < 0x40; i++)
+    for (size_t i = 0; i < ARRAY_SIZE(sms->rmap); i++)
     {
-        sms->rmap[i] = UNUSED_BANK;
-        sms->wmap[i] = UNUSED_BANK;
+        sms->rmap[i] = READ_UNUSED_BANK;
+        sms->wmap[i] = WRITE_UNUSED_BANK;
     }
 }
 
@@ -181,7 +182,7 @@ static void codemaster_mapper_update_slot1(struct SMS_Core* sms, const uint8_t v
         // unmap ram and re-map the rom
         for (size_t i = 0; i < 0x8; i++)
         {
-            sms->wmap[i + 0x28] = UNUSED_BANK;
+            sms->wmap[i + 0x28] = WRITE_UNUSED_BANK;
         }
 
         codemaster_mapper_update_slot(sms, 2, sms->cart.mappers.codemasters.slot[2]);
@@ -267,7 +268,7 @@ static void setup_mapper_dahjee_a(struct SMS_Core* sms)
 {
     for (int i = 0; i < 0x30; i++)
     {
-        sms->rmap[i] = sms->rom + + 0x400 * (i % sms->rom_mask);
+        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
     }
 
     // has 8K mapped at 0x2000-0x3FFF
@@ -453,6 +454,7 @@ static void IO_memory_control_write(struct SMS_Core* sms, const uint8_t value)
     if (SMS_has_bios(sms) && old.bios_rom_disable != sms->memory_control.bios_rom_disable)
     {
         // assert(!sms->memory_control.bios_rom_disable && "bios got remapped, this is impossible!");
+        // SMS_log("bios unmapped\n");
         mapper_update(sms);
     }
 
@@ -683,7 +685,7 @@ void mapper_update(struct SMS_Core* sms)
         if (SMS_has_bios(sms))
         {
             // usually 8 (8kib)
-            const size_t map_max = sms->bios_size / 0x400;
+            const size_t map_max = SMS_MIN(ARRAY_SIZE(sms->rmap), sms->bios_size / 0x400);
 
             for (size_t i = 0; i < map_max; i++)
             {
@@ -750,14 +752,8 @@ void SMS_write8(struct SMS_Core* sms, const uint16_t addr, const uint8_t value)
 
 uint16_t SMS_read16(struct SMS_Core* sms, const uint16_t addr)
 {
-    #if SMS_LITTLE_ENDIAN
-    uint16_t v;
-    memcpy(&v, sms->rmap[addr >> 10] + (addr & 0x3FF), sizeof(v));
-    return v;
-    #else
-    uint16_t v = SMS_read8(sms, addr + 0);
-    return v |= SMS_read8(sms, addr + 1) << 8;
-    #endif
+    assert(sms->rmap[addr >> 10] && "NULL ptr in rmap!");
+    return mem_read16(sms->rmap[addr >> 10] + (addr & 0x3FF));
 }
 
 void SMS_write16(struct SMS_Core* sms, const uint16_t addr, const uint16_t value)

@@ -6,8 +6,7 @@ extern "C" {
 
 #include "sms_types.h"
 #include <assert.h>
-
-#pragma GCC visibility push(hidden)
+#include <string.h>
 
 // if neither set, check compiler, else, default to little
 #if !defined(SMS_LITTLE_ENDIAN) && !defined(SMS_BIG_ENDIAN)
@@ -116,6 +115,8 @@ extern "C" {
 // returns 1 OR 0
 #define IS_BIT_SET(v, bit) (!!((v) & (1 << (bit))))
 
+#pragma GCC visibility push(hidden)
+
 enum SchedulerID {
     /* start of the events, do not remove. */
     SchedulerID_VDP,
@@ -172,6 +173,28 @@ SMS_STATIC void timeout_event(void* user, unsigned id, unsigned late);
 
 SMS_STATIC void joypad_poll(struct SMS_Core* sms, int port);
 SMS_STATIC uint8_t joypad_read(struct SMS_Core* sms, int port);
+
+static inline uint16_t mem_read16(const uint8_t* array)
+{
+    uint16_t r;
+#if SMS_LITTLE_ENDIAN
+    memcpy(&r, array, sizeof(r));
+#else
+    r = array[0] | (array[1] << 8);
+#endif
+    return r;
+}
+
+static inline uint32_t mem_read32(const uint8_t* array)
+{
+    uint32_t r;
+#if SMS_LITTLE_ENDIAN
+    memcpy(&r, array, sizeof(r));
+#else
+    r = array[0] | (array[1] << 8) | (array[2] << 16) | (array[3] << 24);
+#endif
+    return r;
+}
 
 #pragma GCC visibility pop
 

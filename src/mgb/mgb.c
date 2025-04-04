@@ -1,7 +1,6 @@
 #include "mgb.h"
 #include "ifile/ifile.h"
 #include "romloader.h"
-#include "filedialog.h"
 #include "directory.h"
 #include "sms_types.h"
 #include "util.h"
@@ -14,11 +13,7 @@
 #include <sms.h>
 #include <assert.h>
 #include <zlib.h>
-
-#ifdef EMSCRIPTEN
-    #include <emscripten.h>
-    #include <emscripten/html5.h>
-#endif
+#include <time.h>
 
 enum LoadRomType
 {
@@ -87,7 +82,7 @@ struct mgb
     bool has_rom;
 
     char bios_path[0x304];
-    uint8_t bios_data[1024*32];
+    uint8_t bios_data[SMS_ROM_SIZE_MAX];
     size_t bios_size;
     bool has_bios;
 
@@ -208,6 +203,27 @@ static bool loadbios(const struct LoadRomConfig* config)
 
     mgb.has_bios = true;
 
+    // todo: finish support of this in sms.c
+#if 0
+    // the bios may have a rom embeded.
+    if (SMS_has_rom(mgb.sms))
+    {
+        // save the path
+        strncpy(mgb.rom_path, config->path, sizeof(mgb.rom_path) - 1);
+
+        // report that the rom has loade before calling the callback.
+        mgb.has_rom = true;
+
+        if (mgb.on_file_cb)
+        {
+            mgb.on_file_cb(mgb.user, config->path, CallbackType_LOAD_ROM, true);
+        }
+
+        // try loading any saves if possible
+        loadsave();
+    }
+#endif
+
     return true;
 
 fail:
@@ -327,70 +343,6 @@ fail:
     }
 
     mgb.has_rom = false;
-
-    return false;
-}
-
-bool mgb_load_rom_filedialog(void)
-{
-#ifdef EMSCRIPTEN
-    EM_ASM(
-        let rom_input = document.getElementById("RomFilePicker");
-        rom_input.click();
-    );
-    return true;
-#else
-    const char* filters = "sms,gg,sg,zip";
-    const struct FileDialogResult result = filedialog_open_file(filters);
-
-    switch (result.type)
-    {
-        case FileDialogResultType_OK:
-            return mgb_load_rom_file(result.path);
-
-        case FileDialogResultType_ERROR:
-            return false;
-
-        case FileDialogResultType_CANCEL:
-            return false;
-    }
-
-    return false;
-#endif
-}
-
-bool mgb_save_state_filedialog(void)
-{
-    const char* const filters = "state";
-    const struct FileDialogResult result = filedialog_save_file(filters);
-
-    switch (result.type)
-    {
-        case FileDialogResultType_OK:
-            return mgb_save_state_file(result.path);
-
-        case FileDialogResultType_ERROR:
-        case FileDialogResultType_CANCEL:
-            return false;
-    }
-
-    return false;
-}
-
-bool mgb_load_state_filedialog(void)
-{
-    const char* const filters = "state";
-    const struct FileDialogResult result = filedialog_open_file(filters);
-
-    switch (result.type)
-    {
-        case FileDialogResultType_OK:
-            return mgb_load_state_file(result.path);
-
-        case FileDialogResultType_ERROR:
-        case FileDialogResultType_CANCEL:
-            return false;
-    }
 
     return false;
 }

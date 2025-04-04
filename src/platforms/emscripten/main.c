@@ -3,7 +3,48 @@
 #include <SDL3/SDL_main.h>
 #include <sms.h>
 #include <mgb.h>
-#include <emscripten.h>
+#include "args/args.h"
+
+#ifdef EMSCRIPTEN
+    #include <emscripten.h>
+#endif
+
+enum ArgsId {
+    // misc
+    ArgsId_help,
+    ArgsId_version,
+
+    // file
+    ArgsId_rom,
+    ArgsId_bios,
+    ArgsId_loadstate,
+
+    // video
+    ArgsId_fullscreen,
+    ArgsId_vsync,
+    ArgsId_frame_blending,
+
+    // input
+    ArgsId_runahead,
+};
+
+#define ARGS_ENTRY(_key, _type, _single) \
+    { .key = #_key, .id = ArgsId_##_key, .type = _type, .single = _single },
+
+static const struct ArgsMeta ARGS_META[] = {
+    ARGS_ENTRY(help, ArgsValueType_NONE, 'h')
+    ARGS_ENTRY(version, ArgsValueType_NONE, 'v')
+
+    ARGS_ENTRY(rom, ArgsValueType_STR, 'r')
+    ARGS_ENTRY(bios, ArgsValueType_STR, 'b')
+    ARGS_ENTRY(loadstate, ArgsValueType_NONE, 0)
+
+    ARGS_ENTRY(fullscreen, ArgsValueType_NONE, 'f')
+    ARGS_ENTRY(vsync, ArgsValueType_INT, 0)
+    ARGS_ENTRY(frame_blending, ArgsValueType_STR, 0)
+
+    ARGS_ENTRY(runahead, ArgsValueType_INT, 0)
+};
 
 struct Input {
     uint16_t button;
@@ -13,9 +54,7 @@ struct Gamepad {
     SDL_JoystickID id;
     SDL_Gamepad* pad;
     bool button[SDL_GAMEPAD_BUTTON_COUNT];
-    bool last_button[SDL_GAMEPAD_BUTTON_COUNT];
     bool axis[SDL_GAMEPAD_AXIS_COUNT];
-    bool last_axis[SDL_GAMEPAD_AXIS_COUNT];
 };
 
 typedef struct {
@@ -27,6 +66,7 @@ typedef struct {
     SDL_AudioStream* audio_stream;
     const SDL_PixelFormatDetails* pixel_format_details;
     SDL_PixelFormat pixel_format;
+    bool keys[SDL_SCANCODE_COUNT];
 
     // todo: support multiple controllers.
     struct Gamepad gamepad;
@@ -44,6 +84,7 @@ typedef struct {
     int gg_scale;
     int window_w;
     int window_h;
+    int runahead;
     bool frame_blending;
     bool stretch_screen;
 
@@ -124,6 +165,7 @@ static uint32_t sms_converted_palette[1 << SMS_BPP * 3];
 static uint32_t gg_converted_palette[1 << GG_BPP * 3];
 static uint32_t sg_converted_palette[1 << 4];
 
+#ifdef EMSCRIPTEN
 static volatile bool syncfs_running = false;
 
 EMSCRIPTEN_KEEPALIVE void on_syncfs(void) {
@@ -171,6 +213,7 @@ static void syncfs(void) {
 static void flushsave(void) {
     mgb_save_save_file(NULL);
 }
+#endif
 
 static void input_set(App* app, bool down, uint16_t value) {
     if (down) {
@@ -240,9 +283,11 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             break;
     }
 
+#ifdef EMSCRIPTEN
     if (should_sync) {
         syncfs();
     }
+#endif
 }
 
 static void* mgb_on_convert_pixels_to_png_format(void* user, int* out_w, int* out_h, int* out_channels)
@@ -274,7 +319,7 @@ static void* mgb_on_convert_pixels_to_png_format(void* user, int* out_w, int* ou
     if (!result)
     {
         SDL_Log("failed to convert pixels: %s\n", SDL_GetError());
-        free(dst);
+        SDL_free(dst);
         dst = NULL;
     }
 
@@ -322,56 +367,10 @@ static void generate_sg_palette(App* app, uint32_t* palette) {
         {0xE0, 0xE0, 0xE0, 0xFF}, // 15: white
     };
 
-    for (int i = 0; i < 16; i++) {
+    for (size_t i = 0; i < SDL_arraysize(SG_COLOUR_TABLE); i++) {
         const struct Colour c = SG_COLOUR_TABLE[i];
         palette[i] = SDL_MapRGBA(app->pixel_format_details, NULL, c.r, c.g, c.b, c.a);
     }
-}
-
-static void on_file_picker(App* app) {
-    mgb_load_rom_filedialog();
-}
-
-static void on_savestate(App* app) {
-    mgb_save_state_file(NULL);
-}
-
-static void on_loadstate(App* app) {
-    mgb_load_state_file(NULL);
-}
-
-static void on_pause_toggle(App* app) {
-    on_set_pause(app, app->paused ^ 1);
-}
-
-static void on_fullscreen_toggle(App* app) {
-    const bool is_fullscreen = SDL_WINDOW_FULLSCREEN & SDL_GetWindowFlags(app->window);
-    SDL_SetWindowFullscreen(app->window, is_fullscreen ^ 1);
-}
-
-static void on_screen_stretch_toggle(App* app) {
-    app->stretch_screen ^= 1;
-}
-
-static void on_frame_blending_toggle(App* app) {
-    app->frame_blending ^= 1;
-}
-
-static void on_set_pause(App* app, bool enable) {
-    app->paused = enable;
-    on_update_sound_playback_state(app);
-}
-
-static void on_update_sound_playback_state(App* app) {
-    if (should_emu_run(app)) {
-        SDL_ResumeAudioStreamDevice(app->audio_stream);
-    } else {
-        SDL_PauseAudioStreamDevice(app->audio_stream);
-    }
-}
-
-static bool should_emu_run(const App* app) {
-    return mgb_has_rom() && !app->paused && app->focus;
 }
 
 static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b) {
@@ -414,7 +413,100 @@ static void core_audio_callback(void* user, int16_t* samples, uint32_t size) {
     SDL_PutAudioStreamData(app->audio_stream, samples, size * sizeof(*samples));
 }
 
+static void sdl_poll_emu_key_inputs(App* app) {
+    const bool* keys = SDL_GetKeyboardState(NULL);
+    const SDL_Keymod mod = SDL_GetModState();
+
+    for (size_t i = 0; i < SDL_arraysize(KEY_MAP); i++) {
+        const struct KeyMap* p = &KEY_MAP[i];
+        const SDL_Scancode scancode = SDL_GetScancodeFromKey(p->key, NULL);
+        const bool down = keys[scancode] && !(mod & (SDL_KMOD_CTRL|SDL_KMOD_SHIFT|SDL_KMOD_ALT|SDL_KMOD_GUI));
+
+        if (app->keys[scancode] != down) {
+            app->keys[scancode] = down;
+            input_set(app, down, p->button);
+        }
+    }
+}
+
+static void sdl_poll_emu_gamepad_inputs(App* app) {
+    struct Gamepad* controller = &app->gamepad;
+    for (size_t i = 0; i < SDL_arraysize(GAMEPAD_BUTTON_MAP); i++) {
+        const struct GamepadButtonMap* p = &GAMEPAD_BUTTON_MAP[i];
+        const bool down = SDL_GetGamepadButton(controller->pad, p->key);
+
+        if (controller->button[p->key] != down) {
+            controller->button[p->key] = down;
+            input_set(app, down, p->button);
+        }
+    }
+}
+
+static void sdl_poll_emu_axis2_inputs(App* app, SDL_GamepadAxis axis) {
+    struct Gamepad* controller = &app->gamepad;
+    const int16_t value = SDL_GetGamepadAxis(controller->pad, axis);
+    const bool down = SDL_abs(value) >= 8000;
+
+    if (controller->axis[axis] != down) {
+        controller->axis[axis] = down;
+
+        if (axis == SDL_GAMEPAD_AXIS_LEFTX) {
+            input_set(app, false, SMS_Button_JOY1_LEFT|SMS_Button_JOY1_RIGHT);
+
+            if (value < 0) {
+                SDL_Log("setting left: %d\n", value);
+                input_set(app, down, SMS_Button_JOY1_LEFT);
+            }
+            else if (value > 0) {
+                SDL_Log("setting right: %d\n", value);
+                input_set(app, down, SMS_Button_JOY1_RIGHT);
+            }
+        }
+        else if (axis == SDL_GAMEPAD_AXIS_LEFTY) {
+            input_set(app, false, SMS_Button_JOY1_UP|SMS_Button_JOY1_DOWN);
+
+            if (value < 0) {
+                SDL_Log("setting up: %d\n", value);
+                input_set(app, down, SMS_Button_JOY1_UP);
+            }
+            else if (value > 0) {
+                SDL_Log("setting down: %d\n", value);
+                input_set(app, down, SMS_Button_JOY1_DOWN);
+            }
+        }
+    }
+}
+
+static void sdl_poll_emu_axis_inputs(App* app) {
+    sdl_poll_emu_axis2_inputs(app, SDL_GAMEPAD_AXIS_LEFTX);
+    sdl_poll_emu_axis2_inputs(app, SDL_GAMEPAD_AXIS_LEFTY);
+}
+
+static void sdl_poll_emu_inputs(App* app) {
+    sdl_poll_emu_key_inputs(app);
+    sdl_poll_emu_gamepad_inputs(app);
+    sdl_poll_emu_axis_inputs(app);
+}
+
 static void core_input_callback(void* user, int port) {
+    App* app = user;
+
+    // https://github.com/higan-emu/emulation-articles/tree/master/input/latency
+    static uint64_t last_poll_time = 0;
+    const uint64_t new_poll_time = SDL_GetTicks();
+    const uint64_t poll_max = 5; // 5ms
+    if (new_poll_time - last_poll_time < poll_max) {
+        return;
+    }
+
+    last_poll_time = new_poll_time;
+    SDL_PumpEvents();
+
+    sdl_poll_emu_inputs(app);
+
+    if (input_is_dirty(app)) {
+        input_apply(app);
+    }
 }
 
 static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount) {
@@ -440,6 +532,18 @@ static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int addi
     SDL_SetAudioStreamFrequencyRatio(stream, ratio);
 }
 
+static void sdl_dialog_file_callback(void *userdata, const char * const *filelist, int filter) {
+    if (!filelist) {
+        SDL_Log("dialog error: %s\n", SDL_GetError());
+        return;
+    }
+
+    for (unsigned i = 0; filelist[i]; i++) {
+        SDL_Log("got: %s\n", filelist[i]);
+        mgb_load_rom_file(filelist[i]);
+    }
+}
+
 static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
 {
     if (e->repeat) {
@@ -453,55 +557,11 @@ static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
             SDL_Log("got hotkey\n");
         }
     }
-
-    // todo: only handle inputs if focused emulator screen.
-    //  && !ImGui::IsAnyItemActive()
-    if (!(e->mod & (SDL_KMOD_CTRL|SDL_KMOD_SHIFT|SDL_KMOD_ALT|SDL_KMOD_GUI))) {
-        for (size_t i = 0; i < SDL_arraysize(KEY_MAP); i++) {
-            const struct KeyMap* p = &KEY_MAP[i];
-            if (p->key == e->key) {
-                input_set(app, e->down, p->button);
-            }
-        }
-    }
 }
 
 static void sdl_on_gamepad_axis_event(App* app, const struct SDL_GamepadAxisEvent* e)
 {
-    // sdl recommends deadzone of 8000
-    // auto& controller = app->controllers[e->which];
-    struct Gamepad* controller = &app->gamepad;
-    controller->axis[e->axis] = SDL_abs(e->value) >= 8000;
 
-    if (controller->last_axis[e->axis] != controller->axis[e->axis]) {
-        controller->last_axis[e->axis] = controller->axis[e->axis];
-        const bool down = controller->last_axis[e->axis];
-
-        if (e->axis == SDL_GAMEPAD_AXIS_LEFTX) {
-            input_set(app, false, SMS_Button_JOY1_LEFT|SMS_Button_JOY1_RIGHT);
-
-            if (e->value < 0) {
-                SDL_Log("setting left: %d\n", e->value);
-                input_set(app, down, SMS_Button_JOY1_LEFT);
-            }
-            else if (e->value > 0) {
-                SDL_Log("setting right: %d\n", e->value);
-                input_set(app, down, SMS_Button_JOY1_RIGHT);
-            }
-        }
-        else if (e->axis == SDL_GAMEPAD_AXIS_LEFTY) {
-            input_set(app, false, SMS_Button_JOY1_UP|SMS_Button_JOY1_DOWN);
-
-            if (e->value < 0) {
-                SDL_Log("setting up: %d\n", e->value);
-                input_set(app, down, SMS_Button_JOY1_UP);
-            }
-            else if (e->value > 0) {
-                SDL_Log("setting down: %d\n", e->value);
-                input_set(app, down, SMS_Button_JOY1_DOWN);
-            }
-        }
-    }
 }
 
 static void sdl_on_gamepad_device_event(App* app, const SDL_GamepadDeviceEvent* e)
@@ -536,20 +596,73 @@ static void sdl_on_gamepad_device_event(App* app, const SDL_GamepadDeviceEvent* 
 
 static void sdl_on_gamepad_button_event(App* app, const struct SDL_GamepadButtonEvent* e)
 {
-    // auto& controller = app->controllers[e->which];
-    struct Gamepad* controller = &app->gamepad;
-    controller->button[e->button] = e->down;
+}
 
-    if (controller->last_button[e->button] != controller->button[e->button]) {
-        controller->last_button[e->button] = controller->button[e->button];
+static void on_file_picker(App* app) {
+#ifdef EMSCRIPTEN
+    EM_ASM(
+        let rom_input = document.getElementById("RomFilePicker");
+        rom_input.click();
+    );
+#else
+    static const SDL_DialogFileFilter dialog_filters[] = {{
+        .name = "Roms",
+        .pattern = "sms;gg;sg;zip",
+    }, {
+        .name = "Master System",
+        .pattern = "sms;zip",
+    }, {
+        .name = "Game Gear",
+        .pattern = "gg;zip",
+    }, {
+        .name = "SG1000",
+        .pattern = "sg;zip",
+    }};
 
-        for (size_t i = 0; i < SDL_arraysize(GAMEPAD_BUTTON_MAP); i++) {
-            const struct GamepadButtonMap* p = &GAMEPAD_BUTTON_MAP[i];
-            if (p->key == e->button) {
-                input_set(app, e->down, p->button);
-            }
-        }
+    SDL_ShowOpenFileDialog(sdl_dialog_file_callback, app, app->window, dialog_filters, SDL_arraysize(dialog_filters), NULL, false);
+#endif
+}
+
+static void on_savestate(App* app) {
+    mgb_save_state_file(NULL);
+}
+
+static void on_loadstate(App* app) {
+    mgb_load_state_file(NULL);
+}
+
+static void on_pause_toggle(App* app) {
+    on_set_pause(app, app->paused ^ 1);
+}
+
+static void on_fullscreen_toggle(App* app) {
+    const bool is_fullscreen = SDL_WINDOW_FULLSCREEN & SDL_GetWindowFlags(app->window);
+    SDL_SetWindowFullscreen(app->window, is_fullscreen ^ 1);
+}
+
+static void on_screen_stretch_toggle(App* app) {
+    app->stretch_screen ^= 1;
+}
+
+static void on_frame_blending_toggle(App* app) {
+    app->frame_blending ^= 1;
+}
+
+static void on_set_pause(App* app, bool enable) {
+    app->paused = enable;
+    on_update_sound_playback_state(app);
+}
+
+static void on_update_sound_playback_state(App* app) {
+    if (should_emu_run(app)) {
+        SDL_ResumeAudioStreamDevice(app->audio_stream);
+    } else {
+        SDL_PauseAudioStreamDevice(app->audio_stream);
     }
+}
+
+static bool should_emu_run(const App* app) {
+    return mgb_has_rom() && !app->paused && app->focus;
 }
 
 static void emulator_render(App* app) {
@@ -613,6 +726,37 @@ static void run(App* app, double delta) {
     SMS_run(&app->sms, cycles);
 }
 
+static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
+    static const char s[] = {
+        "usage: exe [option...] [file]\n\n"
+
+        "Misc Options:\n"
+        "    -h, --help             Show help\n"
+        "    -v, --version          Show version\n\n"
+
+        "File Options:\n"
+        "    -r, --rom FILE         Load rom file.\n"
+        "    -b, --bios FILE        Load bios file.\n"
+        "    --loadstate            Load savestate.\n\n"
+
+        "Video Options:\n"
+        "    -f, --fullscreen       Start in fullscreen.\n"
+        "    --vsync\n"
+        "        none               Vsync is disabled.\n"
+        "        vsync              Vsync is enabled.\n"
+        "        Adaptive           Adapative vsync is enabled, not always supported.\n"
+        "    --frame_blending\n"
+        "        none               No Blending.\n"
+        "        blend              Blend frames n and n-1.\n"
+        "    --scaler\n"
+        "        nearest            Sharp pixels.\n"
+        "        bilinear           Bilinear interpolation.\n\n"
+    };
+
+    SDL_Log("%s", s);
+    return result;
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SDL_Log("Hello World: %s\n", SDL_GetPlatform());
 
@@ -626,8 +770,80 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     }
     *appstate = app;
 
+    bool show_help = false;
+    bool show_version = false;
+
+    const char* rom_file = NULL;
+    const char* bios_file = NULL;
+    bool fullscreen = false;
+    bool loadstate = false;
+
+    int arg_index = 1;
+    ArgsData arg_data;
+    ArgsResult arg_result;
+    while (!(arg_result = args_parse(&arg_index, argc, argv, ARGS_META, SDL_arraysize(ARGS_META), &arg_data))) {
+        switch (ARGS_META[arg_data.meta_index].id) {
+            case ArgsId_help:
+                show_help = true;
+                break;
+            case ArgsId_version:
+                show_version = true;
+                break;
+
+            case ArgsId_rom:
+                rom_file = arg_data.value.s;
+                break;
+            case ArgsId_bios:
+                bios_file = arg_data.value.s;
+                break;
+            case ArgsId_loadstate:
+                loadstate = true;
+                break;
+
+            case ArgsId_fullscreen:
+                fullscreen = true;
+                break;
+        }
+    }
+
+    if (show_version || show_help) {
+        return ShowHelp(SDL_APP_SUCCESS, argv[0]);
+    }
+
+    // handle error.
+    if (arg_result < 0) {
+        if (arg_result == ArgsResult_UNKNOWN_KEY) {
+            SDL_SetError("unknown arg [%s]", argv[arg_index]);
+        }
+        else if (arg_result == ArgsResult_BAD_VALUE) {
+            SDL_SetError("arg [--%s] had bad value type [%s]", ARGS_META[arg_data.meta_index].key, arg_data.value.s);
+        }
+        else if (arg_result == ArgsResult_MISSING_VALUE) {
+            SDL_SetError("arg [--%s] requires a value", ARGS_META[arg_data.meta_index].key);
+        }
+        else {
+            SDL_SetError("bad args: %d", arg_result);
+        }
+
+        return ShowHelp(SDL_APP_FAILURE, argv[0]);
+    }
+    // handle warning.
+    else if (arg_result == ArgsResult_EXTRA_ARGS) {
+        if (!rom_file) {
+            rom_file = argv[arg_index];
+        }
+    }
+    else if (arg_index < argc) {
+        rom_file = argv[arg_index];
+    }
+
+#ifdef EMSCRIPTEN
     app->sms_scale = 1;
     app->gg_scale = 1;
+#else
+    app->sms_scale = 4;
+    app->gg_scale = 5;
+#endif
     app->window_w = SMS_SCREEN_WIDTH * app->sms_scale;
     app->window_h = SMS_SCREEN_HEIGHT * app->sms_scale;
     app->frame_blending = false;
@@ -748,9 +964,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     mgb_set_userdata(app);
     mgb_set_on_file_callback(mgb_on_file_callback);
     mgb_set_on_convert_pixels_to_png_format(mgb_on_convert_pixels_to_png_format);
+
+#ifdef EMSCRIPTEN
     mgb_set_save_folder("/save");
     mgb_set_state_folder("/state");
-
     EM_ASM(
         if (!FS.analyzePath("/save").exists) {
             FS.mkdir("/save");
@@ -768,6 +985,24 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
             }
         });
     );
+#endif // EMSCRIPTEN
+
+    if (bios_file && !mgb_load_bios_file(bios_file)) {
+        SDL_Log("failed to load bios\n");
+        return SDL_APP_FAILURE;
+    }
+
+    if (rom_file && !mgb_load_rom_file(rom_file)) {
+        return SDL_APP_FAILURE;
+    }
+
+    if (loadstate && !mgb_load_state_file(NULL)) {
+        return SDL_APP_FAILURE;
+    }
+
+    if (fullscreen && mgb_has_rom()) {
+        on_fullscreen_toggle(app);
+    }
 
     app->focus = SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS;
     on_update_sound_playback_state(app);
@@ -789,8 +1024,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     run(app, delta / TARGET_FRAME_TIME);
 
-    SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(app->renderer);
+    if (!SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255)) {
+        return SDL_APP_FAILURE;
+    }
+
+    if (!SDL_RenderClear(app->renderer)) {
+        return SDL_APP_FAILURE;
+    }
 
     emulator_render(app);
 
@@ -798,7 +1038,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         return SDL_APP_FAILURE;
     }
 
+#ifdef EMSCRIPTEN
     flushsave();
+#endif
 
     now = SDL_GetPerformanceCounter();
     delta = (double)((now - start) * 1000ULL) / (double)SDL_GetPerformanceFrequency();
