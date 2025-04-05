@@ -1194,7 +1194,7 @@ bool vdp_has_interrupt(const struct SMS_Core* sms)
     return frame_interrupt || line_interrupt;
 }
 
-static void vdp_render_frame(struct SMS_Core* sms)
+static void vdp_render_line(struct SMS_Core* sms)
 {
     // only render if display is enabled
     if (!vdp_is_display_enabled(sms))
@@ -1308,7 +1308,7 @@ static void on_active_event(struct SMS_Core* sms)
     if (vdp_is_display_active(sms))
     {
         vdp_update_palette(sms);
-        vdp_render_frame(sms);
+        vdp_render_line(sms);
     }
 
     // sprite parsing happens 1 line ahead :)
