@@ -10,7 +10,6 @@ extern "C" {
 struct RomEntry
 {
     uint32_t crc; // crc32
-    uint32_t rom; // size
     uint16_t ram; // size
     uint8_t map; // size
     uint8_t sys; // size
