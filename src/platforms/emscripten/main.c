@@ -23,6 +23,8 @@ enum ArgsId {
     ArgsId_fullscreen,
     ArgsId_vsync,
     ArgsId_frame_blending,
+    ArgsId_scaler,
+    ArgsId_stretch,
 
     // latency
     ArgsId_runahead,
@@ -42,10 +44,31 @@ static const struct ArgsMeta ARGS_META[] = {
 
     ARGS_ENTRY(fullscreen, ArgsValueType_NONE, 'f')
     ARGS_ENTRY(vsync, ArgsValueType_INT, 0)
-    ARGS_ENTRY(frame_blending, ArgsValueType_STR, 0)
+    ARGS_ENTRY(frame_blending, ArgsValueType_INT, 0)
+    ARGS_ENTRY(scaler, ArgsValueType_INT, 0)
+    ARGS_ENTRY(stretch, ArgsValueType_INT, 0)
 
     ARGS_ENTRY(runahead, ArgsValueType_INT, 0)
     ARGS_ENTRY(runahead_lazy, ArgsValueType_NONE, 0)
+};
+
+static const int SDL_VSYNC[] = {
+    SDL_RENDERER_VSYNC_DISABLED,
+    1, // enable vsync.
+    SDL_RENDERER_VSYNC_ADAPTIVE,
+};
+
+static const SDL_ScaleMode SDL_SCALER[] = {
+    SDL_SCALEMODE_NEAREST,
+    SDL_SCALEMODE_LINEAR,
+};
+
+static const SDL_RendererLogicalPresentation SDL_STRETCH[] = {
+    SDL_LOGICAL_PRESENTATION_DISABLED,
+    SDL_LOGICAL_PRESENTATION_STRETCH,
+    SDL_LOGICAL_PRESENTATION_LETTERBOX,
+    SDL_LOGICAL_PRESENTATION_OVERSCAN,
+    SDL_LOGICAL_PRESENTATION_INTEGER_SCALE,
 };
 
 static const struct SMS_StateConfig RUNAHEAD_STATE_CONFIG = {
@@ -102,7 +125,6 @@ typedef struct {
     int window_w;
     int window_h;
     bool frame_blending;
-    bool stretch_screen;
 
     bool paused;
     bool focus;
@@ -697,7 +719,17 @@ static void on_fullscreen_toggle(App* app) {
 }
 
 static void on_screen_stretch_toggle(App* app) {
-    app->stretch_screen ^= 1;
+    int w, h;
+    SDL_RendererLogicalPresentation mode;
+    SDL_GetRenderLogicalPresentation(app->renderer, &w, &h, &mode);
+
+    if (mode == SDL_LOGICAL_PRESENTATION_INTEGER_SCALE) {
+        mode = SDL_LOGICAL_PRESENTATION_STRETCH;
+    } else {
+        mode = SDL_LOGICAL_PRESENTATION_INTEGER_SCALE;
+    }
+
+    SDL_SetRenderLogicalPresentation(app->renderer, w, h, mode);
 }
 
 static void on_frame_blending_toggle(App* app) {
@@ -735,31 +767,21 @@ static void emulator_render(App* app) {
     SMS_get_pixel_region(&app->sms, &rect.x, &rect.y, &rect.w, &rect.h);
     const SDL_FRect src_rect = {.x = rect.x, .y = rect.y, .w = rect.w, .h = rect.h};
 
-    // center the image (aka, don't stretch to fill screen)
-    const int scale = SDL_min(display_w / src_rect.w, display_h / src_rect.h);
-    SDL_FRect dst_rect;
-    dst_rect.w = src_rect.w * scale;
-    dst_rect.h = src_rect.h * scale;
-    dst_rect.x = (display_w - dst_rect.w) / 2;
-    dst_rect.y = (display_h - dst_rect.h) / 2;
-
-    const SDL_FRect* dst_rect_p = app->stretch_screen ? NULL : &dst_rect;
-
     if (app->frame_blending) {
         SDL_SetTextureBlendMode(app->texture_current, SDL_BLENDMODE_NONE);
         SDL_SetTextureBlendMode(app->texture_previous, SDL_BLENDMODE_BLEND);
         SDL_SetTextureAlphaMod(app->texture_previous, 144);
 
         // render new frame at 100% alpha with the previous frame as 40%
-        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, dst_rect_p);
-        SDL_RenderTexture(app->renderer, app->texture_previous, &src_rect, dst_rect_p);
+        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, NULL);
+        SDL_RenderTexture(app->renderer, app->texture_previous, &src_rect, NULL);
 
         SDL_Texture* temp = app->texture_current;
         app->texture_current = app->texture_previous;
         app->texture_previous = temp;
     } else {
         SDL_SetTextureBlendMode(app->texture_current, SDL_BLENDMODE_NONE);
-        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, dst_rect_p);
+        SDL_RenderTexture(app->renderer, app->texture_current, &src_rect, NULL);
     }
 }
 
@@ -892,15 +914,20 @@ static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
         "Video Options:\n"
         "    -f, --fullscreen       Start in fullscreen.\n"
         "    --vsync\n"
-        "        none               Vsync is disabled.\n"
-        "        vsync              Vsync is enabled.\n"
-        "        Adaptive           Adapative vsync is enabled, not always supported.\n"
+        "        0 - none           Vsync is disabled.\n"
+        "        1 - vsync          [Default]. Vsync is enabled.\n"
+        "        2 - Adaptive       Adapative vsync is enabled, not always supported.\n"
         "    --frame_blending\n"
-        "        none               No Blending.\n"
-        "        blend              Blend frames n and n-1.\n"
+        "        0 - none           [Default]. No Blending.\n"
+        "        1 - blend          Blend frames n and n-1.\n"
         "    --scaler\n"
-        "        nearest            Sharp pixels.\n"
-        "        bilinear           Bilinear interpolation.\n\n"
+        "        0 - nearest        [Default]. Sharp pixels.\n"
+        "        1 - bilinear       Bilinear interpolation.\n\n"
+        "    --stretch\n"
+        "        0 - stretch        Stretched to the output resolution.\n"
+        "        1 - letterbox      Scales to fit largest dimension, other dimension is letterboxed with black bars.\n\n"
+        "        2 - overscan       Scales to fit smallest dimension, other dimension extends outide.\n\n"
+        "        3 - integer        [Default]. Scales in integer multiples.\n\n"
 
         "Latency Options:\n"
         "    --runahead FRAMES      Runahead n frames, 0 to disable.\n"
@@ -929,8 +956,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
     const char* rom_file = NULL;
     const char* bios_file = NULL;
+    SDL_ScaleMode scaler = SDL_SCALEMODE_NEAREST;
+    SDL_RendererLogicalPresentation stretch = SDL_LOGICAL_PRESENTATION_INTEGER_SCALE;
     int vsync = 1;
     int runahead = 0;
+    bool frame_blending = false;
     bool fullscreen = false;
     bool loadstate = false;
 
@@ -959,9 +989,17 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
             case ArgsId_fullscreen:
                 fullscreen = true;
                 break;
-
             case ArgsId_vsync:
-                vsync = arg_data.value.i;
+                vsync = SDL_VSYNC[arg_data.value.i];
+                break;
+            case ArgsId_frame_blending:
+                frame_blending = arg_data.value.i;
+                break;
+            case ArgsId_scaler:
+                scaler = SDL_SCALER[arg_data.value.i];
+                break;
+            case ArgsId_stretch:
+                stretch = SDL_STRETCH[arg_data.value.i];
                 break;
 
             case ArgsId_runahead:
@@ -1010,7 +1048,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 #endif
     app->window_w = SMS_SCREEN_WIDTH * app->sms_scale;
     app->window_h = SMS_SCREEN_HEIGHT * app->sms_scale;
-    app->frame_blending = false;
+    app->frame_blending = frame_blending;
     app->quit = false;
 
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
@@ -1063,6 +1101,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
+    if (!SDL_SetRenderLogicalPresentation(app->renderer, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT, stretch)) {
+        return SDL_APP_FAILURE;
+    }
+
     app->pixel_format = SDL_GetWindowPixelFormat(app->window);
     app->pixel_format_details = SDL_GetPixelFormatDetails(app->pixel_format);
     if (!app->pixel_format_details) {
@@ -1080,8 +1122,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
-    SDL_SetTextureScaleMode(app->texture_current, SDL_SCALEMODE_NEAREST);
-    SDL_SetTextureScaleMode(app->texture_previous, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureScaleMode(app->texture_current, scaler);
+    SDL_SetTextureScaleMode(app->texture_previous, scaler);
 
     app->audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL, sdl_audio_callback, app);
     if (!app->audio_stream) {
