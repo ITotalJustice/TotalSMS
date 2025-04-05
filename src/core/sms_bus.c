@@ -484,11 +484,14 @@ static void IO_control_write(struct SMS_Core* sms, const uint8_t value)
     */
     // SMS_log("IO_control_write: 0x%02X\n", value);
     // good enough for region detection
-    sms->port.b &= ~(1 << 6);
-    sms->port.b &= ~(1 << 7);
+    if (sms->console == SMS_Console_EXPORT)
+    {
+        sms->port.b &= ~(1 << 6);
+        sms->port.b &= ~(1 << 7);
 
-    sms->port.b |= ((value >> 5) & 1) << 6;
-    sms->port.b |= ((value >> 7) & 1) << 7;
+        sms->port.b |= ((value >> 5) & 1) << 6;
+        sms->port.b |= ((value >> 7) & 1) << 7;
+    }
 }
 
 static bool gear_to_gear_is_enabled(const struct SMS_Core* sms)

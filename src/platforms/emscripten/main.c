@@ -844,7 +844,7 @@ static void runahead_run_frame(App* app, double delta) {
     // maybe keep track of deltas here to get an average?
     // delta = SDL_min(delta, 1.333333);
     delta = SDL_min(delta, 3.0);
-    const size_t cycles = SDL_floor((double)SMS_CYCLES_PER_FRAME * delta);
+    const size_t cycles = SDL_floor((double)SMS_cycles_per_frame(&app->sms) * delta);
     // const size_t cycles = SMS_CYCLES_PER_FRAME;
 
     if (!runahead_is_enabled(app)) {
@@ -1224,16 +1224,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
+    App* app = appstate;
+
     static Uint64 start = 0;
     static Uint64 now = 0;
     // const double TARGET_FRAME_TIME = 1.0 / 60;
     // pal
     // const double TARGET_FRAME_TIME = 1.0 / 49.701459;
     // ntsc
-    const double TARGET_FRAME_TIME = 1.0 / 59.922743;
+    const double TARGET_FRAME_TIME = 1.0 / SMS_target_fps(&app->sms);
     double delta = TARGET_FRAME_TIME;
-
-    App* app = appstate;
 
     if (start == 0) {
         start = SDL_GetPerformanceCounter();

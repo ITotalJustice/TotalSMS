@@ -20,8 +20,16 @@ SMS_API bool SMS_init(struct SMS_Core* sms);
 SMS_API void SMS_quit(struct SMS_Core* sms);
 
 SMS_API bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size);
-SMS_API bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int system_hint);
+SMS_API bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size);
+SMS_API bool SMS_loadromEx(struct SMS_Core* sms, const uint8_t* rom, size_t size, int system, int region, int console);
+
 SMS_API void SMS_run(struct SMS_Core* sms, size_t cycles);
+
+SMS_API size_t SMS_cycles_per_frame(const struct SMS_Core* sms);
+SMS_API size_t SMS_cycles_per_frame_region(enum SMS_Region region);
+
+SMS_API double SMS_target_fps(const struct SMS_Core* sms);
+SMS_API double SMS_target_fps_region(enum SMS_Region region);
 
 SMS_API bool SMS_has_rom(const struct SMS_Core* sms);
 

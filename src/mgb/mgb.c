@@ -299,7 +299,7 @@ static bool loadrom(const struct LoadRomConfig* config)
         system_hint = SMS_System_SG1000;
     }
 
-    if (!SMS_loadrom(mgb.sms, mgb.rom_data, mgb.rom_size, system_hint))
+    if (!SMS_loadromEx(mgb.sms, mgb.rom_data, mgb.rom_size, system_hint, -1, -1))
     {
         mgb_log_err("[MGB] fail to gb load rom\n");
         goto fail;

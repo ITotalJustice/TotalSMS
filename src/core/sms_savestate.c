@@ -123,7 +123,9 @@ struct StateMeta
     uint32_t state_version_minor; // not a breaking change
     uint32_t state_size;
     uint32_t rom_crc32;
-    uint32_t _padding[16];
+    uint32_t region;
+    uint32_t console;
+    uint32_t _padding[14];
 };
 
 struct Rts
@@ -140,7 +142,7 @@ struct Rts
 
 enum { STATE_MAGIC = 0x5E6A0535 };
 enum { STATE_VERSION_MAJOR = 2 };
-enum { STATE_VERSION_MINOR = 1 };
+enum { STATE_VERSION_MINOR = 2 };
 
 sms_static_assert(sizeof(struct Rts) == 58764, "state size is broken");
 
@@ -191,6 +193,8 @@ bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, const st
         rts->meta.state_version_minor = STATE_VERSION_MINOR;
         rts->meta.state_size = state_size;
         rts->meta.rom_crc32 = sms->crc;
+        rts->meta.region = sms->region;
+        rts->meta.console = sms->console;
     }
 
     /* ---Z80---*/
@@ -362,6 +366,16 @@ bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size, const st
 
     if (rts->meta.state_version_major != STATE_VERSION_MAJOR) {
         SMS_log("bad savestate, bad version. got: %u wanted: %u\n", rts->meta.state_version_major, STATE_VERSION_MAJOR);
+        return false;
+    }
+
+    if (rts->meta.region != sms->region) {
+        SMS_log("bad savestate, bad region. got: %u wanted: %u\n", rts->meta.region, sms->region);
+        return false;
+    }
+
+    if (rts->meta.console != sms->console) {
+        SMS_log("bad savestate, bad console. got: %u wanted: %u\n", rts->meta.console, sms->console);
         return false;
     }
 

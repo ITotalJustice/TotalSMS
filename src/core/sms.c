@@ -40,6 +40,22 @@ static const char* const region_code_string[0x10] =
     [0x7] = "GG International",
 };
 
+// these values was taken for sms power docs
+static const size_t CPU_CYCLES[2] = {
+    [SMS_Region_NTSC] = 3579545,
+    [SMS_Region_PAL] = 3546893,
+};
+
+static const size_t CYCLES_PER_FRAME[2] = {
+    [SMS_Region_NTSC] = 228 * 262,
+    [SMS_Region_PAL] = 228 * 313,
+};
+
+static const double TARGET_FPS[2] = {
+    [SMS_Region_NTSC] = 59.922743,
+    [SMS_Region_PAL] = 49.701459,
+};
+
 static void frame_event(void* user, unsigned id, unsigned late)
 {
     UNUSED(id);
@@ -96,7 +112,7 @@ static bool init_auio(struct SMS_Core* sms, uint32_t freq)
         sms->sample_freq = freq;
         psg_quit(sms->psg);
 
-        if (!(sms->psg = psg_init(SMS_CPU_CLOCK, freq)))
+        if (!(sms->psg = psg_init(CPU_CYCLES[sms->region], freq)))
         {
             return false;
         }
@@ -252,6 +268,10 @@ bool SMS_init(struct SMS_Core* sms)
     SMS_set_mode1_max_sprites(sms, SMS_MODE1_MAX_SPRITES);
     SMS_set_mode4_max_sprites(sms, SMS_MODE4_MAX_SPRITES);
 
+    // set default region and console.
+    sms->region = SMS_Region_NTSC;
+    sms->console = SMS_Console_EXPORT;
+
     // set default volume settings.
     sms->master_volume = 0.5;
     for (size_t i = 0; i < ARRAY_SIZE(sms->volume); i++)
@@ -290,7 +310,6 @@ static void SMS_reset(struct SMS_Core* sms)
     memset(sms->wmap, 0, sizeof(sms->wmap));
     memset(&sms->cpu, 0, sizeof(sms->cpu));
     memset(&sms->vdp, 0, sizeof(sms->vdp));
-    // memset(&sms->psg, 0, sizeof(sms->psg));
     memset(&sms->port, 0, sizeof(sms->port));
     memset(sms->system_ram, 0, sizeof(sms->system_ram));
 
@@ -348,6 +367,26 @@ bool SMS_has_rom(const struct SMS_Core* sms)
     return sms->rom != NULL;
 }
 
+size_t SMS_cycles_per_frame(const struct SMS_Core* sms)
+{
+    return SMS_cycles_per_frame_region(sms->region);
+}
+
+size_t SMS_cycles_per_frame_region(enum SMS_Region region)
+{
+    return CYCLES_PER_FRAME[region];
+}
+
+double SMS_target_fps(const struct SMS_Core* sms)
+{
+    return SMS_target_fps_region(sms->region);
+}
+
+double SMS_target_fps_region(enum SMS_Region region)
+{
+    return TARGET_FPS[region];
+}
+
 bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size)
 {
     sms->bios = bios;
@@ -387,11 +426,9 @@ static bool sg_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, in
     SMS_log("crc32 0x%08X\n", sms->crc);
 
     SMS_set_system_type(sms, system_hint);
-    sms->cart.mapper_type = MAPPER_TYPE_NONE;
     SMS_reset(sms);
 
-    // this assumes the game is always sega mapper
-    // which (for testing at least), it always will be
+    sms->cart.mapper_type = MAPPER_TYPE_NONE;
     mapper_init(sms);
 
     return true;
@@ -409,15 +446,18 @@ static bool loadrom2(struct SMS_Core* sms, struct RomEntry* entry, const uint8_t
     SMS_set_system_type(sms, entry->sys);
     SMS_reset(sms);
 
-    // this assumes the game is always sega mapper
-    // which (for testing at least), it always will be
     sms->cart.mapper_type = entry->map;
     mapper_init(sms);
 
     return true;
 }
 
-bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int system_hint)
+bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
+{
+    return SMS_loadromEx(sms, rom, size, -1, -1, -1);
+}
+
+bool SMS_loadromEx(struct SMS_Core* sms, const uint8_t* rom, size_t size, int system, int region, int console)
 {
     assert(sms);
     assert(rom);
@@ -425,6 +465,22 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int syst
     assert(sms && rom && size);
 
     SMS_log("[INFO] loadrom called with rom size: 0x%zX\n", size);
+
+    region = region == -1 ? SMS_Region_NTSC : region;
+    console = console == -1 ? SMS_Console_EXPORT : console;
+
+    // if the region changed, then the cpu clock changed, so we
+    // need to re-init audio to update the sample rate.
+    if ((enum SMS_Region)region != sms->region)
+    {
+        sms->region = region;
+        if (!init_auio(sms, sms->sample_freq))
+        {
+            return false;
+        }
+    }
+
+    sms->console = console;
 
     struct RomEntry entry = {0};
     const uint32_t crc = SMS_crc32(rom, size);
@@ -438,10 +494,10 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int syst
     {
         SMS_log("couldn't find rom in database, checking system hint\n");
 
-        if (system_hint == SMS_System_SG1000)
+        if (system == SMS_System_SG1000)
         {
             SMS_log("system hint is SG1000, trying to load...\n");
-            return sg_loadrom(sms, rom, size, system_hint);
+            return sg_loadrom(sms, rom, size, system);
         }
         else
         {
@@ -480,9 +536,9 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, int syst
 
     SMS_log("crc32 0x%08X\n", sms->crc);
 
-    if (system_hint != -1)
+    if (system != -1)
     {
-        SMS_set_system_type(sms, system_hint);
+        SMS_set_system_type(sms, system);
     }
     else if (header.region_code == 0x5 || header.region_code == 0x6 || header.region_code == 0x7)
     {

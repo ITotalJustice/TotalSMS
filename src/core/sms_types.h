@@ -76,16 +76,23 @@ enum
     SMS_ROM_SIZE_MAX = 1024 * 512, // 512KiB
     SMS_SRAM_SIZE_MAX = 1024 * 16 * 2, // 2 banks of 16kib
 
-    // this value was taken for sms power docs
-    SMS_CPU_CLOCK = 3579545,
-
-    // 228 * 262
-    SMS_CYCLES_PER_FRAME = 59736,
-    // SMS_CYCLES_PER_FRAME = SMS_CPU_CLOCK / 60,
-
     // default max sprites
     SMS_MODE1_MAX_SPRITES = 4,
     SMS_MODE4_MAX_SPRITES = 8,
+};
+
+enum SMS_Region
+{
+    SMS_Region_NTSC,
+    SMS_Region_PAL,
+};
+
+enum SMS_Console
+{
+    //  Europe, Australia, USA, Brazil
+    SMS_Console_EXPORT,
+    // Japan, Korea
+    SMS_Console_JAPANESE,
 };
 
 enum SMS_System
@@ -397,6 +404,8 @@ struct SMS_Core
 
     uint32_t crc;
     enum SMS_System system;
+    enum SMS_Region region;
+    enum SMS_Console console;
 
     const uint8_t* rom;
     size_t rom_size;
