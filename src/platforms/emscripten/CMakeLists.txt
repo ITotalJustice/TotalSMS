@@ -5,6 +5,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/src/platforms/common binary_dir)
 
 add_executable(TotalSMS_EXE
     main.c
+    text_popup.c
     ${COMMON_SOURCES}
 )
 

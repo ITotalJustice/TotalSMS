@@ -557,6 +557,11 @@ bool mgb_save_state_file(const char* path)
     free(state);
     mgb_log("[MGB] saved to save state file: %s\n", ss.str);
 
+    if (mgb.on_file_cb)
+    {
+        mgb.on_file_cb(mgb.user, ss.str, CallbackType_SAVE_STATE, true);
+    }
+
     return true;
 
 fail:
@@ -568,6 +573,11 @@ fail:
     if (state)
     {
         free(state);
+    }
+
+    if (mgb.on_file_cb)
+    {
+        mgb.on_file_cb(mgb.user, ss.str, CallbackType_SAVE_STATE, false);
     }
 
     mgb_log_err("[MGB] failed to save state file: %s\n", ss.str);
@@ -680,6 +690,11 @@ bool mgb_load_state_file(const char* path)
     free(state);
     free(state_compressed);
 
+    if (mgb.on_file_cb)
+    {
+        mgb.on_file_cb(mgb.user, ss.str, CallbackType_LOAD_STATE, true);
+    }
+
     return true;
 
 fail:
@@ -699,6 +714,11 @@ fail:
     }
 
     mgb_log_err("[MGB] failed to load state from: %s\n", ss.str);
+
+    if (mgb.on_file_cb)
+    {
+        mgb.on_file_cb(mgb.user, ss.str, CallbackType_LOAD_STATE, false);
+    }
 
     return false;
 }

@@ -1,3 +1,5 @@
+#include "app.h"
+
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -25,6 +27,8 @@ enum ArgsId {
     ArgsId_frame_blending,
     ArgsId_scaler,
     ArgsId_stretch,
+    ArgsId_ratio,
+    ArgsId_overscan_fill,
 
     // latency
     ArgsId_runahead,
@@ -47,6 +51,8 @@ static const struct ArgsMeta ARGS_META[] = {
     ARGS_ENTRY(frame_blending, ArgsValueType_INT, 0)
     ARGS_ENTRY(scaler, ArgsValueType_INT, 0)
     ARGS_ENTRY(stretch, ArgsValueType_INT, 0)
+    ARGS_ENTRY(ratio, ArgsValueType_INT, 0)
+    ARGS_ENTRY(overscan_fill, ArgsValueType_BOOL, 0)
 
     ARGS_ENTRY(runahead, ArgsValueType_INT, 0)
     ARGS_ENTRY(runahead_lazy, ArgsValueType_NONE, 0)
@@ -75,61 +81,6 @@ static const struct SMS_StateConfig RUNAHEAD_STATE_CONFIG = {
     .fast = true,
     .include_psg_blip = true,
 };
-
-struct Runahead {
-    uint8_t** states;
-    unsigned count;
-    unsigned frames;
-    size_t state_size;
-    bool lock_input; // if true, locks input.
-    bool lazy; // if true, uses more optimised version.
-};
-
-struct Input {
-    uint16_t button;
-};
-
-struct Gamepad {
-    SDL_JoystickID id;
-    SDL_Gamepad* pad;
-    bool button[SDL_GAMEPAD_BUTTON_COUNT];
-    bool axis[SDL_GAMEPAD_AXIS_COUNT];
-};
-
-typedef struct {
-    // sdl stuff
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    SDL_Texture* texture_current;
-    SDL_Texture* texture_previous;
-    SDL_AudioStream* audio_stream;
-    const SDL_PixelFormatDetails* pixel_format_details;
-    SDL_PixelFormat pixel_format;
-    bool keys[SDL_SCANCODE_COUNT];
-
-    // todo: support multiple controllers.
-    struct Gamepad gamepad;
-
-    // vars
-    struct SMS_Core sms;
-    void* pixel_buffer;
-    struct Runahead runahead;
-    struct Input inputs[2]; // [0] current [1 previous]
-
-    // allocated sample buffer for audio callbacks.
-    int16_t* sample_data;
-
-    // config
-    int sms_scale;
-    int gg_scale;
-    int window_w;
-    int window_h;
-    bool frame_blending;
-
-    bool paused;
-    bool focus;
-    bool quit;
-} App;
 
 struct KeyMap {
     SDL_Keycode key;
@@ -219,7 +170,7 @@ EMSCRIPTEN_KEEPALIVE void em_load_rom_data(const char* name, const uint8_t* data
     SDL_Log("[EM] loading rom! name: %s len: %d\n", name, len);
 
     if (len <= 0) {
-        SDL_Log("[EM] invalid rom size!\n");
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "[EM] invalid rom size!\n");
         return;
     }
 
@@ -288,38 +239,48 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
         case CallbackType_LOAD_ROM:
             if (result) {
                 on_set_pause(app, false);
+                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Rom");
             } else {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load rom", SDL_GetError(), app->window);
             }
             break;
 
         case CallbackType_LOAD_BIOS:
-            if (!result) {
+            if (result) {
+                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Bios");
+            } else {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load bios", SDL_GetError(), app->window);
             }
             break;
 
         case CallbackType_LOAD_SAVE:
-            if (!result) {
+            if (result) {
+                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Save");
+            } else {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load save", SDL_GetError(), app->window);
             }
             break;
 
         case CallbackType_LOAD_STATE:
-            if (!result) {
+            if (result) {
+                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded State");
+            } else {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load state", SDL_GetError(), app->window);
             }
             break;
 
         case CallbackType_SAVE_SAVE:
-            if (!result) {
+            if (result) {
+            } else {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to save save file", SDL_GetError(), app->window);
             }
             should_sync = result;
             break;
 
         case CallbackType_SAVE_STATE:
-            if (!result) {
+            if (result) {
+                text_popup_push(&app->text_popup, TextPopupType_INFO, "Saved State");
+            } else {
                 SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to save state", SDL_GetError(), app->window);
             }
             should_sync = result;
@@ -369,6 +330,8 @@ static void* mgb_on_convert_pixels_to_png_format(void* user, int* out_w, int* ou
     return dst;
 }
 
+// generates full colour range based on the bit depth.
+// ie, for SMS 2 bit depth will produce 0, 85, 170, 255.
 static void generate_palette(App* app, uint32_t* palette, uint8_t bpp) {
     const unsigned max_rgb = 1 << bpp;
     const unsigned bit_mask = (1 << bpp) - 1;
@@ -376,22 +339,21 @@ static void generate_palette(App* app, uint32_t* palette, uint8_t bpp) {
     for (unsigned r = 0; r < max_rgb; r++) {
         for (unsigned g = 0; g < max_rgb; g++){
             for (unsigned b = 0; b < max_rgb; b++) {
-                const unsigned c = (r << bpp * 0) | (g << bpp * 1) | (b << bpp * 2);
-                uint8_t rout = r * 255U / bit_mask;
-                uint8_t gout = g * 255U / bit_mask;
-                uint8_t bout = b * 255U / bit_mask;
+                const unsigned index = (r << bpp * 0) | (g << bpp * 1) | (b << bpp * 2);
 
-                palette[c] = SDL_MapRGB(app->pixel_format_details, NULL, rout ,gout ,bout);
+                const uint8_t rout = r * 255U / bit_mask;
+                const uint8_t gout = g * 255U / bit_mask;
+                const uint8_t bout = b * 255U / bit_mask;
+
+                palette[index] = SDL_MapRGB(app->pixel_format_details, NULL, rout ,gout ,bout);
             }
         }
     }
 }
 
 static void generate_sg_palette(App* app, uint32_t* palette) {
-    struct Colour { uint8_t r,g,b,a; };
-
     // https://www.smspower.org/uploads/Development/sg1000.txt
-    static const struct Colour SG_COLOUR_TABLE[] = {
+    static const SDL_Color SG_COLOUR_TABLE[] = {
         {0x00, 0x00, 0x00, 0x00}, // 0: transparent
         {0x00, 0x00, 0x00, 0xFF}, // 1: black
         {0x20, 0xC0, 0x20, 0xFF}, // 2: green
@@ -411,7 +373,7 @@ static void generate_sg_palette(App* app, uint32_t* palette) {
     };
 
     for (size_t i = 0; i < SDL_arraysize(SG_COLOUR_TABLE); i++) {
-        const struct Colour c = SG_COLOUR_TABLE[i];
+        const SDL_Color c = SG_COLOUR_TABLE[i];
         palette[i] = SDL_MapRGBA(app->pixel_format_details, NULL, c.r, c.g, c.b, c.a);
     }
 }
@@ -426,11 +388,13 @@ static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b
     }
 }
 
-static void core_vblank_callback(void* user) {
+static void core_vblank_callback(void* user, uint32_t overscan_colour) {
     App* app = user;
     if (SMS_get_skip_frame(&app->sms)) {
         return;
     }
+
+    app->overscan_colour = overscan_colour;
 
     void* pixels = NULL; int pitch = 0;
     SDL_LockTexture(app->texture_current, NULL, &pixels, &pitch);
@@ -497,11 +461,9 @@ static void sdl_poll_emu_axis2_inputs(App* app, SDL_GamepadAxis axis) {
             input_set(app, false, SMS_Button_JOY1_LEFT|SMS_Button_JOY1_RIGHT);
 
             if (value < 0) {
-                SDL_Log("setting left: %d\n", value);
                 input_set(app, down, SMS_Button_JOY1_LEFT);
             }
             else if (value > 0) {
-                SDL_Log("setting right: %d\n", value);
                 input_set(app, down, SMS_Button_JOY1_RIGHT);
             }
         }
@@ -509,11 +471,9 @@ static void sdl_poll_emu_axis2_inputs(App* app, SDL_GamepadAxis axis) {
             input_set(app, false, SMS_Button_JOY1_UP|SMS_Button_JOY1_DOWN);
 
             if (value < 0) {
-                SDL_Log("setting up: %d\n", value);
                 input_set(app, down, SMS_Button_JOY1_UP);
             }
             else if (value > 0) {
-                SDL_Log("setting down: %d\n", value);
                 input_set(app, down, SMS_Button_JOY1_DOWN);
             }
         }
@@ -568,15 +528,16 @@ static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int addi
     }
 
     // 1s worth of audio, 5th of second (83.3ms)
-    const int avail = SDL_GetAudioStreamAvailable(stream);
-    const int ones = spec.freq * SDL_AUDIO_FRAMESIZE(spec);
-    const int buf_size = ones / 5;
-    const float freq = spec.freq;
+    // https://github.com/higan-emu/emulation-articles/tree/master/audio/dynamic-rate-control
+    const double avail = SDL_GetAudioStreamAvailable(stream);
+    const double ones = spec.freq * SDL_AUDIO_FRAMESIZE(spec);
+    const double buf_size = ones / 5.0;
+    const double freq = spec.freq;
 
-    const float maxDelta = 0.005F;
-    const float fillLevel = (float)(buf_size - avail) / (float)buf_size;
-    const float dynamicFrequency = ((1.0F - maxDelta) + 2.0F * fillLevel * maxDelta) * freq;
-    const float ratio = SDL_clamp(freq / dynamicFrequency, 0.50F, 10.0F);
+    const double maxDelta = 0.005;
+    const double fillLevel = (buf_size - avail) / buf_size;
+    const double dynamicFrequency = ((1.0 - maxDelta) + 2.0 * fillLevel * maxDelta) * freq;
+    const double ratio = SDL_clamp(freq / dynamicFrequency, 0.5, 2.0);
     SDL_SetAudioStreamFrequencyRatio(stream, ratio);
 }
 
@@ -715,6 +676,13 @@ static void on_pause_toggle(App* app) {
 
 static void on_fullscreen_toggle(App* app) {
     const bool is_fullscreen = SDL_WINDOW_FULLSCREEN & SDL_GetWindowFlags(app->window);
+
+    if (is_fullscreen) {
+        SDL_ShowCursor();
+    } else {
+        SDL_HideCursor();
+    }
+
     SDL_SetWindowFullscreen(app->window, is_fullscreen ^ 1);
 }
 
@@ -737,8 +705,16 @@ static void on_frame_blending_toggle(App* app) {
 }
 
 static void on_set_pause(App* app, bool enable) {
-    app->paused = enable;
-    on_update_sound_playback_state(app);
+    if (enable != app->paused) {
+        if (enable) {
+            text_popup_push(&app->text_popup, TextPopupType_INFO, "Paused");
+        } else {
+            text_popup_push(&app->text_popup, TextPopupType_INFO, "Resumed");
+        }
+
+        app->paused = enable;
+        on_update_sound_playback_state(app);
+    }
 }
 
 static void on_update_sound_playback_state(App* app) {
@@ -928,6 +904,13 @@ static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
         "        1 - letterbox      Scales to fit largest dimension, other dimension is letterboxed with black bars.\n\n"
         "        2 - overscan       Scales to fit smallest dimension, other dimension extends outide.\n\n"
         "        3 - integer        [Default]. Scales in integer multiples.\n\n"
+        "    --ratio\n"
+        "        0 - none           Stretched to the output resolution.\n"
+        "        1 - auto           [Default] Sets the pixel ratio based on the system and region.\n\n"
+        "        2 - ntsc           Sets the pixel ratio to 8:7.\n\n"
+        "        3 - pal            Sets the pixel ratio to 2950000:2128137.\n\n"
+        "        4 - gamegear       Sets the pixel ratio to 6:5.\n\n"
+        "    --overscan_fill        Fills the screen with overscan colour rather than black boarders.\n"
 
         "Latency Options:\n"
         "    --runahead FRAMES      Runahead n frames, 0 to disable.\n"
@@ -963,6 +946,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     bool frame_blending = false;
     bool fullscreen = false;
     bool loadstate = false;
+    bool overscan_fill = true;
 
     int arg_index = 1;
     ArgsData arg_data;
@@ -1000,6 +984,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
                 break;
             case ArgsId_stretch:
                 stretch = SDL_STRETCH[arg_data.value.i];
+                break;
+            case ArgsId_ratio:
+                break;
+            case ArgsId_overscan_fill:
+                overscan_fill = arg_data.value.b;
                 break;
 
             case ArgsId_runahead:
@@ -1039,18 +1028,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         rom_file = argv[arg_index];
     }
 
-#ifdef EMSCRIPTEN
-    app->sms_scale = 1;
-    app->gg_scale = 1;
-#else
-    app->sms_scale = 4;
-    app->gg_scale = 5;
-#endif
-    app->window_w = SMS_SCREEN_WIDTH * app->sms_scale;
-    app->window_h = SMS_SCREEN_HEIGHT * app->sms_scale;
-    app->frame_blending = frame_blending;
-    app->quit = false;
-
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         return SDL_APP_FAILURE;
     }
@@ -1082,13 +1059,33 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SDL_Log("\tw: %d\n", display_mode->w);
     SDL_Log("\th: %d\n", display_mode->h);
 
+    // const double ratio = 2950000.0 / 2128137.0;
+    const double ratio = 8.0 / 7.0;
+#ifdef EMSCRIPTEN
+    app->sms_scale = 1;
+    app->gg_scale = 1;
     // set window to be the entire size of display
     app->window_w = display_mode->w;
     app->window_h = display_mode->h;
+#else
+    const int scale = SDL_min(display_mode->w / SMS_SCREEN_WIDTH * ratio, display_mode->h / SMS_SCREEN_HEIGHT);
+    app->sms_scale = scale > 1 ? scale - 1 : scale;
+    app->gg_scale = 5;
+    app->window_w = SMS_SCREEN_WIDTH * app->sms_scale * ratio;
+    app->window_h = SMS_SCREEN_HEIGHT * app->sms_scale;
+#endif
+
+    app->frame_blending = frame_blending;
+    app->overscan_fill = overscan_fill;
+    app->quit = false;
 
     // setup video and textures
     app->window = SDL_CreateWindow("TotalSMS", app->window_w, app->window_h, SDL_WINDOW_HIGH_PIXEL_DENSITY|SDL_WINDOW_RESIZABLE);
     if (!app->window) {
+        return SDL_APP_FAILURE;
+    }
+
+    if (!SDL_SetWindowMinimumSize(app->window, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT)) {
         return SDL_APP_FAILURE;
     }
 
@@ -1101,11 +1098,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_SetRenderLogicalPresentation(app->renderer, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT, stretch)) {
+    if (!SDL_SetRenderLogicalPresentation(app->renderer, SMS_SCREEN_WIDTH * ratio, SMS_SCREEN_HEIGHT, stretch)) {
         return SDL_APP_FAILURE;
     }
 
     app->pixel_format = SDL_GetWindowPixelFormat(app->window);
+    if (app->pixel_format == SDL_PIXELFORMAT_UNKNOWN) {
+        return SDL_APP_FAILURE;
+    }
+
     app->pixel_format_details = SDL_GetPixelFormatDetails(app->pixel_format);
     if (!app->pixel_format_details) {
         return SDL_APP_FAILURE;
@@ -1199,7 +1200,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 #endif // EMSCRIPTEN
 
     if (bios_file && !mgb_load_bios_file(bios_file)) {
-        SDL_Log("failed to load bios\n");
         return SDL_APP_FAILURE;
     }
 
@@ -1245,7 +1245,12 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     runahead_run_frame(app, delta / TARGET_FRAME_TIME);
 
-    if (!SDL_SetRenderDrawColor(app->renderer, 0, 0, 0, 255)) {
+    uint8_t r = 0, g = 0, b = 0, a = 255;
+    if (app->overscan_fill) {
+        SDL_GetRGBA(app->overscan_colour, app->pixel_format_details, NULL, &r, &g, &b, &a);
+    }
+
+    if (!SDL_SetRenderDrawColor(app->renderer, r, g, b, a)) {
         return SDL_APP_FAILURE;
     }
 
@@ -1254,6 +1259,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     emulator_render(app);
+    text_popup_render(&app->text_popup, app->renderer);
 
     if (!SDL_RenderPresent(app->renderer)) {
         return SDL_APP_FAILURE;
@@ -1330,6 +1336,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 
     App* app = appstate;
     if (app) {
+        text_popup_clear_all(&app->text_popup);
         runahead_exit(app);
         mgb_exit();
         SMS_quit(&app->sms);

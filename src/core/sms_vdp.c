@@ -304,6 +304,18 @@ static uint8_t vdp_get_overscan_colour(const struct SMS_Core* sms)
     return VDP.registers[0x7] & 0xF;
 }
 
+static uint32_t vdp_get_overscan_colour_converted(const struct SMS_Core* sms)
+{
+    if (vdp_is_mode4(sms))
+    {
+        return VDP.colour[16 + vdp_get_overscan_colour(sms)];
+    }
+    else
+    {
+        return sms->builtin_palette[vdp_get_overscan_colour(sms)];
+    }
+}
+
 struct VDP_region
 {
     uint16_t startx;
@@ -879,10 +891,12 @@ void SMS_get_pixel_region(const struct SMS_Core* sms, int* x, int* y, int* w, in
     }
     else
     {
+        const enum VdpHeightMode hieght_mode = vdp_get_height_mode(sms);
+
         *x = 0;
-        *y = 0;
+        *y = (SMS_SCREEN_HEIGHT - VDP_ACTIVE_DISPLAY_HEIGHT[hieght_mode]) / 2;
         *w = SMS_SCREEN_WIDTH;
-        *h = SMS_SCREEN_HEIGHT;
+        *h = VDP_ACTIVE_DISPLAY_HEIGHT[hieght_mode];
     }
 }
 
@@ -1431,7 +1445,7 @@ static void on_blanking_event(struct SMS_Core* sms)
 
         if (sms->vblank_callback)
         {
-            sms->vblank_callback(sms->userdata);
+            sms->vblank_callback(sms->userdata, vdp_get_overscan_colour_converted(sms));
         }
     }
 

@@ -61,7 +61,7 @@ struct SMS_Core;
 
 // callback types
 typedef void (*sms_apu_callback_t)(void* user, int16_t* samples, uint32_t size);
-typedef void (*sms_vblank_callback_t)(void* user);
+typedef void (*sms_vblank_callback_t)(void* user, uint32_t overscan_colour);
 typedef uint32_t (*sms_colour_callback_t)(void* user, uint8_t r, uint8_t g, uint8_t b);
 typedef void (*sms_input_callback_t)(void* user, int port);
 
@@ -89,7 +89,7 @@ enum SMS_Region
 
 enum SMS_Console
 {
-    //  Europe, Australia, USA, Brazil
+    // Europe, Australia, USA, Brazil
     SMS_Console_EXPORT,
     // Japan, Korea
     SMS_Console_JAPANESE,
