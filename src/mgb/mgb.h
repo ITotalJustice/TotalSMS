@@ -17,6 +17,8 @@ enum CallbackType
 
     CallbackType_SAVE_SAVE,
     CallbackType_SAVE_STATE,
+
+    CallbackType_PATCH_ROM,
 };
 
 #if 0
@@ -71,6 +73,10 @@ bool mgb_load_state_file(const char* path);
 bool mgb_save_save_file(const char* path);
 // bool mgb_save_rtc_file(const char* path);
 bool mgb_save_state_file(const char* path);
+
+bool mgb_patch_rom_file(const char* path);
+bool mgb_patch_rom_fd(int fd, bool own, const char* path);
+bool mgb_patch_rom_data(const char* path, const uint8_t* data, size_t size);
 
 // return true if rom is loaded
 bool mgb_has_rom(void);

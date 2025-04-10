@@ -9,6 +9,15 @@ cmake_minimum_required(VERSION 3.13.4)
 
 # FetchContent_MakeAvailable(rewind)
 
+include(FetchContent)
+
+FetchContent_Declare(patch
+    GIT_REPOSITORY https://github.com/ITotalJustice/libpatch.git
+    GIT_TAG        v1.1.0
+)
+
+FetchContent_MakeAvailable(patch)
+
 add_library(mgb
     mgb.c
     romloader.c
@@ -50,4 +59,5 @@ target_link_libraries(mgb PRIVATE
     # rewind
     minizip::minizip
     ZLIB::ZLIB
+    patch
 )

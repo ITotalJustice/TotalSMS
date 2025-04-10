@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <zlib.h>
 #include <time.h>
+#include <patch.h>
 
 enum LoadRomType
 {
@@ -95,6 +96,39 @@ static bool loadrom(const struct LoadRomConfig* config);
 // globals
 static struct mgb mgb = {0};
 // globals end
+
+static uint8_t* apply_patch(
+    const uint8_t* src_data, size_t src_size,
+    const uint8_t* patch_data, size_t patch_size,
+    size_t* out_size
+) {
+    enum PatchType type;
+    if (PatchError_OK != patch_get_type(&type, patch_data, patch_size))
+    {
+        return NULL;
+    }
+
+    if (PatchError_OK != patch_get_size(type, out_size, src_size, patch_data, patch_size))
+    {
+        return NULL;
+    }
+
+    uint8_t* out = malloc(*out_size);
+    if (!out)
+    {
+        return NULL;
+    }
+
+    if (PatchError_OK != patch_apply(type, out, *out_size, src_data, src_size, patch_data, patch_size))
+    {
+        free(out);
+        return NULL;
+    }
+
+    // patch worked, out is now pointing to allocated data.
+    // remember to call free when done!
+    return out;
+}
 
 static void free_game(void)
 {
@@ -721,6 +755,142 @@ fail:
     }
 
     return false;
+}
+
+static bool patch_rom(const struct LoadRomConfig* config)
+{
+    IFile_t* file = NULL;
+    uint8_t* patch_data = NULL;
+
+    if (!mgb_has_rom())
+    {
+        mgb_log_err("[mgb] no rom\n");
+        goto fail;
+    }
+
+    switch (config->type)
+    {
+        case LoadRomType_FILE:
+            file = icfile_open(config->path, IFileMode_READ, 0);
+            break;
+
+        case LoadRomType_MEM:
+            file = imem_open_const(config->data, config->size, IFileMode_READ, 0);
+            break;
+
+        case LoadRomType_FD:
+            file = icfile_open_fd(config->fd, config->own_fd, IFileMode_READ, 0);
+            break;
+    }
+
+    if (!file)
+    {
+        mgb_log_err("[mgb] no file\n");
+        goto fail;
+    }
+
+    const size_t patch_size = ifile_size(file);
+    patch_data = malloc(patch_size);
+
+    if (!patch_size || !patch_data)
+    {
+        mgb_log_err("[MGB] patch size is bad %zu\n", patch_size);
+        goto fail;
+    }
+
+    if (!ifile_read(file, patch_data, patch_size))
+    {
+        mgb_log_err("[MGB] fail to read size: %zu\n", patch_size);
+        goto fail;
+    }
+
+    size_t new_size;
+    uint8_t* data = apply_patch(mgb.rom_data, mgb.rom_size, patch_data, patch_size, &new_size);
+
+    if (!data || !new_size || new_size > SMS_ROM_SIZE_MAX)
+    {
+        goto fail;
+    }
+
+    // the below is a bit of a hack to work around sms mapper_init memset
+    // cart ram. so we dump the ram and then re-load it.
+    mgb_save_save_file(NULL);
+
+    if (!SMS_loadromEx(mgb.sms, data, new_size, -1, -1, -1))
+    {
+        goto fail;
+    }
+
+    memcpy(mgb.rom_data, data, new_size);
+    mgb.rom_size = new_size;
+
+    loadsave();
+
+    // free everything
+    ifile_close(file);
+    free(patch_data);
+
+    if (mgb.on_file_cb)
+    {
+        mgb.on_file_cb(mgb.user, config->path, CallbackType_PATCH_ROM, true);
+    }
+
+    return true;
+
+fail:
+    if (file)
+    {
+        ifile_close(file);
+    }
+
+    if (patch_data)
+    {
+        free(patch_data);
+    }
+
+    if (mgb.on_file_cb)
+    {
+        mgb.on_file_cb(mgb.user, config->path, CallbackType_PATCH_ROM, false);
+    }
+
+    return false;
+}
+
+bool mgb_patch_rom_file(const char* path)
+{
+    const struct LoadRomConfig config =
+    {
+        .path = path,
+        .type = LoadRomType_FILE
+    };
+
+    return patch_rom(&config);
+}
+
+bool mgb_patch_rom_fd(int fd, bool own, const char* path)
+{
+    const struct LoadRomConfig config =
+    {
+        .path = path,
+        .type = LoadRomType_FD,
+        .fd = fd,
+        .own_fd = own,
+    };
+
+    return patch_rom(&config);
+}
+
+bool mgb_patch_rom_data(const char* path, const uint8_t* data, size_t size)
+{
+    const struct LoadRomConfig config =
+    {
+        .path = path,
+        .data = data,
+        .size = size,
+        .type = LoadRomType_MEM
+    };
+
+    return patch_rom(&config);
 }
 
 bool mgb_init(struct SMS_Core* sms)

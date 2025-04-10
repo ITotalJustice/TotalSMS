@@ -20,6 +20,7 @@ enum ArgsId {
     ArgsId_rom,
     ArgsId_bios,
     ArgsId_loadstate,
+    ArgsId_patch,
 
     // video
     ArgsId_fullscreen,
@@ -45,6 +46,7 @@ static const struct ArgsMeta ARGS_META[] = {
     ARGS_ENTRY(rom, ArgsValueType_STR, 'r')
     ARGS_ENTRY(bios, ArgsValueType_STR, 'b')
     ARGS_ENTRY(loadstate, ArgsValueType_NONE, 0)
+    ARGS_ENTRY(patch, ArgsValueType_STR, 0)
 
     ARGS_ENTRY(fullscreen, ArgsValueType_NONE, 'f')
     ARGS_ENTRY(vsync, ArgsValueType_INT, 0)
@@ -241,7 +243,7 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
                 on_set_pause(app, false);
                 text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Rom");
             } else {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load rom", SDL_GetError(), app->window);
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load rom");
             }
             break;
 
@@ -249,7 +251,7 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             if (result) {
                 text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Bios");
             } else {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load bios", SDL_GetError(), app->window);
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load bios");
             }
             break;
 
@@ -257,7 +259,7 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             if (result) {
                 text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Save");
             } else {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load save", SDL_GetError(), app->window);
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load save");
             }
             break;
 
@@ -265,14 +267,14 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             if (result) {
                 text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded State");
             } else {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to load state", SDL_GetError(), app->window);
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load state");
             }
             break;
 
         case CallbackType_SAVE_SAVE:
             if (result) {
             } else {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to save save file", SDL_GetError(), app->window);
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to save save file");
             }
             should_sync = result;
             break;
@@ -281,9 +283,17 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             if (result) {
                 text_popup_push(&app->text_popup, TextPopupType_INFO, "Saved State");
             } else {
-                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Failed to save state", SDL_GetError(), app->window);
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to save state");
             }
             should_sync = result;
+            break;
+
+        case CallbackType_PATCH_ROM:
+            if (result) {
+                text_popup_push(&app->text_popup, TextPopupType_INFO, "Patched Rom");
+            } else {
+                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to patch rom");
+            }
             break;
     }
 
@@ -939,6 +949,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
     const char* rom_file = NULL;
     const char* bios_file = NULL;
+    const char* patch_file = NULL;
     SDL_ScaleMode scaler = SDL_SCALEMODE_NEAREST;
     SDL_RendererLogicalPresentation stretch = SDL_LOGICAL_PRESENTATION_INTEGER_SCALE;
     int vsync = 1;
@@ -968,6 +979,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
                 break;
             case ArgsId_loadstate:
                 loadstate = true;
+                break;
+            case ArgsId_patch:
+                patch_file = arg_data.value.s;
                 break;
 
             case ArgsId_fullscreen:
@@ -1208,6 +1222,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     }
 
     if (loadstate && !mgb_load_state_file(NULL)) {
+        return SDL_APP_FAILURE;
+    }
+
+    if (patch_file && !mgb_patch_rom_file(patch_file)) {
         return SDL_APP_FAILURE;
     }
 
