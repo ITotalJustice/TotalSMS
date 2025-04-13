@@ -44,7 +44,6 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
                 "SDL3": true,
                 "SMS_SINGLE_FILE": true
             }
@@ -219,7 +218,7 @@
             "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "MinSizeRel",
-                "LTO": false,
+                "LTO": true,
                 "SMS_SINGLE_FILE": true
             }
         },
@@ -249,6 +248,18 @@
         {
             "name": "sdl2-dev",
             "configurePreset": "sdl2-dev"
+        },
+        {
+            "name": "sdl3",
+            "configurePreset": "sdl3"
+        },
+        {
+            "name": "sdl3-debug",
+            "configurePreset": "sdl3-debug"
+        },
+        {
+            "name": "sdl3-dev",
+            "configurePreset": "sdl3-dev"
         },
         {
             "name": "blipbuf",

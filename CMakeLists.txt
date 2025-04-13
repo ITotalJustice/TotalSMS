@@ -89,74 +89,8 @@ if (SMS_DEV)
     set(SMS_DEBUG ON)
 endif()
 
-if (SDL)
-    set(PLATFORM_SDL ON)
-endif()
-
-if (SDL2)
-    set(PLATFORM_SDL2 ON)
-endif()
-
 if (SDL3)
     set(PLATFORM_SDL3 ON)
-endif()
-
-if (NINTENDO_SWITCH)
-    enable_language(CXX) # needed for linking sdl2
-    set(PLATFORM_SDL2 ON)
-    set(PLATFORM_SWITCH ON)
-endif()
-
-if (NINTENDO_GAMECUBE)
-    set(PLATFORM_SDL ON)
-    set(PLATFORM_GAMECUBE ON)
-endif()
-
-if (NINTENDO_DS)
-    set(PLATFORM_NDS ON)
-endif()
-
-if (NINTENDO_3DS)
-    set(PLATFORM_SDL ON)
-    set(PLATFORM_3DS ON)
-endif()
-
-if (NINTENDO_WIIU)
-    set(PLATFORM_SDL2 ON)
-    set(PLATFORM_WIIU ON)
-endif()
-
-if (VITA)
-    set(PLATFORM_SDL2 ON)
-    set(PLATFORM_VITA ON)
-    set(SMS_PIXEL_WIDTH 16)
-endif()
-
-if (PSP)
-    set(PLATFORM_SDL2 ON)
-    set(PLATFORM_PSP ON)
-    set(SMS_PIXEL_WIDTH 16)
-endif()
-
-if (PS2)
-    set(PLATFORM_SDL ON)
-    set(PLATFORM_PS2 ON)
-    set(SMS_PIXEL_WIDTH 16)
-endif()
-
-if (DREAMCAST)
-    set(PLATFORM_SDL ON)
-    set(PLATFORM_DREAMCAST ON)
-    set(SMS_PIXEL_WIDTH 16)
-endif()
-
-if (${CMAKE_SYSTEM_NAME} STREQUAL "PlayStation")
-    set(PLATFORM_PSX ON)
-endif()
-
-if (N64)
-    set(PLATFORM_N64 ON)
-    set(SMS_PIXEL_WIDTH 16)
 endif()
 
 if (LIBRETRO)

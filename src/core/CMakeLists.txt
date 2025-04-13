@@ -44,7 +44,6 @@ target_include_directories(TotalSMS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(TotalSMS PROPERTIES C_STANDARD 99)
 
 target_add_common_cflags(TotalSMS PRIVATE)
-target_apply_lto_in_release(TotalSMS)
 
 # enable sanitizer_flags
 if (SMS_DEV)

@@ -52,7 +52,6 @@ add_static_lib(minizip minizip)
 find_shared_lib(ZLIB zlib)
 
 target_add_common_cflags(mgb PRIVATE)
-target_apply_lto_in_release(mgb)
 
 target_link_libraries(mgb PRIVATE
     TotalSMS

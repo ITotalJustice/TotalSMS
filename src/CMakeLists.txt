@@ -93,25 +93,6 @@ list(APPEND msvc_flags
 
 include(CheckCCompilerFlag)
 include(CheckLinkerFlag)
-include(CheckIPOSupported)
-
-function(target_apply_lto target)
-    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
-    if (ipo_supported)
-        message(STATUS "IPO / LTO enabled for target: ${target}")
-        set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    else()
-        message(STATUS "IPO / LTO not supported")
-    endif()
-endfunction()
-
-function(target_apply_lto_in_release target)
-    if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
-        target_apply_lto(${target})
-    else()
-        message(STATUS "IPO / LTO not enabled in debug build")
-    endif()
-endfunction()
 
 function(target_add_compiler_flag target flag scope)
     # check_c_compiler_flag() adds a macro to the test.c file such that

@@ -54,4 +54,3 @@ target_include_directories(TotalSMS_EXE PRIVATE
 )
 
 target_add_common_cflags(TotalSMS_EXE PRIVATE)
-target_apply_lto_in_release(TotalSMS_EXE)
