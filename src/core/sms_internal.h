@@ -41,10 +41,6 @@ extern "C" {
     #define SMS_ENABLE_FORCE_INLINE 1
 #endif
 
-#ifndef SMS_DISBALE_AUDIO
-    #define SMS_DISBALE_AUDIO 0
-#endif
-
 #if SMS_ENABLE_FORCE_INLINE
     #if defined(_MSC_VER)
         #define FORCE_INLINE inline __forceinline

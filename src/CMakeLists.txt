@@ -158,45 +158,13 @@ if (PLATFORM_LIBRETRO)
     add_subdirectory(platforms/libretro)
 endif()
 
-if (PLATFORM_SDL2 OR ANDROID)
-    add_subdirectory(platforms/sdl2)
-    set(USE_MGB ON)
-endif()
-
-if (PLATFORM_GAMECUBE)
-    add_subdirectory(platforms/gamecube)
-    set(USE_MGB ON)
-endif()
-
-if (PLATFORM_NDS)
-    add_subdirectory(platforms/nds)
-endif()
-
-if (PLATFORM_SDL)
-    add_subdirectory(platforms/sdl)
-    set(USE_MGB ON)
-endif()
-
 if (PLATFORM_SDL3)
-    add_subdirectory(platforms/emscripten)
+    add_subdirectory(platforms/sdl3)
     set(USE_MGB ON)
-endif()
-
-if (PLATFORM_PSX)
-    add_subdirectory(platforms/psx)
-endif()
-
-if (PLATFORM_N64)
-    add_subdirectory(platforms/n64)
 endif()
 
 if (PLATFORM_EMSCRIPTEN)
-    add_subdirectory(platforms/emscripten)
-    set(USE_MGB ON)
-endif()
-
-if (BLIPBUF)
-    add_subdirectory(platforms/blip)
+    add_subdirectory(platforms/sdl3)
     set(USE_MGB ON)
 endif()
 
@@ -205,4 +173,3 @@ if (USE_MGB)
 endif()
 
 add_subdirectory(core)
-add_subdirectory(tests)

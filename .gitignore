@@ -54,15 +54,12 @@ dkms.conf
 # my ignores
 build*/
 web/
-TotalSMS
 roms/
 *.zip
 *.raw
 ignoreme/
 compile_commands.json
 .cache
-libnx
-n64-emu
 rom*.h
 !sms_rom_database.h
 !romloader.h
@@ -73,6 +70,3 @@ old/
 imgui.ini
 .vscode
 CMakeUserPresets.json
-
-sdl3
-src/platforms/blip

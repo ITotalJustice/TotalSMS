@@ -7,38 +7,6 @@
     },
     "configurePresets": [
         {
-            "name": "sdl",
-            "displayName": "sdl",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SDL": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "sdl2",
-            "displayName": "sdl2",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SDL2": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "sdl2-dev",
-            "displayName": "sdl2-dev",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "SDL2": true,
-                "SMS_DEV": true
-            }
-        },
-        {
             "name": "sdl3",
             "displayName": "sdl3",
             "binaryDir": "${sourceDir}/build/${presetName}",
@@ -69,149 +37,6 @@
             }
         },
         {
-            "name": "blipbuf",
-            "displayName": "blipbuf",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "BLIPBUF": true,
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "blipbuf-dev",
-            "displayName": "blipbuf-dev",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "BLIPBUF": true,
-                "SMS_DEV": true
-            }
-        },
-        {
-            "name": "dreamcast",
-            "displayName": "dreamcast build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "${sourceDir}/cmake/toolchain/dreamcast.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "n64",
-            "displayName": "n64 build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "${sourceDir}/cmake/toolchain/n64.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "n64-noaudio",
-            "displayName": "n64-noaudio",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "${sourceDir}/cmake/toolchain/n64.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true,
-                "SMS_DISBALE_AUDIO": true
-            }
-        },
-        {
-            "name": "psx",
-            "displayName": "psx build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "/opt/psn00bsdk/lib/libpsn00b/cmake/sdk.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "ps2",
-            "displayName": "ps2 build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "${sourceDir}/cmake/toolchain/ps2.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "gamecube",
-            "displayName": "gamecube build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "$env{DEVKITPRO}/cmake/GameCube.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "nds",
-            "displayName": "nds build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "$env{DEVKITPRO}/cmake/NDS.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "3ds",
-            "displayName": "3ds build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "$env{DEVKITPRO}/cmake/3DS.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "wii",
-            "displayName": "wii build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "$env{DEVKITPRO}/cmake/Wii.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "wiiu",
-            "displayName": "wiiu build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "$env{DEVKITPRO}/cmake/WiiU.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
-            "name": "switch",
-            "displayName": "switch build",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "LTO": true,
-                "SMS_SINGLE_FILE": true
-            }
-        },
-        {
             "name": "emsdk",
             "displayName": "emsdk",
             "binaryDir": "${sourceDir}/build/${presetName}",
@@ -238,18 +63,6 @@
     ],
     "buildPresets": [
         {
-            "name": "sdl",
-            "configurePreset": "sdl"
-        },
-        {
-            "name": "sdl2",
-            "configurePreset": "sdl2"
-        },
-        {
-            "name": "sdl2-dev",
-            "configurePreset": "sdl2-dev"
-        },
-        {
             "name": "sdl3",
             "configurePreset": "sdl3"
         },
@@ -260,58 +73,6 @@
         {
             "name": "sdl3-dev",
             "configurePreset": "sdl3-dev"
-        },
-        {
-            "name": "blipbuf",
-            "configurePreset": "blipbuf"
-        },
-        {
-            "name": "blipbuf-dev",
-            "configurePreset": "blipbuf-dev"
-        },
-        {
-            "name": "dreamcast",
-            "configurePreset": "dreamcast"
-        },
-        {
-            "name": "n64",
-            "configurePreset": "n64"
-        },
-        {
-            "name": "n64-noaudio",
-            "configurePreset": "n64-noaudio"
-        },
-        {
-            "name": "psx",
-            "configurePreset": "psx"
-        },
-        {
-            "name": "ps2",
-            "configurePreset": "ps2"
-        },
-        {
-            "name": "gamecube",
-            "configurePreset": "gamecube"
-        },
-        {
-            "name": "nds",
-            "configurePreset": "nds"
-        },
-        {
-            "name": "3ds",
-            "configurePreset": "3ds"
-        },
-        {
-            "name": "wii",
-            "configurePreset": "wii"
-        },
-        {
-            "name": "wiiu",
-            "configurePreset": "wiiu"
-        },
-        {
-            "name": "switch",
-            "configurePreset": "switch"
         },
         {
             "name": "emsdk",

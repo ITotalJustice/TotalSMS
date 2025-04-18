@@ -102,8 +102,6 @@ set(CPACK_SOURCE_IGNORE_FILES
     ignoreme/
     compile_commands.json
     .cache
-    libnx
-    n64-emu
     rom*.h
     out.h
     perf.*
@@ -112,9 +110,6 @@ set(CPACK_SOURCE_IGNORE_FILES
     imgui.ini
     .vscode
     CMakeUserPresets.json
-
-    sdl3
-    src/platforms/blip
 )
 
 include(CPack)
