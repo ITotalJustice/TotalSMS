@@ -1,5 +1,10 @@
 name: Build Web & Deploy to GH
 on: [push]
+
+env:
+  EM_VERSION: '4.0.7'
+  EM_CACHE_FOLDER: 'emsdk-cache'
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -7,11 +12,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Setup cache
+        id: cache-system-libraries
+        uses: actions/cache@v4
+        with:
+          path: ${{env.EM_CACHE_FOLDER}}
+          key: ${{env.EM_VERSION}}-${{ runner.os }}
+
       - name: Setup emsdk
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: '4.0.7'
-          actions-cache-folder: 'emsdk-cache'
+          version: ${{env.EM_VERSION}}
+          actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
 
       - name: Install and Build # This example project is built using npm and outputs the result to the 'build' folder. Replace with the commands required to build your project, or remove this step entirely if your site is pre-built.
         run: |

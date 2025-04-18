@@ -573,7 +573,6 @@ static IFile_t* open_read_mem(union Data data, size_t size, enum IFileMode mode,
     unzFile file = NULL;
     MzMem* mzmem = NULL;
     zlib_filefunc_def filefunc32 = zlib_filefunc;
-    filefunc32.opaque =
 
     ifile = (IFile_t*)malloc(sizeof(IFile_t));
     if (!ifile) {
@@ -594,6 +593,7 @@ static IFile_t* open_read_mem(union Data data, size_t size, enum IFileMode mode,
     mzmem->size = size;
     mzmem->offset = 0;
     mzmem->read_only = mode == IFileMode_READ;
+    filefunc32.opaque = mzmem;
 
     file = unzOpen2("__notused__", &filefunc32);
     if (!file) {
