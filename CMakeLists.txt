@@ -3,6 +3,12 @@ cmake_minimum_required(VERSION 3.18)
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
+# enable setting cmake options via set()
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+
+# export compile commands
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 option(DREAMCAST "build dreamcast" OFF)
 option(GAMECUBE "build gamecube" OFF)
 option(N64 "build n64" OFF)

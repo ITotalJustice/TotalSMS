@@ -23,6 +23,7 @@ if (EMSCRIPTEN)
         "-s;EXPORTED_FUNCTIONS=[_main,_malloc,_free]"
         "-lidbfs.js"
         "-sWASM=1"
+        "-sUSE_SDL=3"
         "-sALLOW_MEMORY_GROWTH=1"
     )
 
@@ -40,7 +41,7 @@ FetchContent_Declare(SDL
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
     GIT_TAG        release-3.2.10
     GIT_PROGRESS   TRUE
-    FIND_PACKAGE_ARGS 3.2.0 NAMES SDL3
+    FIND_PACKAGE_ARGS NAMES SDL3
 )
 
 set(LZ4_BUILD_CLI OFF)
@@ -71,7 +72,7 @@ target_add_common_cflags(TotalSMS PRIVATE)
 # CPack
 # cpack --config CPackConfig.cmake
 # cpack --config CPackSourceConfig.cmake
-# cpack -G RPMc
+# cpack -G RPM
 install(TARGETS TotalSMS RUNTIME DESTINATION bin)
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
