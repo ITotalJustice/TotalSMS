@@ -150,18 +150,6 @@ macro(add_static_lib package subdir)
     add_subdirectory(${CMAKE_SOURCE_DIR}/src/third-party/${subdir} ${CMAKE_BINARY_DIR}/src/third-party/${subdir})
 endmacro()
 
-# helper macro that works exactly like find_package()
-# except that it'll fallback to the static lib if the shared
-# lib is not found!
-macro(find_shared_lib package subdir)
-    find_package(${package} QUIET)
-    if (${package}_FOUND)
-        message(STATUS "using shared ${package}")
-    elseif (NOT ${package}_CHECKED)
-        add_static_lib(${package} ${subdir})
-    endif()
-endmacro()
-
 set(USE_MGB OFF)
 
 # this works for now, but will need to be more fancy

@@ -2,6 +2,9 @@
 #include "../../mgb.h"
 #include "../../util.h"
 #include <stdio.h>
+#include <string.h>
+#include <minizip/zip.h>
+#include <minizip/unzip.h>
 
 enum LoadFileType
 {
@@ -16,19 +19,116 @@ typedef struct
     enum LoadFileType type;
 } config_t;
 
-#if 0
-IFile_t* izip_open(const char* path, enum IFileMode mode, int flags)
+union Data
 {
-    return NULL;
-}
-IFile_t* izip_open_mem(void* data, size_t size, enum IFileMode mode, int flags)
+    void* w;
+    const void* r;
+};
+
+typedef struct MzMem
 {
-    return NULL;
+    union Data buf;
+    size_t size;
+    size_t offset;
+    bool read_only;
+} MzMem;
+
+static long minizip_tell_file_func(void* opaque, void* stream)
+{
+    struct MzMem* mem = opaque;
+    return mem->offset;
 }
-#else
-#include <zip.h>
-#include <unzip.h>
-#include <ioapi_mem.h>
+
+static long minizip_seek_file_func(void* opaque, void* stream, unsigned long offset, int origin)
+{
+    struct MzMem* mem = opaque;
+    size_t new_offset = 0;
+
+    switch (origin)
+    {
+        case ZLIB_FILEFUNC_SEEK_SET: new_offset = offset; break;
+        case ZLIB_FILEFUNC_SEEK_CUR: new_offset = mem->offset + offset; break;
+        case ZLIB_FILEFUNC_SEEK_END: new_offset = (mem->size - 1) + offset; break;
+        default: return -1;
+    }
+
+    if (new_offset > mem->size)
+    {
+        return -1;
+    }
+
+    mem->offset = new_offset;
+
+    return 0;
+}
+
+static void* minizip_open_file_func(void* opaque, const char* filename, int mode)
+{
+    return opaque;
+}
+
+static unsigned long minizip_read_file_func(void* opaque, void* stream, void* buf, unsigned long size)
+{
+    struct MzMem* mem = opaque;
+
+    if (mem->size <= mem->offset + size)
+    {
+        size = mem->size - mem->offset;
+    }
+
+    memcpy(buf, (const uint8_t*)mem->buf.r + mem->offset, size);
+    mem->offset += size;
+
+    return size;
+}
+
+static unsigned long minizip_write_file_func(void* opaque, void* stream, const void* buf, unsigned long size)
+{
+    struct MzMem* mem = opaque;
+
+    if (mem->read_only)
+    {
+        return 0;
+    }
+
+    if (mem->size <= mem->offset + size)
+    {
+        mem->buf.w = realloc(mem->buf.w, mem->offset + size);
+        if (mem->buf.w == NULL)
+        {
+            return 0;
+        }
+
+        mem->size = mem->offset + size;
+    }
+
+    memcpy((uint8_t*)mem->buf.w + mem->offset, buf, size);
+    mem->offset += size;
+
+    return size;
+}
+
+static int minizip_close_file_func(void* opaque, void* stream)
+{
+    return 0;
+}
+
+static int minizip_testerror_file_func(void* opaque, void* stream)
+{
+    return 0;
+}
+
+static const zlib_filefunc_def zlib_filefunc = {
+    .zopen_file = minizip_open_file_func,
+    .zread_file = minizip_read_file_func,
+    .zwrite_file = minizip_write_file_func,
+    .ztell_file = minizip_tell_file_func,
+    .zseek_file = minizip_seek_file_func,
+    .zclose_file = minizip_close_file_func,
+    .zerror_file = minizip_testerror_file_func,
+    .opaque = NULL,
+};
+
 #ifdef WIN32
 #include <io.h>
 #else
@@ -135,7 +235,7 @@ typedef struct {
         unzFile u;
         zipFile z;
     } file;
-    ourmemory_t* ourmem;
+    MzMem* mzmem;
     enum IFileMode mode;
 } ctx_t;
 
@@ -189,15 +289,9 @@ static void iclose(void* _private) {
                 break;
         }
 
-        if (ctx->ourmem) {
-            // do NOT free this, unless we own the data
-            // that we passed.
-            if (ctx->ourmem->grow) {
-                free(ctx->ourmem->data.w);
-                ctx->ourmem->data.w = NULL;
-            }
-            free(ctx->ourmem);
-            ctx->ourmem = NULL;
+        if (ctx->mzmem) {
+            free(ctx->mzmem);
+            ctx->mzmem = NULL;
         }
 
         free(ctx);
@@ -237,7 +331,7 @@ static bool iseek(void* _private, long offset, int whence) {
         return false;
     }
 
-    return UNZ_OK == unzSeek(ctx->file.u, (uint32_t)offset, whence);
+    return UNZ_OK == unzSetOffset(ctx->file.u, (uint32_t)offset);
 }
 
 static size_t itell(void* _private) {
@@ -248,7 +342,7 @@ static size_t itell(void* _private) {
     }
 
     // returns uncompressed offset
-    const int32_t r = unzTell(ctx->file.u);
+    const off_t r = unztell(ctx->file.u);
     return r < 0 ? 0 : r;
 }
 
@@ -316,7 +410,7 @@ static IFile_t* internal_open_read(const config_t* config, int flags) {
 
     const ctx_t _ctx = {
         .file.u = file,
-        .ourmem = NULL, // unused!
+        .mzmem = NULL, // unused!
         .mode = IFileMode_READ
     };
 
@@ -399,7 +493,7 @@ static IFile_t* open_write(const char* path, int flags) {
 
     const ctx_t _ctx = {
         .file.z = file,
-        .ourmem = NULL, // unused!
+        .mzmem = NULL, // unused!
         .mode = IFileMode_WRITE
     };
 
@@ -473,18 +567,13 @@ IFile_t* izip_open_fd(int fd, bool own, enum IFileMode mode, int flags) {
     return NULL;
 }
 
-union Data
-{
-    void* w;
-    const void* r;
-};
-
 static IFile_t* open_read_mem(union Data data, size_t size, enum IFileMode mode, int flags) {
     IFile_t* ifile = NULL;
     ctx_t* ctx = NULL;
     unzFile file = NULL;
-    ourmemory_t* ourmemory = NULL;
-    zlib_filefunc_def filefunc32 = {0};
+    MzMem* mzmem = NULL;
+    zlib_filefunc_def filefunc32 = zlib_filefunc;
+    filefunc32.opaque =
 
     ifile = (IFile_t*)malloc(sizeof(IFile_t));
     if (!ifile) {
@@ -496,24 +585,15 @@ static IFile_t* open_read_mem(union Data data, size_t size, enum IFileMode mode,
         goto fail;
     }
 
-    ourmemory = (ourmemory_t*)malloc(sizeof(ourmemory_t));
-    if (!ourmemory) {
+    mzmem = (MzMem*)malloc(sizeof(*mzmem));
+    if (!mzmem) {
         goto fail;
     }
 
-    switch (mode) {
-        case IFileMode_READ:
-            ourmemory->size = size;
-            ourmemory->data.r = (const char*)data.r;
-            fill_memory_filefunc_const(&filefunc32, ourmemory);
-            break;
-
-        case IFileMode_WRITE:
-            ourmemory->size = size;
-            ourmemory->data.w = (char*)data.w;
-            fill_memory_filefunc(&filefunc32, ourmemory);
-            break;
-    }
+    mzmem->buf = data;
+    mzmem->size = size;
+    mzmem->offset = 0;
+    mzmem->read_only = mode == IFileMode_READ;
 
     file = unzOpen2("__notused__", &filefunc32);
     if (!file) {
@@ -522,7 +602,7 @@ static IFile_t* open_read_mem(union Data data, size_t size, enum IFileMode mode,
 
     const ctx_t _ctx = {
         .file.u = file,
-        .ourmem = ourmemory,
+        .mzmem = mzmem,
         .mode = IFileMode_READ
     };
 
@@ -550,22 +630,18 @@ static IFile_t* open_read_mem(union Data data, size_t size, enum IFileMode mode,
 fail:
     if (ifile) {
         free(ifile);
-        ifile = NULL;
     }
 
     if (ctx) {
         free(ctx);
-        ctx = NULL;
     }
 
-    if (ourmemory) {
-        free(ourmemory);
-        ourmemory = NULL;
+    if (mzmem) {
+        free(mzmem);
     }
 
     if (file) {
         unzClose(file);
-        file = NULL;
     }
 
     return NULL;
@@ -600,4 +676,3 @@ IFile_t* izip_open_mem_const(const void* data, size_t size, enum IFileMode mode,
 
     return NULL;
 }
-#endif
