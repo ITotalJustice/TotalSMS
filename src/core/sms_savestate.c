@@ -79,7 +79,8 @@ struct StateCart
     uint8_t ram[2][1024 * 16];
     uint8_t mapper[32];
     uint32_t sram_used;
-    uint32_t _padding[16];
+    uint8_t gg_regs[8];
+    uint32_t _padding[14];
 };
 
 struct StateSegaMapper
@@ -142,7 +143,8 @@ struct Rts
 
 enum { STATE_MAGIC = 0x5E6A0535 };
 enum { STATE_VERSION_MAJOR = 2 };
-enum { STATE_VERSION_MINOR = 2 };
+enum { STATE_VERSION_MINOR = 3 };
+enum { STATE_VERSION = (STATE_VERSION_MAJOR << 16) | STATE_VERSION_MINOR };
 
 sms_static_assert(sizeof(struct Rts) == 58764, "state size is broken");
 
@@ -150,6 +152,17 @@ static const struct SMS_StateConfig DEFAULT_CONFIG = {
     .fast = false,
     .include_psg_blip = false,
 };
+
+static size_t state_create_version(uint32_t major, uint32_t minor)
+{
+    return (major << 16) | minor;
+}
+
+static bool state_version_atleast(const struct Rts* rts, uint32_t major, uint32_t minor)
+{
+    const size_t rts_version = state_create_version(rts->meta.state_version_major, rts->meta.state_version_minor);
+    return rts_version >= state_create_version(major, minor);
+}
 
 static const struct SMS_StateConfig* state_get_config(const struct SMS_StateConfig* config)
 {
@@ -272,6 +285,7 @@ bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, const st
     {
         memcpy(rts->cart.ram, sms->cart.ram, sizeof(rts->cart.ram));
         rts->cart.sram_used = sms->cart.sram_used;
+        memcpy(rts->cart.gg_regs, sms->port.gg_regs, sizeof(sms->port.gg_regs));
 
         switch (sms->cart.mapper_type)
         {
@@ -452,6 +466,10 @@ bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size, const st
     {
         memcpy(sms->cart.ram, rts->cart.ram, sizeof(rts->cart.ram));
         sms->cart.sram_used = rts->cart.sram_used;
+
+        if (state_version_atleast(rts, 2, 3)) {
+            memcpy(sms->port.gg_regs, rts->cart.gg_regs, sizeof(sms->port.gg_regs));
+        }
 
         switch (sms->cart.mapper_type)
         {
