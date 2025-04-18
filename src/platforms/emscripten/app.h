@@ -1,6 +1,6 @@
 #pragma once
 
-#include "text_popup.h"
+#include "rewind.h"
 
 #include <sms.h>
 #include <SDL3/SDL.h>
@@ -35,6 +35,12 @@ struct Gamepad {
     bool axis[SDL_GAMEPAD_AXIS_COUNT];
 };
 
+// data shared between the audio thread should be copied here
+// changes should be made whilst SDL_LockAudioStream is in affect.
+struct AudioSharedData {
+    int speed_index;
+};
+
 typedef struct {
     // sdl stuff
     SDL_Window* window;
@@ -48,14 +54,33 @@ typedef struct {
 
     // todo: support multiple controllers.
     struct Gamepad gamepad;
+    struct AudioSharedData audio_shared_data;
 
     // vars
     struct SMS_Core sms;
-    void* pixel_buffer;
+    void* pixel_buffer[2];
+    size_t pixel_buffer_size;
+    bool pixel_buffer_index;
+    bool pending_frame;
+
     struct Runahead runahead;
     struct Input inputs[2]; // [0] current [1 previous]
     uint32_t overscan_colour;
-    struct TextPopup text_popup;
+
+    Rewind* rewind;
+    void* rewind_buffer;
+    size_t rewind_buffer_size;
+    // counts down every vblank.
+    size_t rewind_counter;
+    // set to true when counter hits 0.
+    bool rewind_should_push;
+
+    // these point to the above buffer, do not free!
+    void* rewind_pixel_buffer;
+    size_t rewind_pixel_buffer_size;
+    void* rewind_state_buffer;
+    size_t rewind_state_buffer_size;
+    struct SMS_StateConfig rewind_state_config;
 
     // allocated sample buffer for audio callbacks.
     int16_t* sample_data;
@@ -71,7 +96,16 @@ typedef struct {
     // uses overscan colour to fill the screen.
     bool overscan_fill;
 
+    // how often to save a new frame.
+    int rewind_keyframe_interval;
+    // how many seconds of frames to store.
+    int rewind_num_seconds;
+
+    int speed_index;
     bool paused;
     bool focus;
     bool quit;
 } App;
+
+bool rewind_push_new_frame(App* app);
+void emulator_update_texture_pixels(App* app, const void* pixel_buffer);

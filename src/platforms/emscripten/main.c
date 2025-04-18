@@ -1,10 +1,13 @@
 #include "app.h"
+#include "text_popup.h"
+#include "rewind_bar.h"
 
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <sms.h>
 #include <mgb.h>
+#include <lz4.h>
 #include "args/args.h"
 
 #ifdef EMSCRIPTEN
@@ -89,6 +92,11 @@ struct KeyMap {
     enum SMS_Button button;
 };
 
+struct RewindKeyMap {
+    SDL_Keycode key;
+    enum RewindBarButton button;
+};
+
 struct HotKeyMap {
     SDL_Keymod mod;
     SDL_Keycode key;
@@ -100,15 +108,29 @@ struct GamepadButtonMap {
     enum SMS_Button button;
 };
 
+struct RewindGamepadButtonMap {
+    SDL_GamepadButton key;
+    enum RewindBarButton button;
+};
+
 static void on_file_picker(App* app);
 static void on_savestate(App* app);
 static void on_loadstate(App* app);
 static void on_pause_toggle(App* app);
+static void on_rewind_toggle(App* app);
 static void on_fullscreen_toggle(App* app);
 static void on_screen_stretch_toggle(App* app);
 static void on_frame_blending_toggle(App* app);
+static void on_speed_increase(App* app);
+static void on_speed_decrease(App* app);
+static void on_speed_reset(App* app);
+
 static void on_set_pause(App* app, bool enable);
+static void on_set_rewind(App* app, bool enable);
+static void on_set_speed(App* app, int speed);
+
 static void on_update_sound_playback_state(App* app);
+static void on_speed_change(App* app);
 static bool should_emu_run(const App* app);
 
 static void runahead_init(App* app, unsigned frames);
@@ -132,14 +154,25 @@ static const struct KeyMap KEY_MAP[] = {
     { SDLK_KP_ENTER, SMS_Button_PAUSE },
 };
 
+static const struct RewindKeyMap REWIND_KEY_MAP[] = {
+    { SDLK_LEFT, RewindBarButton_Left },
+    { SDLK_RIGHT, RewindBarButton_Right },
+    { SDLK_Z, RewindBarButton_Back },
+    { SDLK_X, RewindBarButton_OK },
+};
+
 static const struct HotKeyMap HOT_KEY_MAP[] = {
     { SDL_KMOD_CTRL, SDLK_O, on_file_picker }, // open file.
     { SDL_KMOD_CTRL, SDLK_S, on_savestate }, // save state.
     { SDL_KMOD_CTRL, SDLK_L, on_loadstate }, // load state.
     { SDL_KMOD_CTRL, SDLK_P, on_pause_toggle }, // pause.
+    { SDL_KMOD_CTRL, SDLK_R, on_rewind_toggle }, // rewind.
     { SDL_KMOD_CTRL, SDLK_F, on_fullscreen_toggle }, // fullscreen.
     { SDL_KMOD_SHIFT, SDLK_F, on_screen_stretch_toggle }, // fill the entire screen.
     { SDL_KMOD_SHIFT, SDLK_B, on_frame_blending_toggle }, // blend previous frame.
+    { SDL_KMOD_SHIFT, SDLK_EQUALS, on_speed_increase }, // increase speed by 1.
+    { SDL_KMOD_SHIFT, SDLK_MINUS, on_speed_decrease }, // decrease speed by 1.
+    { SDL_KMOD_SHIFT, SDLK_SPACE, on_speed_reset }, // reset speed back to 1.
 };
 
 static const struct GamepadButtonMap GAMEPAD_BUTTON_MAP[] = {
@@ -150,6 +183,21 @@ static const struct GamepadButtonMap GAMEPAD_BUTTON_MAP[] = {
     { SDL_GAMEPAD_BUTTON_SOUTH, SMS_Button_JOY1_B },
     { SDL_GAMEPAD_BUTTON_EAST, SMS_Button_JOY1_A },
     { SDL_GAMEPAD_BUTTON_START, SMS_Button_PAUSE },
+};
+
+static const struct RewindGamepadButtonMap REWIND_GAMEPAD_BUTTON_MAP[] = {
+    { SDL_GAMEPAD_BUTTON_DPAD_LEFT, RewindBarButton_Left },
+    { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, RewindBarButton_Right },
+    { SDL_GAMEPAD_BUTTON_SOUTH, RewindBarButton_Back },
+    { SDL_GAMEPAD_BUTTON_EAST, RewindBarButton_OK },
+};
+
+enum { SPEED_DEFAULT_INDEX = 3 };
+
+static const float SPEED_TABLE[] = {
+    0.25, 0.50, 0.75,
+    1.00, // default.
+    1.25, 1.50, 2.00, 3.00, 4.00,
 };
 
 enum {
@@ -212,6 +260,10 @@ static void flushsave(void) {
 #endif
 
 static void input_set(App* app, bool down, uint16_t value) {
+    if (!should_emu_run(app)) {
+        return;
+    }
+
     if (down) {
         app->inputs[0].button |= value;
     } else {
@@ -233,6 +285,86 @@ static void input_apply(App* app) {
     app->inputs[1] = app->inputs[0];
 }
 
+static size_t compressor_size_lz4(size_t src_size) {
+    return LZ4_compressBound(src_size);
+}
+
+static size_t compressor_lz4(const void* src_data, void* dst_data, size_t src_size, size_t dst_size, bool inflate_mode) {
+    int result;
+
+    if (inflate_mode) {
+        result = LZ4_decompress_safe(src_data, dst_data, src_size, dst_size);
+    } else {
+        result = LZ4_compress_default(src_data, dst_data, src_size, dst_size);
+    }
+
+    if (result <= 0) {
+        return 0;
+    }
+
+    return result;
+}
+
+bool rewind_push_new_frame(App* app) {
+    SDL_memcpy(app->rewind_pixel_buffer, app->pixel_buffer[app->pixel_buffer_index], app->pixel_buffer_size);
+
+    if (!SMS_savestate(&app->sms, app->rewind_state_buffer, app->rewind_state_buffer_size, &app->rewind_state_config)) {
+        return false;
+    }
+
+    if (!rewind_push(app->rewind, app->rewind_buffer, app->rewind_buffer_size)) {
+        return false;
+    }
+
+    // enable to see compression ratio.
+#if 0
+    const size_t compressed_size = rewind_get_size_last(app->rewind);
+    SDL_Log("compression %.2f%%\n", ((double)compressed_size / (double)app->rewind_buffer_size) * 100.0);
+#endif
+
+    return true;
+}
+
+static void on_rom_load(App* app) {
+    // free rewind and rewind buffer.
+    if (app->rewind) {
+        rewind_close(app->rewind);
+    }
+
+    if (app->rewind_buffer) {
+        SDL_free(app->rewind_buffer);
+        app->rewind_pixel_buffer = NULL;
+        app->rewind_state_buffer = NULL;
+    }
+
+    // reset rewind state and create savestate config.
+    app->rewind_counter = 0;
+    app->rewind_should_push = false;
+    app->rewind_state_config.include_psg_blip = true;
+    app->rewind_state_config.fast = false;
+
+    // allocate new rewind buffer.
+    app->rewind_buffer_size = app->pixel_buffer_size;
+    app->rewind_buffer_size += SMS_get_state_size(&app->sms, &app->rewind_state_config);
+    app->rewind_buffer = SDL_malloc(app->rewind_buffer_size);
+
+    // setup pointers.
+    app->rewind_pixel_buffer = app->rewind_buffer;
+    app->rewind_pixel_buffer_size = app->pixel_buffer_size;
+    app->rewind_state_buffer = (uint8_t*)app->rewind_buffer + app->rewind_pixel_buffer_size;
+    app->rewind_state_buffer_size = app->rewind_buffer_size - app->rewind_pixel_buffer_size;
+
+    // finally, create rewind.
+    const size_t count = 60 * app->rewind_num_seconds / app->rewind_keyframe_interval;
+    app->rewind = rewind_init(app->rewind_buffer_size, count, compressor_lz4, compressor_size_lz4);
+
+    // we don't want to play left over audio data from the previous game.
+    SDL_ClearAudioStream(app->audio_stream);
+
+    // resume emulator when a rom is loaded.
+    on_set_pause(app, false);
+}
+
 static void mgb_on_file_callback(void* user, const char* file_name, enum CallbackType type, bool result) {
     App* app = user;
     bool should_sync = false;
@@ -240,59 +372,60 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
     switch (type) {
         case CallbackType_LOAD_ROM:
             if (result) {
-                on_set_pause(app, false);
-                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Rom");
+                on_rom_load(app);
+                text_popup_push(TextPopupType_INFO, "Loaded Rom");
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load rom");
+                text_popup_push(TextPopupType_ERROR, "Failed to load rom");
             }
             break;
 
         case CallbackType_LOAD_BIOS:
             if (result) {
-                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Bios");
+                text_popup_push(TextPopupType_INFO, "Loaded Bios");
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load bios");
+                text_popup_push(TextPopupType_ERROR, "Failed to load bios");
             }
             break;
 
         case CallbackType_LOAD_SAVE:
             if (result) {
-                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded Save");
+                text_popup_push(TextPopupType_INFO, "Loaded Save");
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load save");
+                text_popup_push(TextPopupType_ERROR, "Failed to load save");
             }
             break;
 
         case CallbackType_LOAD_STATE:
             if (result) {
-                text_popup_push(&app->text_popup, TextPopupType_INFO, "Loaded State");
+                on_set_rewind(app, false);
+                text_popup_push(TextPopupType_INFO, "Loaded State");
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to load state");
+                text_popup_push(TextPopupType_ERROR, "Failed to load state");
             }
             break;
 
         case CallbackType_SAVE_SAVE:
             if (result) {
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to save save file");
+                text_popup_push(TextPopupType_ERROR, "Failed to save save file");
             }
             should_sync = result;
             break;
 
         case CallbackType_SAVE_STATE:
             if (result) {
-                text_popup_push(&app->text_popup, TextPopupType_INFO, "Saved State");
+                text_popup_push(TextPopupType_INFO, "Saved State");
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to save state");
+                text_popup_push(TextPopupType_ERROR, "Failed to save state");
             }
             should_sync = result;
             break;
 
         case CallbackType_PATCH_ROM:
             if (result) {
-                text_popup_push(&app->text_popup, TextPopupType_INFO, "Patched Rom");
+                text_popup_push(TextPopupType_INFO, "Patched Rom");
             } else {
-                text_popup_push(&app->text_popup, TextPopupType_ERROR, "Failed to patch rom");
+                text_popup_push(TextPopupType_ERROR, "Failed to patch rom");
             }
             break;
     }
@@ -321,12 +454,12 @@ static void* mgb_on_convert_pixels_to_png_format(void* user, int* out_w, int* ou
     void* dst = SDL_malloc((*out_w) * (*out_h) * (*out_channels));
     if (!dst)
     {
-        return false;
+        return NULL;
     }
 
     const bool result = SDL_ConvertPixels(
         rect.w, rect.h,
-        src_format, (const uint8_t*)app->pixel_buffer + src_yoff, SMS_SCREEN_WIDTH * src_bpp,
+        src_format, (const uint8_t*)app->pixel_buffer[app->pixel_buffer_index] + src_yoff, SMS_SCREEN_WIDTH * src_bpp,
         dst_format, dst, rect.w * *out_channels
     );
 
@@ -400,29 +533,22 @@ static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b
 
 static void core_vblank_callback(void* user, uint32_t overscan_colour) {
     App* app = user;
+
+    if (!app->rewind_counter) {
+        app->rewind_counter = app->rewind_keyframe_interval;
+        app->rewind_should_push = true;
+    } else {
+        app->rewind_counter--;
+    }
+
     if (SMS_get_skip_frame(&app->sms)) {
         return;
     }
 
+    app->pending_frame = true;
     app->overscan_colour = overscan_colour;
-
-    void* pixels = NULL; int pitch = 0;
-    SDL_LockTexture(app->texture_current, NULL, &pixels, &pitch);
-        SDL_Rect rect;
-        SMS_get_pixel_region(&app->sms, &rect.x, &rect.y, &rect.w, &rect.h);
-
-        const uint8_t bpp = app->pixel_format_details->bytes_per_pixel;
-        const uint32_t src_stride = SMS_SCREEN_WIDTH;
-        const uint32_t dst_stride = pitch / bpp;
-        const uint32_t pin_off = rect.y * src_stride * bpp + rect.x * bpp;
-        const uint32_t pout_off = rect.y * dst_stride * bpp + rect.x * bpp;
-
-        SDL_ConvertPixels(
-            rect.w, rect.h, // w,h
-            app->pixel_format, (const uint8_t*)app->pixel_buffer + pin_off, SMS_SCREEN_WIDTH * bpp, // src
-            app->pixel_format, (uint8_t*)pixels + pout_off, pitch // dst
-        );
-    SDL_UnlockTexture(app->texture_current);
+    app->pixel_buffer_index ^= 1;
+    SMS_set_pixels(&app->sms, app->pixel_buffer[app->pixel_buffer_index ^ 1], SMS_SCREEN_WIDTH, app->pixel_format_details->bytes_per_pixel);
 }
 
 static void core_audio_callback(void* user, int16_t* samples, uint32_t size) {
@@ -528,6 +654,8 @@ static void core_input_callback(void* user, int port) {
 }
 
 static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount) {
+    struct AudioSharedData* shared_data = userdata;
+
     if (additional_amount) {
         SDL_Log("dropping samples: %d total: %d\n", additional_amount, total_amount);
     }
@@ -548,7 +676,9 @@ static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int addi
     const double fillLevel = (buf_size - avail) / buf_size;
     const double dynamicFrequency = ((1.0 - maxDelta) + 2.0 * fillLevel * maxDelta) * freq;
     const double ratio = SDL_clamp(freq / dynamicFrequency, 0.5, 2.0);
-    SDL_SetAudioStreamFrequencyRatio(stream, ratio);
+
+    const double speed = SPEED_TABLE[shared_data->speed_index];
+    SDL_SetAudioStreamFrequencyRatio(stream, ratio * speed);
 }
 
 static void sdl_dialog_file_callback(void *userdata, const char * const *filelist, int filter) {
@@ -567,6 +697,15 @@ static void sdl_on_key_event(App* app, const SDL_KeyboardEvent* e)
 {
     if (e->repeat) {
         return;
+    }
+
+    if (!e->mod && e->down) {
+        for (size_t i = 0; i < SDL_arraysize(REWIND_KEY_MAP); i++) {
+            const struct RewindKeyMap* p = &REWIND_KEY_MAP[i];
+            if (p->key == e->key) {
+                rewind_bar_button(app, p->button);
+            }
+        }
     }
 
     for (size_t i = 0; i < SDL_arraysize(HOT_KEY_MAP); i++) {
@@ -615,6 +754,14 @@ static void sdl_on_gamepad_device_event(App* app, const SDL_GamepadDeviceEvent* 
 
 static void sdl_on_gamepad_button_event(App* app, const struct SDL_GamepadButtonEvent* e)
 {
+    if (e->down) {
+        for (size_t i = 0; i < SDL_arraysize(REWIND_GAMEPAD_BUTTON_MAP); i++) {
+            const struct RewindGamepadButtonMap* p = &REWIND_GAMEPAD_BUTTON_MAP[i];
+            if (p->key == e->button) {
+                rewind_bar_button(app, p->button);
+            }
+        }
+    }
 }
 
 // NOTE: this WILL be called on any thread that pushes an event to the queue.
@@ -684,6 +831,10 @@ static void on_pause_toggle(App* app) {
     on_set_pause(app, app->paused ^ 1);
 }
 
+static void on_rewind_toggle(App* app) {
+    on_set_rewind(app, rewind_bar_enabled() ^ 1);
+}
+
 static void on_fullscreen_toggle(App* app) {
     const bool is_fullscreen = SDL_WINDOW_FULLSCREEN & SDL_GetWindowFlags(app->window);
 
@@ -712,18 +863,58 @@ static void on_screen_stretch_toggle(App* app) {
 
 static void on_frame_blending_toggle(App* app) {
     app->frame_blending ^= 1;
+    if (app->frame_blending) {
+        // copy front buffer to previous texture.
+        SDL_UpdateTexture(app->texture_previous, NULL, app->pixel_buffer[app->pixel_buffer_index], SMS_SCREEN_WIDTH * app->pixel_format_details->bytes_per_pixel);
+        text_popup_push(TextPopupType_INFO, "Frame Blending: on");
+    } else {
+        text_popup_push(TextPopupType_INFO, "Frame Blending: off");
+    }
+}
+
+static void on_speed_increase(App* app) {
+    on_set_speed(app, app->speed_index + 1);
+}
+
+static void on_speed_decrease(App* app) {
+    on_set_speed(app, app->speed_index - 1);
+}
+
+static void on_speed_reset(App* app) {
+    on_set_speed(app, SPEED_DEFAULT_INDEX);
 }
 
 static void on_set_pause(App* app, bool enable) {
     if (enable != app->paused) {
         if (enable) {
-            text_popup_push(&app->text_popup, TextPopupType_INFO, "Paused");
+            text_popup_push(TextPopupType_INFO, "Paused");
         } else {
-            text_popup_push(&app->text_popup, TextPopupType_INFO, "Resumed");
+            text_popup_push(TextPopupType_INFO, "Resumed");
         }
 
         app->paused = enable;
         on_update_sound_playback_state(app);
+    }
+}
+
+static void on_set_rewind(App* app, bool enable) {
+    if (enable != rewind_bar_enabled()) {
+        if (enable) {
+            text_popup_push(TextPopupType_INFO, "Rewinding");
+        } else {
+            text_popup_push(TextPopupType_INFO, "Resumed");
+        }
+
+        rewind_bar_set_open(app, enable);
+        on_update_sound_playback_state(app);
+    }
+}
+
+static void on_set_speed(App* app, int speed) {
+    speed = SDL_clamp(speed, 0, SDL_arraysize(SPEED_TABLE) - 1);
+    if (app->speed_index != speed) {
+        app->speed_index = speed;
+        on_speed_change(app);
     }
 }
 
@@ -735,8 +926,33 @@ static void on_update_sound_playback_state(App* app) {
     }
 }
 
+static void on_speed_change(App* app) {
+    const float speed = SPEED_TABLE[app->speed_index];
+    text_popup_push_arg(TextPopupType_INFO, "Speed %.2f", speed);
+
+    // clear audio as we may go 8x -> 1x which would
+    SDL_LockAudioStream(app->audio_stream);
+        SDL_ClearAudioStream(app->audio_stream);
+        SDL_SetAudioStreamFrequencyRatio(app->audio_stream, speed);
+        app->audio_shared_data.speed_index = app->speed_index;
+    SDL_UnlockAudioStream(app->audio_stream);
+}
+
 static bool should_emu_run(const App* app) {
-    return mgb_has_rom() && !app->paused && app->focus;
+    return mgb_has_rom() && !app->paused && app->focus && !rewind_bar_enabled();
+}
+
+void emulator_update_texture_pixels(App* app, const void* pixel_buffer) {
+    app->pending_frame = false;
+
+    SDL_Rect rect;
+    SMS_get_pixel_region(&app->sms, &rect.x, &rect.y, &rect.w, &rect.h);
+
+    const uint8_t bpp = app->pixel_format_details->bytes_per_pixel;
+    const uint32_t src_pitch = SMS_SCREEN_WIDTH * bpp;
+    const uint32_t pin_off = rect.y * src_pitch + rect.x * bpp;
+
+    SDL_UpdateTexture(app->texture_current, &rect, (const uint8_t*)pixel_buffer + pin_off, src_pitch);
 }
 
 static void emulator_render(App* app) {
@@ -744,16 +960,19 @@ static void emulator_render(App* app) {
         return;
     }
 
-    // get the size of the display
-    int display_w, display_h;
-    SDL_GetRenderOutputSize(app->renderer, &display_w, &display_h);
+    // update texture pixels if we have a new frame pending.
+    if (app->pending_frame) {
+        emulator_update_texture_pixels(app, app->pixel_buffer[app->pixel_buffer_index]);
+    }
 
     // get the output size of the sms
     SDL_Rect rect;
     SMS_get_pixel_region(&app->sms, &rect.x, &rect.y, &rect.w, &rect.h);
+
+    // get the output size of the sms
     const SDL_FRect src_rect = {.x = rect.x, .y = rect.y, .w = rect.w, .h = rect.h};
 
-    if (app->frame_blending) {
+    if (app->frame_blending && !rewind_bar_enabled()) {
         SDL_SetTextureBlendMode(app->texture_current, SDL_BLENDMODE_NONE);
         SDL_SetTextureBlendMode(app->texture_previous, SDL_BLENDMODE_BLEND);
         SDL_SetTextureAlphaMod(app->texture_previous, 144);
@@ -775,7 +994,7 @@ static void emulator_run(App* app, size_t cycles, bool skip_audio, bool skip_vid
     app->runahead.lock_input = lock_input;
     SMS_skip_audio(&app->sms, skip_audio);
     SMS_skip_frame(&app->sms, skip_video);
-    SMS_run(&app->sms, cycles);
+    SMS_run(&app->sms, cycles * SPEED_TABLE[app->speed_index]);
 }
 
 static void runahead_init(App* app, unsigned frames) {
@@ -806,7 +1025,7 @@ static void runahead_exit(App* app) {
 }
 
 static bool runahead_is_enabled(const App* app) {
-    return app->runahead.frames > 0;
+    return app->runahead.frames > 0 && app->speed_index == SPEED_DEFAULT_INDEX;
 }
 
 // clears frame count so that all new frames must be generated.
@@ -818,7 +1037,6 @@ static void runahead_clear_frames(App* app) {
 // run the emulate for a single frame.
 // will exit early if the emulate is paused or no rom etc.
 // if runahead is disabled, then it will run a frame as normal.
-// otherwise, it will
 static void runahead_run_frame(App* app, double delta) {
     // don't run if a rom isn't loaded, paused or lost focus.
     if (!should_emu_run(app)) {
@@ -834,8 +1052,10 @@ static void runahead_run_frame(App* app, double delta) {
     // const size_t cycles = SMS_CYCLES_PER_FRAME;
 
     if (!runahead_is_enabled(app)) {
-        // run frame as normal
+        // run frame as normal.
         emulator_run(app, cycles, false, false, false);
+        // clear frames here as speed change may have disable runahead.
+        runahead_clear_frames(app);
     } else {
         sdl_poll_emu_inputs(app);
 
@@ -1092,19 +1312,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     app->frame_blending = frame_blending;
     app->overscan_fill = overscan_fill;
     app->quit = false;
+    app->speed_index = SPEED_DEFAULT_INDEX;
+    app->audio_shared_data.speed_index = app->speed_index;
+    app->rewind_keyframe_interval = 90; // every 1.5s
+    app->rewind_num_seconds = 60 * 5; // 5 minutes
 
     // setup video and textures
-    app->window = SDL_CreateWindow("TotalSMS", app->window_w, app->window_h, SDL_WINDOW_HIGH_PIXEL_DENSITY|SDL_WINDOW_RESIZABLE);
-    if (!app->window) {
+    const int window_flags = SDL_WINDOW_HIGH_PIXEL_DENSITY|SDL_WINDOW_RESIZABLE;
+    if (!SDL_CreateWindowAndRenderer("TotalSMS", app->window_w, app->window_h, window_flags, &app->window, &app->renderer)) {
         return SDL_APP_FAILURE;
     }
 
     if (!SDL_SetWindowMinimumSize(app->window, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT)) {
-        return SDL_APP_FAILURE;
-    }
-
-    app->renderer = SDL_CreateRenderer(app->window, NULL);
-    if (!app->renderer) {
         return SDL_APP_FAILURE;
     }
 
@@ -1126,8 +1345,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
-    app->pixel_buffer = SDL_calloc(app->pixel_format_details->bytes_per_pixel, SMS_SCREEN_WIDTH * SMS_SCREEN_HEIGHT);
-    if (!app->pixel_buffer) {
+    app->pixel_buffer_size = app->pixel_format_details->bytes_per_pixel * SMS_SCREEN_WIDTH * SMS_SCREEN_HEIGHT;
+    app->pixel_buffer[0] = SDL_calloc(1, app->pixel_buffer_size);
+    app->pixel_buffer[1] = SDL_calloc(1, app->pixel_buffer_size);
+    if (!app->pixel_buffer[0] || !app->pixel_buffer[1]) {
         return SDL_APP_FAILURE;
     }
 
@@ -1140,7 +1361,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SDL_SetTextureScaleMode(app->texture_current, scaler);
     SDL_SetTextureScaleMode(app->texture_previous, scaler);
 
-    app->audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL, sdl_audio_callback, app);
+    app->audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL, sdl_audio_callback, &app->audio_shared_data);
     if (!app->audio_stream) {
         return SDL_APP_FAILURE;
     }
@@ -1183,7 +1404,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SMS_set_vblank_callback(&app->sms, core_vblank_callback);
     SMS_set_apu_callback(&app->sms, core_audio_callback, app->sample_data, sample_data_size, spec.freq);
     SMS_set_input_callback(&app->sms, core_input_callback);
-    SMS_set_pixels(&app->sms, app->pixel_buffer, SMS_SCREEN_WIDTH, app->pixel_format_details->bytes_per_pixel);
+    SMS_set_pixels(&app->sms, app->pixel_buffer[app->pixel_buffer_index ^ 1], SMS_SCREEN_WIDTH, app->pixel_format_details->bytes_per_pixel);
     SMS_set_builtin_palette(&app->sms, sg_converted_palette);
 
     mgb_init(&app->sms);
@@ -1261,7 +1482,16 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     delta = (double)(now - start) / (double)SDL_GetPerformanceFrequency();
     start = now;
 
-    runahead_run_frame(app, delta / TARGET_FRAME_TIME);
+    on_update_sound_playback_state(app);
+
+    if (should_emu_run(app)) {
+        runahead_run_frame(app, delta / TARGET_FRAME_TIME);
+
+        if (app->rewind_should_push) {
+            rewind_push_new_frame(app);
+            app->rewind_should_push = false;
+        }
+    }
 
     uint8_t r = 0, g = 0, b = 0, a = 255;
     if (app->overscan_fill) {
@@ -1277,7 +1507,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     emulator_render(app);
-    text_popup_render(&app->text_popup, app->renderer);
+    rewind_bar_render(app);
+    text_popup_render(app->renderer);
 
     if (!SDL_RenderPresent(app->renderer)) {
         return SDL_APP_FAILURE;
@@ -1354,7 +1585,15 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 
     App* app = appstate;
     if (app) {
-        text_popup_clear_all(&app->text_popup);
+        if (app->rewind) {
+            rewind_close(app->rewind);
+        }
+
+        if (app->rewind_buffer) {
+            SDL_free(app->rewind_buffer);
+        }
+
+        text_popup_clear_all();
         runahead_exit(app);
         mgb_exit();
         SMS_quit(&app->sms);
@@ -1365,8 +1604,11 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
         if (app->gamepad.pad) {
             SDL_CloseGamepad(app->gamepad.pad);
         }
-        if (app->pixel_buffer) {
-            SDL_free(app->pixel_buffer);
+        if (app->pixel_buffer[0]) {
+            SDL_free(app->pixel_buffer[0]);
+        }
+        if (app->pixel_buffer[1]) {
+            SDL_free(app->pixel_buffer[1]);
         }
         if (app->audio_stream) {
             SDL_DestroyAudioStream(app->audio_stream);

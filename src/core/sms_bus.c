@@ -496,8 +496,8 @@ static void IO_control_write(struct SMS_Core* sms, const uint8_t value)
 
 static bool gear_to_gear_is_enabled(const struct SMS_Core* sms)
 {
-    // return true;
-    return (sms->port.gg_regs[0x5] & 0x38) == 0x38;
+    return true;
+    // return (sms->port.gg_regs[0x5] & 0x38) == 0x38;
 }
 
 // checks if send buffer is full
@@ -533,6 +533,20 @@ static void gear_to_gear_set_read_pending(struct SMS_Core* sms, bool is_pending)
 #define G2G_ENABLE_SEND 0x10
 #define G2G_ENABLE_RECV 0x20
 
+static const uint16_t GG_BAUD_TABLE[4] = {
+    4800,
+    2400,
+    1200,
+    300,
+};
+
+static const int GG_BAUD_CYCLE_TABLE[4] = {
+    3579545 / 4800 * 8,
+    3579545 / 2400 * 8,
+    3579545 / 1200 * 8,
+    3579545 / 300 * 8,
+};
+
 static void g2g_baud_rate(const struct SMS_Core* sms)
 {
     SMS_log("G2G_BYTE_SENT: %u\n", (sms->port.gg_regs[0x5] & G2G_BYTE_SENT) == G2G_BYTE_SENT);
@@ -541,22 +555,7 @@ static void g2g_baud_rate(const struct SMS_Core* sms)
     SMS_log("G2G_ENABLE_NMI_ON_RECV: %u\n", (sms->port.gg_regs[0x5] & G2G_ENABLE_NMI_ON_RECV) == G2G_ENABLE_NMI_ON_RECV);
     SMS_log("G2G_ENABLE_SEND: %u\n", (sms->port.gg_regs[0x5] & G2G_ENABLE_SEND) == G2G_ENABLE_SEND);
     SMS_log("G2G_ENABLE_RECV: %u\n", (sms->port.gg_regs[0x5] & G2G_ENABLE_RECV) == G2G_ENABLE_RECV);
-    if ((sms->port.gg_regs[0x5] & 0xF0) == 0xF0)
-    {
-        SMS_log("G2G_BAUD_300\n");
-    }
-    if ((sms->port.gg_regs[0x5] & 0xB0) == 0xB0)
-    {
-        SMS_log("G2G_BAUD_1200\n");
-    }
-    if ((sms->port.gg_regs[0x5] & 0x70) == 0x70)
-    {
-        SMS_log("G2G_BAUD_2400\n");
-    }
-    if ((sms->port.gg_regs[0x5] & 0x30) == 0x30)
-    {
-        SMS_log("G2G_BAUD_4800\n");
-    }
+    SMS_log("G2G_BAUD: %u\n", GG_BAUD_TABLE[sms->port.gg_regs[0x5] >> 6]);
     SMS_log("\n");
 }
 
@@ -568,27 +567,75 @@ static uint8_t IO_gamegear_read(struct SMS_Core* sms, const uint8_t addr)
             joypad_poll(sms, 1);
             return sms->port.gg_regs[0x0] | 0x1F;
         default: return 0xFF;
+
         case 0x1:
             SMS_log("[SERIAL-PORT-READ] 0x%02X unk\n", addr);
+            assert(0);
             return /* 0x7F; */ sms->port.gg_regs[0x1];
+
         case 0x2:
             SMS_log("[PARALLEL-PORT-READ] 0x%02X direction\n", addr);
             assert(0);
             return /* 0xFF; */ sms->port.gg_regs[0x2];
-        case 0x3: return /* 0x00; */ sms->port.gg_regs[0x3];
+
+        case 0x3:
+            SMS_log("[SERIAL-PORT-READ] 0x%02X 0x3\n", addr);
+            assert(0);
+            return /* 0x00; */ sms->port.gg_regs[0x3];
+
         case 0x4:
-            SMS_log("[SERIAL-PORT-READ] 0x%02X received data\n", addr);
+            // SMS_log("[SERIAL-PORT-READ] 0x%02X received data 0x%02X\n", addr, sms->port.gg_regs[0x4]);
             if (gear_to_gear_is_enabled(sms) && gear_to_gear_is_read_pending(sms))
             {
+                // the below is debugging code for mean bean machine g2g.
+                #if 0
+                static int set = 0;
+                static int s2 = 0;
+                // if (sms->port.gg_regs[0x4] == 0x1 || sms->port.gg_regs[0x4] == 0xC0)
+                if (sms->port.gg_regs[0x4] != 0xFF)
+                {
+                    set++;
+                    SMS_log("new read value: 0x%02X\n", sms->port.gg_regs[0x4]);
+                }
+
+                if (sms->port.gg_regs[0x4] == 0x1)
+                {
+                    sms->port.gg_regs[0x4] = 0xC0;
+                }
+
+                if (set == 1)
+                {
+                    sms->port.gg_regs[0x4] = 0xC0;
+                }
+                else if (sms->port.gg_regs[0x4] == 0xFE)
+                {
+                    s2++;
+                    // sms->port.gg_regs[0x4] = 0xFF;
+                }
+
+                if (s2 && s2 < 3)
+                {
+                    s2++;
+                    // sms->port.gg_regs[0x4] = 0xFD;
+                    SMS_log("[2] new read value: 0x%02X\n", sms->port.gg_regs[0x4]);
+                }
+                else if (s2)
+                {
+                    // sms->port.gg_regs[0x4] = 0xFD;
+                }
+                else if (sms->port.gg_regs[0x4] == 0x01)
+                {
+                    sms->port.gg_regs[0x4] = 0xC0;
+                }
+                #endif
                 gear_to_gear_set_read_pending(sms, false);
-                gear_to_gear_set_write_pending(sms, false);
-                // assert(0);
-                SMS_log("port5 is: 0x%02X\n", sms->port.gg_regs[0x5]);
-                // assert(0);
-                return sms->port.gg_regs[0x3];
+                return sms->port.gg_regs[0x4];
             }
+            // assert(0);
             return /* 0xFF; */ sms->port.gg_regs[0x4];
+
         case 0x5:
+            sms->port.gg_regs[0x5] &= ~(1 << 2);
             // SMS_log("[SERIAL-PORT-READ] 0x%02X serial status\n", addr);
             return /* 0x00; */ sms->port.gg_regs[0x5];// | 0x38;
     }
@@ -604,34 +651,43 @@ static void IO_gamegear_write(struct SMS_Core* sms, const uint8_t addr, const ui
             SMS_log("[SERIAL-PORT-WRITE] 0x%02X 0x%02X unk\n", addr, value);
             sms->port.gg_regs[0x1] = value;
             break;
+
         case 0x2:
             SMS_log("[PARALLEL-PORT-WRITE] 0x%02X 0x%02X direction\n", addr, value);
             sms->port.gg_regs[0x2] = value;
             break;
+
         case 0x3:
-            SMS_log("[SERIAL-PORT-WRITE] 0x%02X 0x%02X send data\n", addr, value);
+            // SMS_log("[SERIAL-PORT-WRITE] 0x%02X 0x%02X send data\n", addr, value);
             if (gear_to_gear_is_enabled(sms) && !gear_to_gear_is_write_pending(sms))
             {
+                // assert(value == 0xFF);
+                if (value != 0xFF)
+                {
+                    SMS_log("G2G mean bean machine, new write value: 0x%02X\n", value);
+                }
+                const int cycles = GG_BAUD_CYCLE_TABLE[sms->port.gg_regs[0x5] >> 6];
+                // SMS_log("secheduling serial data write: %d\n", cycles);
                 sms->port.gg_regs[0x3] = value;
                 gear_to_gear_set_write_pending(sms, true);
-                gear_to_gear_set_read_pending(sms, true);
-                SMS_log("port5 is: 0x%02X\n", sms->port.gg_regs[0x5]);
-                if (sms->port.gg_regs[0x5] & G2G_ENABLE_NMI_ON_RECV)
-                {
-                    // z80_nmi(sms);
-                }
-                // assert(0);
+                scheduler_add(&sms->scheduler, SchedulerID_GG_NMI, cycles, gg_on_serial_event, sms);
+            }
+            else
+            {
+                SMS_log("NOT secheduling serial data write because pending\n");
             }
             break;
+
         case 0x4:
             SMS_log("[SERIAL-PORT-WRITE] 0x%02X 0x%02X received data\n", addr, value);
             assert(0);
             break;
+
         case 0x5:
             SMS_log("[SERIAL-PORT-WRITE] 0x%02X 0x%02X serial status\n", addr, value);
-            sms->port.gg_regs[0x5] = value;
+            sms->port.gg_regs[0x5] = (sms->port.gg_regs[0x5] & 0x7) | (value & ~0x7);
             g2g_baud_rate(sms);
-            sms->port.gg_regs[0x5] = 0x30;
+            // sms->port.gg_regs[0x5] = 0x30;
             break;
 
         case 0x6:
@@ -814,11 +870,6 @@ uint8_t SMS_read_io(struct SMS_Core* sms, const uint8_t addr)
         case 0x68: case 0x6A: case 0x6C: case 0x6E:
         case 0x70: case 0x72: case 0x74: case 0x76:
         case 0x78: case 0x7A: case 0x7C: case 0x7E:
-        {
-            const int a = vdp_io_read_vcounter(sms);
-            // assert(a != 0xFF);
-            return a;
-        }
             return vdp_io_read_vcounter(sms);
 
         case 0x41: case 0x43: case 0x45: case 0x47:
@@ -959,5 +1010,29 @@ void SMS_write_io(struct SMS_Core* sms, const uint8_t addr, const uint8_t value)
         case 0xB9: case 0xBB: case 0xBD: case 0xBF:
             vdp_io_control_write(sms, value);
             break;
+    }
+}
+
+void gg_on_serial_event(void* user, unsigned id, unsigned late)
+{
+    struct SMS_Core* sms = user;
+
+    // full byte has been transfered.
+    gear_to_gear_set_write_pending(sms, false);
+    // we have the full byte, set enable.
+    gear_to_gear_set_read_pending(sms, true);
+    // hack, copy sent byte to read buffer, should allow for games to
+    // link connect to themselves, used for testing.
+    sms->port.gg_regs[0x4] = sms->port.gg_regs[0x3];
+
+    // if nmi is enabled, fire nmi.
+    if (sms->port.gg_regs[0x5] & G2G_ENABLE_NMI_ON_RECV)
+    {
+        // SMS_log("[gg_on_serial_event] nmi triggering\n");
+        z80_nmi(sms);
+    }
+    else
+    {
+        // SMS_log("[gg_on_serial_event] nmi not\n");
     }
 }

@@ -123,6 +123,7 @@ enum SchedulerID {
     SchedulerID_IRQ,
     SchedulerID_HALT,
     SchedulerID_FRAME,
+    SchedulerID_GG_NMI,
 
     /* end of the events, do not remove. */
     SchedulerID_MAX,
@@ -164,6 +165,9 @@ SMS_STATIC void vdp_io_data_write(struct SMS_Core* sms, uint8_t value);
 SMS_STATIC void vdp_io_control_write(struct SMS_Core* sms, uint8_t value);
 SMS_STATIC bool vdp_has_interrupt(const struct SMS_Core* sms);
 SMS_STATIC void vdp_on_event(void* user, unsigned id, unsigned late);
+
+// [GG]
+SMS_STATIC void gg_on_serial_event(void* user, unsigned id, unsigned late);
 
 // [MISC]
 SMS_STATIC bool SMS_has_bios(const struct SMS_Core* sms);

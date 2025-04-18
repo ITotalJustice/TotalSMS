@@ -6,6 +6,8 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/src/platforms/common binary_dir)
 add_executable(TotalSMS_EXE
     main.c
     text_popup.c
+    rewind_bar.c
+    rewind.c
     ${COMMON_SOURCES}
 )
 
@@ -41,12 +43,23 @@ FetchContent_Declare(SDL
     FIND_PACKAGE_ARGS 3.2.0 NAMES SDL3
 )
 
-FetchContent_MakeAvailable(SDL)
+set(LZ4_BUILD_CLI OFF)
+
+FetchContent_Declare(lz4
+    GIT_REPOSITORY https://github.com/lz4/lz4.git
+    GIT_TAG        v1.10.0
+    GIT_PROGRESS   TRUE
+    SOURCE_SUBDIR  build/cmake
+    FIND_PACKAGE_ARGS NAMES lz4
+)
+
+FetchContent_MakeAvailable(SDL lz4)
 
 target_link_libraries(TotalSMS_EXE PRIVATE
     TotalSMS
     mgb
     SDL3::SDL3
+    lz4
 )
 
 target_include_directories(TotalSMS_EXE PRIVATE

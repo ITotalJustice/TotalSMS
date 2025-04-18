@@ -6,6 +6,20 @@ struct TypeEntry {
     Uint32 time;
 };
 
+struct TextPopupEntry {
+    char* str;
+    Uint64 end;
+    SDL_Color colour;
+    struct TextPopupEntry* next;
+    struct TextPopupEntry* prev;
+};
+
+struct TextPopup {
+    struct TextPopupEntry* entries;
+};
+
+static struct TextPopup g_tp;
+
 static const struct TypeEntry TYPE_ENTRIES[] = {
     [TextPopupType_INFO] = {
         .time = 2000, // 2s
@@ -34,16 +48,16 @@ static void remove_entry(struct TextPopupEntry** head, struct TextPopupEntry* en
     SDL_free(entry);
 }
 
-void text_popup_push(struct TextPopup* tp, enum TextPopupType type, const char* str) {
+void text_popup_push(enum TextPopupType type, const char* str) {
     struct TextPopupEntry* entry = SDL_calloc(1, sizeof(*entry));
     entry->str = SDL_strdup(str);
     entry->end = SDL_GetTicks() + TYPE_ENTRIES[type].time;
     entry->colour = TYPE_ENTRIES[type].colour;
 
-    if (!tp->entries) {
-        tp->entries = entry;
+    if (!g_tp.entries) {
+        g_tp.entries = entry;
     } else {
-        struct TextPopupEntry* end = tp->entries;
+        struct TextPopupEntry* end = g_tp.entries;
 
         while (end->next) {
             end = end->next;
@@ -54,17 +68,17 @@ void text_popup_push(struct TextPopup* tp, enum TextPopupType type, const char* 
     }
 }
 
-void text_popup_push_arg(struct TextPopup* tp, enum TextPopupType type, const char *fmt, ...) {
+void text_popup_push_arg(enum TextPopupType type, const char *fmt, ...) {
     char buf[256];
     va_list va;
     va_start(va, fmt);
     SDL_vsnprintf(buf, sizeof(buf), fmt, va);
     va_end(va);
 
-    text_popup_push(tp, type, buf);
+    text_popup_push(type, buf);
 }
 
-void text_popup_render(struct TextPopup* tp, SDL_Renderer* renderer) {
+void text_popup_render(SDL_Renderer* renderer) {
     const Uint64 ms = SDL_GetTicks();
     const SDL_Color box_col = {0, 0, 0, 150};
     const float pad_x = 5;
@@ -79,15 +93,15 @@ void text_popup_render(struct TextPopup* tp, SDL_Renderer* renderer) {
     SDL_GetRenderDrawBlendMode(renderer, &old_blend_mode);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    int w, h;
-    SDL_GetCurrentRenderOutputSize(renderer, &w, &h);
+    SDL_Rect viewport;
+    SDL_GetRenderViewport(renderer, &viewport);
 
-    struct TextPopupEntry* entry = tp->entries;
+    struct TextPopupEntry* entry = g_tp.entries;
     while (entry) {
         struct TextPopupEntry* temp = entry->next;
 
         if (ms >= entry->end) {
-            remove_entry(&tp->entries, entry);
+            remove_entry(&g_tp.entries, entry);
         } else {
             const float text_x = x + pad_x;
             const float text_y = y + pad_y;
@@ -110,7 +124,7 @@ void text_popup_render(struct TextPopup* tp, SDL_Renderer* renderer) {
 
             y += inc_y;
 
-            if (y > h) {
+            if (y > viewport.h) {
                 break;
             }
         }
@@ -121,12 +135,12 @@ void text_popup_render(struct TextPopup* tp, SDL_Renderer* renderer) {
     SDL_SetRenderDrawBlendMode(renderer, old_blend_mode);
 }
 
-void text_popup_clear_all(struct TextPopup* tp) {
-    struct TextPopupEntry* entry = tp->entries;
+void text_popup_clear_all(void) {
+    struct TextPopupEntry* entry = g_tp.entries;
 
     while (entry) {
         struct TextPopupEntry* temp = entry->next;
-        remove_entry(&tp->entries, entry);
+        remove_entry(&g_tp.entries, entry);
         entry = temp;
     }
 }
