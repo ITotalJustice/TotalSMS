@@ -55,8 +55,13 @@ set_toolchain_for_system(${WII} "$ENV{DEVKITPRO}/cmake/Wii.cmake")
 set_toolchain_for_system(${WIIU} "$ENV{DEVKITPRO}/cmake/WiiU.cmake")
 set_toolchain_for_system(${SWITCH} "$ENV{DEVKITPRO}/cmake/Switch.cmake")
 
+set(TotalSMS_VERSION_MAJOR 0)
+set(TotalSMS_VERSION_MINOR 1)
+set(TotalSMS_VERSION_PATCH 1)
+set(TotalSMS_VERSION ${TotalSMS_VERSION_MAJOR}.${TotalSMS_VERSION_MINOR}.${TotalSMS_VERSION_PATCH})
+
 project(TotalSMS
-    VERSION 0.0.1
+    VERSION ${TotalSMS_VERSION}
     DESCRIPTION "WIP SMS emulator!"
     HOMEPAGE_URL "https://github.com/ITotalJustice/TotalSMS"
     LANGUAGES C

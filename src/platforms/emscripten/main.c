@@ -1483,6 +1483,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         on_fullscreen_toggle(app);
     }
 
+    if (!mgb_has_rom()) {
+        text_popup_push(TextPopupType_INFO, "Press CTRL+O to load ROM");
+    }
+
     runahead_init(app, runahead);
 
     app->focus = SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS;
@@ -1523,10 +1527,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // update window fps.
+    bool second_elapsed = false;
     SDL_LockMutex(app->timer_shared_data.mutex);
         app->timer_shared_data.gui_counter++;
 
         if (app->timer_shared_data.pending) {
+            second_elapsed = true;
+
             app->timer_shared_data.pending = false;
             char* str;
             if (0 < SDL_asprintf(&str, "TotalSMS | EMU: %d fps | GUI: %d fps", app->timer_shared_data.vblank_fps, app->timer_shared_data.gui_fps)) {
@@ -1534,7 +1541,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                 SDL_free(str);
             }
         }
-        app->timer_shared_data.vblank_fps++;
     SDL_UnlockMutex(app->timer_shared_data.mutex);
 
     uint8_t r = 0, g = 0, b = 0, a = 255;
@@ -1564,7 +1570,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
 #ifdef EMSCRIPTEN
-    flushsave();
+    if (second_elapsed) {
+        flushsave();
+    }
 #endif
 
     // the below are for testing / simulating different fps targets.

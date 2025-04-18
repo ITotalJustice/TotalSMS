@@ -119,7 +119,7 @@ if (NOT MINIZIP_FOUND)
 endif()
 
 target_link_libraries(mgb PRIVATE
-    TotalSMS
+    SMS_Core
     patch
     ZLIB::ZLIB
 )
