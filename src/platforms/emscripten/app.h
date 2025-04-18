@@ -41,6 +41,22 @@ struct AudioSharedData {
     int speed_index;
 };
 
+// see above.
+struct TimerSharedData {
+    // to access data in this struct, lock the mutex before hand.
+    SDL_Mutex* mutex;
+    // incremented every vblank.
+    int vblank_counter;
+    // incremented every gui itteration.
+    int gui_counter;
+
+    // stored value when the timer fires.
+    int vblank_fps;
+    int gui_fps;
+    // set to true when new data is pending.
+    bool pending;
+};
+
 typedef struct {
     // sdl stuff
     SDL_Window* window;
@@ -56,6 +72,10 @@ typedef struct {
     struct Gamepad gamepad;
     struct AudioSharedData audio_shared_data;
 
+    // runs every 1s, used for calculating fps.
+    SDL_TimerID timer;
+    struct TimerSharedData timer_shared_data;
+
     // vars
     struct SMS_Core sms;
     void* pixel_buffer[2];
@@ -70,6 +90,8 @@ typedef struct {
     Rewind* rewind;
     void* rewind_buffer;
     size_t rewind_buffer_size;
+    // increases
+    int vblank_fps_counter;
     // counts down every vblank.
     size_t rewind_counter;
     // set to true when counter hits 0.

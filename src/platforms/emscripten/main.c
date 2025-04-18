@@ -534,6 +534,10 @@ static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b
 static void core_vblank_callback(void* user, uint32_t overscan_colour) {
     App* app = user;
 
+    SDL_LockMutex(app->timer_shared_data.mutex);
+        app->timer_shared_data.vblank_counter++;
+    SDL_UnlockMutex(app->timer_shared_data.mutex);
+
     if (!app->rewind_counter) {
         app->rewind_counter = app->rewind_keyframe_interval;
         app->rewind_should_push = true;
@@ -1104,6 +1108,21 @@ static void runahead_run_frame(App* app, double delta) {
     }
 }
 
+static Uint32 sdl_timer_callback(void *userdata, SDL_TimerID timerID, Uint32 interval) {
+    struct TimerSharedData* shared_data = userdata;
+
+    SDL_LockMutex(shared_data->mutex);
+        shared_data->vblank_fps = shared_data->vblank_counter;
+        shared_data->gui_fps = shared_data->gui_counter;
+
+        shared_data->vblank_counter = 0;
+        shared_data->gui_counter = 0;
+        shared_data->pending = true;
+    SDL_UnlockMutex(shared_data->mutex);
+
+    return SDL_MS_PER_SECOND; // re-schedule for 1s
+}
+
 static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
     static const char s[] = {
         "usage: exe [option...] [file]\n\n"
@@ -1392,6 +1411,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
+    app->timer_shared_data.mutex = SDL_CreateMutex();
+    if (!app->timer_shared_data.mutex) {
+        return SDL_APP_FAILURE;
+    }
+
+    app->timer = SDL_AddTimer(SDL_MS_PER_SECOND, sdl_timer_callback, &app->timer_shared_data);
+    if (!app->timer) {
+        return SDL_APP_FAILURE;
+    }
+
     generate_palette(app, sms_converted_palette, SMS_BPP);
     generate_palette(app, gg_converted_palette, GG_BPP);
     generate_sg_palette(app, sg_converted_palette);
@@ -1492,6 +1521,21 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             app->rewind_should_push = false;
         }
     }
+
+    // update window fps.
+    SDL_LockMutex(app->timer_shared_data.mutex);
+        app->timer_shared_data.gui_counter++;
+
+        if (app->timer_shared_data.pending) {
+            app->timer_shared_data.pending = false;
+            char* str;
+            if (0 < SDL_asprintf(&str, "TotalSMS | EMU: %d fps | GUI: %d fps", app->timer_shared_data.vblank_fps, app->timer_shared_data.gui_fps)) {
+                SDL_SetWindowTitle(app->window, str);
+                SDL_free(str);
+            }
+        }
+        app->timer_shared_data.vblank_fps++;
+    SDL_UnlockMutex(app->timer_shared_data.mutex);
 
     uint8_t r = 0, g = 0, b = 0, a = 255;
     if (app->overscan_fill) {
@@ -1598,6 +1642,12 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
         mgb_exit();
         SMS_quit(&app->sms);
 
+        if (app->timer) {
+            SDL_RemoveTimer(app->timer);
+        }
+        if (app->timer_shared_data.mutex) {
+            SDL_DestroyMutex(app->timer_shared_data.mutex);
+        }
         if (app->sample_data) {
             SDL_free(app->sample_data);
         }
