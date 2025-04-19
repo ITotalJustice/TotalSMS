@@ -210,12 +210,6 @@ static uint32_t gg_converted_palette[1 << GG_BPP * 3];
 static uint32_t sg_converted_palette[1 << 4];
 
 #ifdef EMSCRIPTEN
-static volatile bool syncfs_running = false;
-
-EMSCRIPTEN_KEEPALIVE void on_syncfs(void) {
-    syncfs_running = false;
-}
-
 EMSCRIPTEN_KEEPALIVE void em_load_rom_data(const char* name, const uint8_t* data, int len) {
     SDL_Log("[EM] loading rom! name: %s len: %d\n", name, len);
 
@@ -231,27 +225,6 @@ EMSCRIPTEN_KEEPALIVE void em_load_rom_data(const char* name, const uint8_t* data
         );
         SDL_Log("[EM] loaded rom! name: %s len: %d\n", name, len);
     }
-}
-
-static void syncfs(void) {
-    // this is to prevent syncfs from being spammed
-    // instead, it is ran every time it has finished running.
-    // which is still a lot, but no browser warnings / errors will be
-    // flagged this way.
-    if (syncfs_running) {
-        return;
-    }
-
-    syncfs_running = true;
-
-    EM_ASM(
-        FS.syncfs(false, function (err) {
-            if (err) {
-                console.log(err);
-            }
-            _on_syncfs();
-        });
-    );
 }
 
 static void flushsave(void) {
@@ -367,7 +340,6 @@ static void on_rom_load(App* app) {
 
 static void mgb_on_file_callback(void* user, const char* file_name, enum CallbackType type, bool result) {
     App* app = user;
-    bool should_sync = false;
 
     switch (type) {
         case CallbackType_LOAD_ROM:
@@ -409,7 +381,6 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             } else {
                 text_popup_push(TextPopupType_ERROR, "Failed to save save file");
             }
-            should_sync = result;
             break;
 
         case CallbackType_SAVE_STATE:
@@ -418,7 +389,6 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             } else {
                 text_popup_push(TextPopupType_ERROR, "Failed to save state");
             }
-            should_sync = result;
             break;
 
         case CallbackType_PATCH_ROM:
@@ -429,12 +399,6 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
             }
             break;
     }
-
-#ifdef EMSCRIPTEN
-    if (should_sync) {
-        syncfs();
-    }
-#endif
 }
 
 static void* mgb_on_convert_pixels_to_png_format(void* user, int* out_w, int* out_h, int* out_channels)
@@ -1452,8 +1416,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
             FS.mkdir("/state");
         }
 
-        FS.mount(IDBFS, {}, "/save");
-        FS.mount(IDBFS, {}, "/state");
+        FS.mount(IDBFS, { autoPersist: true }, "/save");
+        FS.mount(IDBFS, { autoPersist: true }, "/state");
 
         FS.syncfs(true, function (err) {
             if (err) {
