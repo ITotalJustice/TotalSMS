@@ -299,6 +299,8 @@ bool rewind_push_new_frame(App* app) {
 }
 
 static void on_rom_load(App* app) {
+    rewind_bar_set_open(app, false);
+
     // free rewind and rewind buffer.
     if (app->rewind) {
         rewind_close(app->rewind);

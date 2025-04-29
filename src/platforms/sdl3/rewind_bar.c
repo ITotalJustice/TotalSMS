@@ -51,6 +51,10 @@ static bool render_entry(App* app, int index, const SDL_FRect* rect, const SDL_F
 }
 
 static void rewind_bar_set_open_internal(App* app, bool enable, bool pop_last_state) {
+    if (!app->rewind) {
+        enable = false;
+    }
+
     if (g_bar.enable != enable) {
         g_bar.enable = enable;
 
