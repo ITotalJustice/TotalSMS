@@ -334,6 +334,10 @@ static void on_rom_load(App* app) {
     // we don't want to play left over audio data from the previous game.
     SDL_ClearAudioStream(app->audio_stream);
 
+    // clear the frame buffers.
+    SDL_memset(app->pixel_buffer[0], 0, app->pixel_buffer_size);
+    SDL_memset(app->pixel_buffer[1], 0, app->pixel_buffer_size);
+
     // resume emulator when a rom is loaded.
     on_set_pause(app, false);
 }
