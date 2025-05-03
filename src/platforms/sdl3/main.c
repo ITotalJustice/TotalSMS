@@ -1532,8 +1532,9 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         }
     SDL_UnlockMutex(app->timer_shared_data.mutex);
 
+    // set overscan colour if enabled and the system is NOT game gear.
     uint8_t r = 0, g = 0, b = 0, a = 255;
-    if (app->overscan_fill) {
+    if (app->overscan_fill && mgb_has_rom() && !SMS_is_system_type_gg(&app->sms)) {
         SDL_GetRGBA(app->overscan_colour, app->pixel_format_details, NULL, &r, &g, &b, &a);
     }
 
