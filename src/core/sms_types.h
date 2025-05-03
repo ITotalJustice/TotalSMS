@@ -73,7 +73,7 @@ enum
     GG_SCREEN_WIDTH = 160,
     GG_SCREEN_HEIGHT = 144,
 
-    SMS_ROM_SIZE_MAX = 1024 * 512, // 512KiB
+    SMS_ROM_SIZE_MAX = 1024 * 1024 * 4, // 4MiB
     SMS_SRAM_SIZE_MAX = 1024 * 16 * 2, // 2 banks of 16kib
 
     // default max sprites
