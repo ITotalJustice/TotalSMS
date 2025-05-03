@@ -44,6 +44,10 @@ FetchContent_Declare(SDL
     FIND_PACKAGE_ARGS NAMES SDL3
 )
 
+if (PSP)
+    set(LZ4_POSITION_INDEPENDENT_LIB OFF)
+endif()
+
 set(LZ4_BUILD_CLI OFF)
 
 FetchContent_Declare(lz4
@@ -68,6 +72,46 @@ target_include_directories(TotalSMS PRIVATE
 )
 
 target_add_common_cflags(TotalSMS PRIVATE)
+
+if (NINTENDO_3DS)
+    ctr_generate_smdh(${PROJECT_NAME}.smdh
+        NAME "${PROJECT_NAME}"
+        DESCRIPTION "v${PROJECT_VERSION}"
+        AUTHOR "TotalJustice"
+    )
+
+    ctr_create_3dsx(${PROJECT_NAME}
+        SMDH ${PROJECT_NAME}.smdh
+    )
+endif()
+
+if (PSP)
+    create_pbp_file(
+        TARGET ${PROJECT_NAME}
+        ICON_PATH NULL
+        BACKGROUND_PATH NULL
+        PREVIEW_PATH NULL
+        TITLE ${PROJECT_NAME}
+    )
+endif()
+
+if (VITA)
+    include("${VITASDK}/share/vita.cmake" REQUIRED)
+
+    set(VITA_APP_NAME ${PROJECT_NAME})
+    set(VITA_TITLEID  "TSMS00505")
+    set(VITA_VERSION  0${TotalSMS_VERSION_MAJOR}.0${TotalSMS_VERSION_MINOR})
+
+    vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})
+    vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
+        VERSION ${VITA_VERSION}
+        NAME ${VITA_APP_NAME}
+    #   FILE sce_sys/icon0.png sce_sys/icon0.png
+    #   FILE sce_sys/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
+    #   FILE sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
+    #   FILE sce_sys/livearea/contents/template.xml sce_sys/livearea/contents/template.xml
+    )
+endif()
 
 # CPack
 # cpack --config CPackConfig.cmake

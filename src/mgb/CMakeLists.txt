@@ -71,8 +71,10 @@ endif()
 # so using the old fashioned find_() has to be used
 find_library(minizip_lib minizip)
 find_path(minizip_inc minizip)
+find_path(minizip_inc_zip minizip/zip.h)
+find_path(minizip_inc_unzip minizip/unzip.h)
 
-if (minizip_lib AND minizip_inc)
+if (minizip_lib AND minizip_inc AND minizip_inc_zip AND minizip_inc_unzip)
     target_link_libraries(mgb PRIVATE ${minizip_lib})
     target_include_directories(mgb PRIVATE ${minizip_inc})
 
@@ -107,6 +109,10 @@ if (NOT MINIZIP_FOUND)
         ${minizip_SOURCE_DIR}/contrib/minizip/zip.c
         ${minizip_SOURCE_DIR}/contrib/minizip/unzip.c
     )
+
+    if (PSP OR VITA)
+        target_compile_options(minizip PRIVATE -DUSE_FILE32API=1)
+    endif()
 
     target_include_directories(minizip PRIVATE ${minizip_SOURCE_DIR}/contrib/minizip/)
     # need the paths to be minizip/unzip.h

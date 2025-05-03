@@ -59,6 +59,24 @@
                 "SMS_SINGLE_FILE": true,
                 "SMS_DEBUG": true
             }
+        },
+        {
+            "name": "3ds",
+            "displayName": "3ds",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/3DS.cmake",
+            "inherits": ["sdl3"]
+        },
+        {
+            "name": "psp",
+            "displayName": "psp",
+            "toolchainFile": "$env{PSPDEV}/psp/share/pspdev.cmake",
+            "inherits": ["sdl3"]
+        },
+        {
+            "name": "vita",
+            "displayName": "vita",
+            "toolchainFile": "$env{VITASDK}/share/vita.toolchain.cmake",
+            "inherits": ["sdl3"]
         }
     ],
     "buildPresets": [
@@ -81,6 +99,22 @@
         {
             "name": "emsdk-dev",
             "configurePreset": "emsdk-dev"
+        },
+        {
+            "name": "3ds",
+            "configurePreset": "3ds"
+        },
+        {
+            "name": "ps2",
+            "configurePreset": "3ds"
+        },
+        {
+            "name": "psp",
+            "configurePreset": "3ds"
+        },
+        {
+            "name": "vita",
+            "configurePreset": "3ds"
         }
     ]
 }

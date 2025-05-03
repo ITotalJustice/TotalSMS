@@ -1140,7 +1140,26 @@ static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
     return result;
 }
 
+#if defined(__3DS__)
+#include <3ds.h>
+#include <malloc.h>
+static void platform_init(void) {
+    #define SOC_ALIGN       0x1000
+    #define SOC_BUFFERSIZE  0x100000
+    u32* SOC_buffer = memalign(SOC_ALIGN, SOC_BUFFERSIZE);
+    socInit(SOC_buffer, SOC_BUFFERSIZE);
+    link3dsStdio();
+}
+static void platform_exit(void) {
+    socExit();
+}
+#else
+static void platform_init(void) { }
+static void platform_exit(void) { }
+#endif
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
+    platform_init();
     SDL_Log("Hello World: %s\n", SDL_GetPlatform());
 
     if (!SDL_SetAppMetadata("TotalSMS", "1.0.0", "com.example.totalsms")) {
@@ -1313,7 +1332,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     }
 
     if (!SDL_SetWindowMinimumSize(app->window, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT)) {
-        return SDL_APP_FAILURE;
+        SDL_Log("Failed SDL_SetWindowMinimumSize(): %s\n", SDL_GetError());
     }
 
     if (!SDL_SetRenderVSync(app->renderer, vsync)) {
@@ -1656,4 +1675,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 
         SDL_free(app);
     }
+
+    platform_exit();
 }
