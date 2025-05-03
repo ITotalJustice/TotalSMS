@@ -298,6 +298,93 @@ bool rewind_push_new_frame(App* app) {
     return true;
 }
 
+static bool update_window_size(App* app) {
+    app->screen_w = SMS_SCREEN_WIDTH;
+    app->screen_h = SMS_SCREEN_HEIGHT;
+    // const double ratio = 2950000.0 / 2128137.0; // PAL
+    double ratio = 8.0 / 7.0; // NTSC
+
+    if (mgb_has_rom() && SMS_is_system_type_gg(&app->sms)) {
+        app->screen_w = 160;
+        app->screen_h = 144;
+        ratio = 4.0 / 3.0;
+    }
+
+    app->screen_w *= ratio;
+
+    SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
+    if (!display_id) {
+        return false;
+    }
+
+    const SDL_DisplayMode* display_mode = SDL_GetCurrentDisplayMode(display_id);
+    if (!display_mode) {
+        return false;
+    }
+
+    SDL_Log("Display info:\n");
+    SDL_Log("\trefresh_rate: %.2f\n", display_mode->refresh_rate);
+    SDL_Log("\tpixel_density: %.2f\n", display_mode->pixel_density);
+    SDL_Log("\tw: %d\n", display_mode->w);
+    SDL_Log("\th: %d\n", display_mode->h);
+
+    #ifdef EMSCRIPTEN
+        app->scale = 1;
+        // set window to be the entire size of display
+        app->window_w = display_mode->w;
+        app->window_h = display_mode->h;
+    #else
+        const int scale = SDL_min(display_mode->w / app->screen_w, display_mode->h / app->screen_h);
+        app->scale = scale > 1 ? scale - 1 : scale;
+        app->window_w = app->screen_w * app->scale;
+        app->window_h = app->screen_h * app->scale;
+    #endif
+
+    return true;
+}
+
+static bool update_screen_and_renderer_size(App* app) {
+    if (!update_window_size(app)) {
+        return false;
+    }
+
+    app->screen_w = SMS_SCREEN_WIDTH;
+    app->screen_h = SMS_SCREEN_HEIGHT;
+    double ratio = 8.0 / 7.0;
+
+    if (mgb_has_rom() && SMS_is_system_type_gg(&app->sms)) {
+        app->screen_w = 160;
+        app->screen_h = 144;
+        ratio = 4.0 / 3.0;
+    }
+
+    app->screen_w *= ratio;
+
+    SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
+    if (!display_id) {
+        return false;
+    }
+
+    const SDL_DisplayMode* display_mode = SDL_GetCurrentDisplayMode(display_id);
+    if (!display_mode) {
+        return false;
+    }
+
+    #ifndef EMSCRIPTEN
+        SDL_SetWindowSize(app->window, app->window_w, app->window_h);
+    #endif
+
+    if (!SDL_SetWindowMinimumSize(app->window, app->screen_w, app->screen_h)) {
+        SDL_Log("Failed SDL_SetWindowMinimumSize(): %s\n", SDL_GetError());
+    }
+
+    if (!SDL_SetRenderLogicalPresentation(app->renderer, app->screen_w, app->screen_h, app->stretch)) {
+        return false;
+    }
+
+    return true;
+}
+
 static void on_rom_load(App* app) {
     rewind_bar_set_open(app, false);
 
@@ -342,6 +429,9 @@ static void on_rom_load(App* app) {
 
     // resume emulator when a rom is loaded.
     on_set_pause(app, false);
+
+    // update screen and renderer size as the rom type may have changed.
+    update_screen_and_renderer_size(app);
 }
 
 static void mgb_on_file_callback(void* user, const char* file_name, enum CallbackType type, bool result) {
@@ -1285,38 +1375,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
-    SDL_DisplayID display_id = SDL_GetPrimaryDisplay();
-    if (!display_id) {
+    if (!update_window_size(app)) {
         return SDL_APP_FAILURE;
     }
 
-    const SDL_DisplayMode* display_mode = SDL_GetCurrentDisplayMode(display_id);
-    if (!display_mode) {
-        return SDL_APP_FAILURE;
-    }
-
-    SDL_Log("Display info:\n");
-    SDL_Log("\trefresh_rate: %.2f\n", display_mode->refresh_rate);
-    SDL_Log("\tpixel_density: %.2f\n", display_mode->pixel_density);
-    SDL_Log("\tw: %d\n", display_mode->w);
-    SDL_Log("\th: %d\n", display_mode->h);
-
-    // const double ratio = 2950000.0 / 2128137.0;
-    const double ratio = 8.0 / 7.0;
-#ifdef EMSCRIPTEN
-    app->sms_scale = 1;
-    app->gg_scale = 1;
-    // set window to be the entire size of display
-    app->window_w = display_mode->w;
-    app->window_h = display_mode->h;
-#else
-    const int scale = SDL_min(display_mode->w / SMS_SCREEN_WIDTH * ratio, display_mode->h / SMS_SCREEN_HEIGHT);
-    app->sms_scale = scale > 1 ? scale - 1 : scale;
-    app->gg_scale = 5;
-    app->window_w = SMS_SCREEN_WIDTH * app->sms_scale * ratio;
-    app->window_h = SMS_SCREEN_HEIGHT * app->sms_scale;
-#endif
-
+    app->stretch = stretch;
     app->frame_blending = frame_blending;
     app->overscan_fill = overscan_fill;
     app->quit = false;
@@ -1331,15 +1394,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_SetWindowMinimumSize(app->window, SMS_SCREEN_WIDTH, SMS_SCREEN_HEIGHT)) {
-        SDL_Log("Failed SDL_SetWindowMinimumSize(): %s\n", SDL_GetError());
-    }
-
     if (!SDL_SetRenderVSync(app->renderer, vsync)) {
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_SetRenderLogicalPresentation(app->renderer, SMS_SCREEN_WIDTH * ratio, SMS_SCREEN_HEIGHT, stretch)) {
+    if (!update_screen_and_renderer_size(app)) {
         return SDL_APP_FAILURE;
     }
 

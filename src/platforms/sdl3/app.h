@@ -108,11 +108,15 @@ typedef struct {
     int16_t* sample_data;
 
     // config
+    SDL_RendererLogicalPresentation stretch;
     enum VdpRatioType ratio;
-    int sms_scale;
-    int gg_scale;
+    int scale;
+    // the actual window size.
     int window_w;
     int window_h;
+    // sizes of the emulated screen.
+    int screen_w;
+    int screen_h;
     // blends previous frame with new frame.
     bool frame_blending;
     // uses overscan colour to fill the screen.
