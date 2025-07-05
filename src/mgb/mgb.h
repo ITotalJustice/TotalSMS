@@ -21,6 +21,31 @@ enum CallbackType
     CallbackType_PATCH_ROM,
 };
 
+// savestates compressed with defalte/inflate
+// lz4 was considered, but it seemed silly to have 2 compression
+// algorithims included in my code, although lz4 is arguably
+struct StateMeta
+{
+    uint32_t magic;
+    char platform_string[64]; // todo:
+    uint32_t state_size;
+    // if 0, then the state is uncompressed!
+    uint32_t state_compressed_size;
+    uint32_t padding;
+    uint64_t timestamp;
+    uint64_t playtime;
+    uint8_t reserved[160];
+};
+
+enum { STATE_MAGIC = 0x536A0535 };
+
+struct StateInfo
+{
+    struct StateMeta meta;
+    uint8_t* png;
+    size_t png_size;
+};
+
 #if 0
     #include <stdio.h>
     #define mgb_log(...) fprintf(stdout, __VA_ARGS__)
@@ -82,13 +107,8 @@ bool mgb_patch_rom_data(const char* path, const uint8_t* data, size_t size);
 bool mgb_has_rom(void);
 const char* mgb_rom_path(void);
 
-// bool mgb_rewind_init(size_t frames);
-// void mgb_rewind_close(void);
-
-// save states and stores pixel data for that frame
-// bool mgb_rewind_push_frame(const void* pixels, size_t size);
-// loads state and loads pixel data for that frame
-// bool mgb_rewind_pop_frame(void* pixels, size_t size);
+struct StateInfo* mgb_load_state_info_file(const char* path, bool load_png);
+void mgb_free_state_info(struct StateInfo* info);
 
 #ifdef __cplusplus
 }
