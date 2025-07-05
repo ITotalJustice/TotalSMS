@@ -22,7 +22,7 @@ if (EMSCRIPTEN)
         "-s;--shell-file;${CMAKE_CURRENT_SOURCE_DIR}/emscripten.html"
         "-s;EXPORTED_FUNCTIONS=[_main,_malloc,_free]"
         "-lidbfs.js"
-        "-sWASM=1"
+        "-sWASM=2"
         "-sUSE_SDL=3"
         "-sALLOW_MEMORY_GROWTH=1"
     )
@@ -39,7 +39,7 @@ Set(FETCHCONTENT_QUIET FALSE)
 
 FetchContent_Declare(SDL
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG        release-3.2.10
+    GIT_TAG        release-3.2.16
     GIT_PROGRESS   TRUE
     FIND_PACKAGE_ARGS NAMES SDL3
 )

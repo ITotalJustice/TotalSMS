@@ -346,7 +346,6 @@ static void SMS_reset(struct SMS_Core* sms)
     if (SMS_is_system_type_gg(sms))
     {
         sms->port.gg_regs[0x0] = 0xC0;
-        sms->port.gg_regs[0x0] = 0x40;
         sms->port.gg_regs[0x1] = 0x7F;
         sms->port.gg_regs[0x2] = 0xFF;
         sms->port.gg_regs[0x3] = 0x00;
