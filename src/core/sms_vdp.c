@@ -928,7 +928,7 @@ static void vdp_parse_sg_sprites(struct SMS_Core* sms, int line)
 
         // todo: is this based on the screen height
         // if (y > 192)
-        if (y > 240)
+        if (y > 224)
         {
             y -= 256;
         }
@@ -1047,14 +1047,7 @@ static void vdp_mode4_parse_sprites(struct SMS_Core* sms, int line)
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
     const uint8_t max_sprites = sms->mode4_max_spirtes;
 
-    static const int ntsc_eof_table[3] = {
-        [VdpHeightMode_192] = 208,
-        // todo: check what the values for each mode are !
-        [VdpHeightMode_224] = 208,
-        [VdpHeightMode_240] = 208,
-    };
-
-    const int sprite_eof = ntsc_eof_table[vdp_get_height_mode(sms)];
+    const int sprite_eof = 208;
 
     for (uint8_t i = 0; i < 64; ++i)
     {
@@ -1075,7 +1068,7 @@ static void vdp_mode4_parse_sprites(struct SMS_Core* sms, int line)
         // theres a 240 height mode, meaning no sprites could be displayed past 224...
         // so maybe this should reset on 240? or maybe it depends of the
         // the height mode selected, ie, 192, 224 and 240
-        #if 0
+        #if 1
         if (y > 224)
         #else
         if (y > 192)
@@ -1366,7 +1359,7 @@ static void vdp_render_line(struct SMS_Core* sms)
         vdp_render_background(sms, scanline, &prio);
         vdp_render_sprites(sms, scanline, &prio);
     }
-    else if (m4 && !m3 && m2 && !1) // Mode 4 (224-line display)
+    else if (m4 && !m3 && m2 && m1) // Mode 4 (224-line display)
     {
         vdp_render_background(sms, scanline, &prio);
         vdp_render_sprites(sms, scanline, &prio);
@@ -1449,20 +1442,6 @@ static void on_blanking_event(struct SMS_Core* sms)
         }
     }
 
-    // nmi is asserted at the start of line 261
-    if (VDP.vcount == 261 && VDP.nmi_pending)
-    {
-        VDP.nmi_pending = false;
-        z80_nmi(sms);
-    }
-    // end of frame.
-    else if (VDP.vcount == VDP_VCOUNT_MAX[sms->region])
-    {
-        VDP.vcount = 0;
-        VDP.vertical_scroll = VDP.registers[0x9];
-        VDP.line_counter = VDP.registers[0xA];
-    }
-
     // the line counter is decremented on every line within the display
     // region, including the next line.
     if (VDP.vcount <= display_height && !SMS_is_system_type_sg(sms))
@@ -1478,6 +1457,21 @@ static void on_blanking_event(struct SMS_Core* sms)
         {
             VDP.line_counter--;
         }
+    }
+
+    // nmi is asserted at the start of line 261
+    if (VDP.vcount == 261 && VDP.nmi_pending)
+    {
+        VDP.nmi_pending = false;
+        z80_nmi(sms);
+    }
+
+    // end of frame.
+    if (VDP.vcount == VDP_VCOUNT_MAX[sms->region])
+    {
+        VDP.vcount = 0;
+        VDP.vertical_scroll = VDP.registers[0x9];
+        VDP.line_counter = VDP.registers[0xA];
     }
 }
 
@@ -1499,7 +1493,7 @@ void vdp_on_event(void* user, unsigned id, unsigned late)
 {
     struct SMS_Core* sms = user;
     vdp_tick(sms);
-    scheduler_add(&sms->scheduler, id, NTSC_NEXT_EVENT_CYCLES[VDP.state] - late, vdp_on_event, user);
+    scheduler_add(&sms->scheduler, id, NTSC_NEXT_EVENT_CYCLES[VDP.state], vdp_on_event, user);
 }
 
 void vdp_init(struct SMS_Core* sms)

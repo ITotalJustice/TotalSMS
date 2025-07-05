@@ -2107,9 +2107,9 @@ static const struct RomEntry ENTRIES[] =
     // Evander Holyfield's 'Real Deal' Boxing (U) [!].gg
     { .crc = 0x36AAF536, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
     // Excellent Dizzy Collection, The (E) [S][!].gg
-    { .crc = 0xAA140C9C, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
+    { .crc = 0xAA140C9C, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_SMS },
     // Excellent Dizzy Collection, The (Prototype) [S][!].gg
-    { .crc = 0x8813514B, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_GG },
+    { .crc = 0x8813514B, .ram = 0x0000, .map = MAPPER_TYPE_CODEMASTERS, .sys = SMS_System_SMS },
     // F-1 (E) [!].gg
     { .crc = 0xD0A93E00, .ram = 0x0000, .map = MAPPER_TYPE_SEGA, .sys = SMS_System_GG },
     // F-15 Strike Eagle (U) [!].gg
