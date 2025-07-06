@@ -230,6 +230,7 @@ enum ExtensionType util_get_extension_type(
         { ".sms", ExtensionType_SMS },
         { ".gg", ExtensionType_GG },
         { ".sg", ExtensionType_SG },
+        { ".bin", ExtensionType_BIN },
 
         // [zip]
         { ".zip", ExtensionType_ZIP },

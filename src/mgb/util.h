@@ -36,7 +36,8 @@ enum ExtensionType {
     ExtensionType_SMS   = 1 << 12,
     ExtensionType_GG   = 1 << 13,
     ExtensionType_SG   = 1 << 14,
-    ExtensionType_ROM = ExtensionType_SMS | ExtensionType_GG | ExtensionType_SG,
+    ExtensionType_BIN   = 1 << 15,
+    ExtensionType_ROM = ExtensionType_SMS | ExtensionType_GG | ExtensionType_SG | ExtensionType_BIN,
 
     ExtensionType_REGULAR = ExtensionType_UNK | ExtensionType_ROM |
         ExtensionType_SAVE | ExtensionType_RTC | ExtensionType_STATE |

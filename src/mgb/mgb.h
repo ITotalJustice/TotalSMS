@@ -110,6 +110,11 @@ const char* mgb_rom_path(void);
 struct StateInfo* mgb_load_state_info_file(const char* path, bool load_png);
 void mgb_free_state_info(struct StateInfo* info);
 
+// set to -1 (default) to auto detect.
+void mgb_set_region(int value);
+void mgb_set_console(int value);
+void mgb_set_system(int value);
+
 #ifdef __cplusplus
 }
 #endif

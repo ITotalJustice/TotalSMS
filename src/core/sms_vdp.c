@@ -913,7 +913,8 @@ static void vdp_parse_sg_sprites(struct SMS_Core* sms, int line)
 
     const uint16_t sprite_attribute_base_addr = vdp_get_sprite_attribute_base_addr(sms);
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
-    const int sprite_eof = 208;
+    // https://konamiman.github.io/MSX2-Technical-Handbook/md/Chapter4a.html#sprite-attribute-table
+    const int sprite_eof = 208; // 216 in mode 2
 
     for (uint8_t i = 0; i < 128; i += 4)
     {

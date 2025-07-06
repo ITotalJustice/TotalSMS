@@ -68,6 +68,10 @@ struct mgb
     // uint8_t sram_data[SMS_SAVE_SIZE_MAX];
     // size_t sram_size;
     // bool has_sram;
+
+    int region;
+    int console;
+    int system;
 };
 
 
@@ -315,7 +319,12 @@ static bool loadrom(const struct LoadRomConfig* config)
         system_hint = SMS_System_SG1000;
     }
 
-    if (!SMS_loadromEx(mgb.sms, mgb.rom_data, mgb.rom_size, system_hint, -1, -1))
+    if (mgb.system != -1)
+    {
+        system_hint = mgb.system;
+    }
+
+    if (!SMS_loadromEx(mgb.sms, mgb.rom_data, mgb.rom_size, system_hint, mgb.region, mgb.console))
     {
         mgb_log_err("[MGB] fail to gb load rom\n");
         goto fail;
@@ -798,7 +807,7 @@ static bool patch_rom(const struct LoadRomConfig* config)
     // cart ram. so we dump the ram and then re-load it.
     mgb_save_save_file(NULL);
 
-    if (!SMS_loadromEx(mgb.sms, data, new_size, -1, -1, -1))
+    if (!SMS_loadromEx(mgb.sms, data, new_size, mgb.system, mgb.region, mgb.console))
     {
         goto fail;
     }
@@ -878,7 +887,12 @@ bool mgb_patch_rom_data(const char* path, const uint8_t* data, size_t size)
 bool mgb_init(struct SMS_Core* sms)
 {
     memset(&mgb, 0, sizeof(struct mgb));
+
     mgb.sms = sms;
+    mgb_set_region(-1);
+    mgb_set_console(-1);
+    mgb_set_system(-1);
+
     return true;
 }
 
@@ -1073,12 +1087,29 @@ fail:
 
 void mgb_free_state_info(struct StateInfo* info)
 {
-    if (info) {
-        if (info->png) {
+    if (info)
+    {
+        if (info->png)
+        {
             free(info->png);
         }
 
         memset(info, 0, sizeof(*info));
         free(info);
     }
+}
+
+void mgb_set_region(int value)
+{
+    mgb.region = value;
+}
+
+void mgb_set_console(int value)
+{
+    mgb.console = value;
+}
+
+void mgb_set_system(int value)
+{
+    mgb.system = value;
 }
