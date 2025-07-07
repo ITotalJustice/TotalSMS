@@ -18,6 +18,7 @@ extern "C" {
 
 SMS_API bool SMS_init(struct SMS_Core* sms);
 SMS_API void SMS_quit(struct SMS_Core* sms);
+SMS_API void SMS_reset(struct SMS_Core* sms);
 
 SMS_API bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size);
 SMS_API bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size);

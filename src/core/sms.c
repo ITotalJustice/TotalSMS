@@ -76,6 +76,11 @@ void timeout_event(void* user, unsigned id, unsigned late)
 
 static uint16_t find_rom_header_offset(const uint8_t* data)
 {
+    if (!data)
+    {
+        return 0;
+    }
+
     // loop until we find the magic num
     // the rom header can start at 1 of 3 offsets
     const uint16_t offsets[] =
@@ -255,6 +260,25 @@ static void log_header(const struct SMS_RomHeader* header)
     SMS_log("rom_size: [0x%X] [%s]\n", header->rom_size, valid_rom_size_string[header->rom_size]);
 }
 
+static void setup_cart(struct SMS_CartRom* cart, const uint8_t* rom, size_t size)
+{
+    // save the rom, setup the size and mask
+    if (!rom || size < 0x400)
+    {
+        cart->rom = NULL;
+        cart->rom_size = 0;
+        cart->rom_mask = 1; // avoid division by zero.
+        cart->max_bank_mask = 1;
+    }
+    else
+    {
+        cart->rom = rom;
+        cart->rom_size = size;
+        cart->rom_mask = size / 0x400; // this works because size is always pow2
+        cart->max_bank_mask = size / 0x4000;
+    }
+}
+
 bool SMS_init(struct SMS_Core* sms)
 {
     if (!sms)
@@ -290,6 +314,9 @@ bool SMS_init(struct SMS_Core* sms)
         return false;
     }
 
+    setup_cart(&sms->cart, NULL, 0);
+    setup_cart(&sms->cart_bios, NULL, 0);
+
     return true;
 }
 
@@ -303,7 +330,7 @@ void SMS_quit(struct SMS_Core* sms)
     }
 }
 
-static void SMS_reset(struct SMS_Core* sms)
+void SMS_reset(struct SMS_Core* sms)
 {
     // do NOT reset cart!
     memset(sms->rmap, 0, sizeof(sms->rmap));
@@ -358,12 +385,12 @@ static void SMS_reset(struct SMS_Core* sms)
 bool SMS_has_bios(const struct SMS_Core* sms)
 {
     // bios should be at least 1-page size in size
-    return sms->bios && sms->bios_size >= 1024 && sms->bios_size <= SMS_ROM_SIZE_MAX;
+    return sms->cart_bios.rom && sms->cart_bios.rom_size >= 1024 && sms->cart_bios.rom_size <= SMS_ROM_SIZE_MAX;
 }
 
 bool SMS_has_rom(const struct SMS_Core* sms)
 {
-    return sms->rom != NULL;
+    return sms->cart.rom != NULL;
 }
 
 size_t SMS_cycles_per_frame(const struct SMS_Core* sms)
@@ -388,23 +415,19 @@ double SMS_target_fps_region(enum SMS_Region region)
 
 bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size)
 {
-    sms->bios = bios;
-    sms->bios_size = size;
-
     // todo: hash all known bios to know exactly what bios is being loaded
-    if (!SMS_has_bios(sms))
-    {
-        return false;
-    }
+    setup_cart(&sms->cart_bios, bios, size);
 
-    // todo: impl below
-    // if bios is greater than a page, then it likely has rom builtin
-#if 0
-    if (sms->bios_size > 1024 * 32)
+    if (find_rom_header_offset(bios))
     {
-        SMS_loadrom(sms, bios + 1024 * 0, sms->bios_size - 1024 * 0, -1);
+        SMS_log("bios is sega mapper\n");
+        sms->cart_bios.mapper_type = MAPPER_TYPE_SEGA;
     }
-#endif
+    else
+    {
+        SMS_log("bios set to no mapper\n");
+        sms->cart_bios.mapper_type = MAPPER_TYPE_NONE;
+    }
 
     return true;
 }
@@ -416,10 +439,7 @@ static bool sg_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, in
     SMS_log("[INFO] trying to load sg rom\n");
 
     // save the rom, setup the size and mask
-    sms->rom = rom;
-    sms->rom_size = size;
-    sms->rom_mask = size / 0x400; // this works because size is always pow2
-    sms->cart.max_bank_mask = size / 0x4000;
+    setup_cart(&sms->cart, rom, size);
     sms->crc = SMS_crc32(rom, size);
 
     SMS_log("crc32 0x%08X\n", sms->crc);
@@ -436,10 +456,7 @@ static bool sg_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size, in
 static bool loadrom2(struct SMS_Core* sms, struct RomEntry* entry, const uint8_t* rom, size_t size)
 {
     // save the rom, setup the size and mask
-    sms->rom = rom;
-    sms->rom_size = size;
-    sms->rom_mask = size / 0x400; // this works because size is always pow2
-    sms->cart.max_bank_mask = size / 0x4000;
+    setup_cart(&sms->cart, rom, size);
     sms->crc = entry->crc;
 
     SMS_set_system_type(sms, entry->sys);
@@ -459,9 +476,6 @@ bool SMS_loadrom(struct SMS_Core* sms, const uint8_t* rom, size_t size)
 bool SMS_loadromEx(struct SMS_Core* sms, const uint8_t* rom, size_t size, int system, int region, int console)
 {
     assert(sms);
-    assert(rom);
-    assert(size);
-    assert(sms && rom && size);
 
     SMS_log("[INFO] loadrom called with rom size: 0x%zX\n", size);
 
@@ -480,6 +494,13 @@ bool SMS_loadromEx(struct SMS_Core* sms, const uint8_t* rom, size_t size, int sy
     }
 
     sms->console = console;
+
+    // handle unmapping of the rom.
+    if (!rom || !size)
+    {
+        setup_cart(&sms->cart, NULL, 0);
+        return true;
+    }
 
     struct RomEntry entry = {0};
     const uint32_t crc = SMS_crc32(rom, size);
@@ -527,10 +548,7 @@ bool SMS_loadromEx(struct SMS_Core* sms, const uint8_t* rom, size_t size, int sy
     }
 
     // save the rom, setup the size and mask
-    sms->rom = rom;
-    sms->rom_size = size;
-    sms->rom_mask = size / 0x400; // this works because size is always pow2
-    sms->cart.max_bank_mask = size / 0x4000;
+    setup_cart(&sms->cart, rom, size);
     sms->crc = crc;
 
     SMS_log("crc32 0x%08X\n", sms->crc);
@@ -560,28 +578,28 @@ bool SMS_loadromEx(struct SMS_Core* sms, const uint8_t* rom, size_t size, int sy
 
 bool SMS_loadsave(struct SMS_Core* sms, const uint8_t* data, size_t size)
 {
-    if (!data || !size || size != sizeof(sms->cart.ram))
+    if (!data || !size || size != sizeof(sms->cart_ram.ram))
     {
         return false;
     }
 
-    memcpy(sms->cart.ram, data, size);
+    memcpy(sms->cart_ram.ram, data, size);
     return true;
 }
 
 bool SMS_used_sram(const struct SMS_Core* sms)
 {
-    return sms->cart.sram_used;
+    return sms->cart_ram.used;
 }
 
 bool SMS_is_sram_dirty(struct SMS_Core* sms, bool clear)
 {
-    const bool flag = sms->cart.sram_dirty;
+    const bool flag = sms->cart_ram.dirty;
 
     if (clear)
     {
         // check if sram is mounted, if so, re-enable dirty flag.
-        sms->cart.sram_dirty = mapper_is_sram_mapped(sms);
+        sms->cart_ram.dirty = mapper_is_sram_mapped(sms);
     }
 
     return flag;

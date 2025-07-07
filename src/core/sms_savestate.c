@@ -74,35 +74,19 @@ struct StateVdp
     uint32_t _padding[16];
 };
 
+struct StateMappers
+{
+    uint8_t data[16];
+};
+
 struct StateCart
 {
     uint8_t ram[2][1024 * 16];
-    uint8_t mapper[32];
+    struct StateMappers cart_mapper;
+    struct StateMappers bios_mapper;
     uint32_t sram_used;
     uint8_t gg_regs[8];
     uint32_t _padding[14];
-};
-
-struct StateSegaMapper
-{
-    uint8_t fffc;
-    uint8_t fffd;
-    uint8_t fffe;
-    uint8_t ffff;
-    uint8_t _padding[16];
-};
-
-struct StateCodemastersMapper
-{
-    uint8_t slot[3];
-    uint8_t ram_mapped; // ernie els golf features 8k on cart ram
-    uint8_t _padding[16];
-};
-
-struct StateKoreanMapper
-{
-    uint8_t slot2;
-    uint8_t _padding[16];
 };
 
 struct StateMemoryControlRegister
@@ -143,10 +127,11 @@ struct Rts
 
 enum { STATE_MAGIC = 0x5E6A0535 };
 enum { STATE_VERSION_MAJOR = 2 };
-enum { STATE_VERSION_MINOR = 3 };
+enum { STATE_VERSION_MINOR = 4 };
 enum { STATE_VERSION = (STATE_VERSION_MAJOR << 16) | STATE_VERSION_MINOR };
 
 sms_static_assert(sizeof(struct Rts) == 58764, "state size is broken");
+sms_static_assert(sizeof(struct SMS_Mappers) <= sizeof(struct StateMappers), "state mapper size is broken");
 
 static const struct SMS_StateConfig DEFAULT_CONFIG = {
     .fast = false,
@@ -283,36 +268,11 @@ bool SMS_savestate(const struct SMS_Core* sms, void* data, size_t size, const st
 
     /* ---CART---*/
     {
-        memcpy(rts->cart.ram, sms->cart.ram, sizeof(rts->cart.ram));
-        rts->cart.sram_used = sms->cart.sram_used;
+        memcpy(rts->cart.ram, sms->cart_ram.ram, sizeof(rts->cart.ram));
+        rts->cart.sram_used = sms->cart_ram.used;
         memcpy(rts->cart.gg_regs, sms->port.gg_regs, sizeof(sms->port.gg_regs));
-
-        switch (sms->cart.mapper_type)
-        {
-            case MAPPER_TYPE_SEGA: {
-                struct StateSegaMapper* m = (struct StateSegaMapper*)rts->cart.mapper;
-                m->fffc = sms->cart.mappers.sega.fffc;
-                m->fffd = sms->cart.mappers.sega.fffd;
-                m->fffe = sms->cart.mappers.sega.fffe;
-                m->ffff = sms->cart.mappers.sega.ffff;
-            }   break;
-            case MAPPER_TYPE_CODEMASTERS: {
-                struct StateCodemastersMapper* m = (struct StateCodemastersMapper*)rts->cart.mapper;
-                memcpy(m->slot, sms->cart.mappers.codemasters.slot, sizeof(m->slot));
-                m->ram_mapped = sms->cart.mappers.codemasters.ram_mapped;
-            }   break;
-            case MAPPER_TYPE_KOREAN: {
-                struct StateKoreanMapper* m = (struct StateKoreanMapper*)rts->cart.mapper;
-                m->slot2 = sms->cart.mappers.korean.slot2;
-            }   break;
-
-            case MAPPER_TYPE_NONE:
-            case MAPPER_TYPE_DAHJEE_A:
-            case MAPPER_TYPE_DAHJEE_B:
-            case MAPPER_TYPE_THE_CASTLE:
-            case MAPPER_TYPE_OTHELLO:
-                break;
-        }
+        memcpy(&rts->cart.cart_mapper, &sms->cart.mappers, sizeof(sms->cart.mappers));
+        memcpy(&rts->cart.bios_mapper, &sms->cart_bios.mappers, sizeof(sms->cart_bios.mappers));
     }
 
     /* ---memory_control---*/
@@ -464,38 +424,13 @@ bool SMS_loadstate(struct SMS_Core* sms, const void* data, size_t size, const st
 
     /* ---CART---*/
     {
-        memcpy(sms->cart.ram, rts->cart.ram, sizeof(rts->cart.ram));
-        sms->cart.sram_used = rts->cart.sram_used;
+        memcpy(sms->cart_ram.ram, rts->cart.ram, sizeof(rts->cart.ram));
+        memcpy(&sms->cart.mappers, &rts->cart.cart_mapper, sizeof(sms->cart.mappers));
+        memcpy(&sms->cart_bios.mappers, &rts->cart.bios_mapper, sizeof(sms->cart_bios.mappers));
+        sms->cart_ram.used = rts->cart.sram_used;
 
         if (state_version_atleast(rts, 2, 3)) {
             memcpy(sms->port.gg_regs, rts->cart.gg_regs, sizeof(sms->port.gg_regs));
-        }
-
-        switch (sms->cart.mapper_type)
-        {
-            case MAPPER_TYPE_SEGA: {
-                const struct StateSegaMapper* m = (const struct StateSegaMapper*)rts->cart.mapper;
-                sms->cart.mappers.sega.fffc = m->fffc;
-                sms->cart.mappers.sega.fffd = m->fffd;
-                sms->cart.mappers.sega.fffe = m->fffe;
-                sms->cart.mappers.sega.ffff = m->ffff;
-            }   break;
-            case MAPPER_TYPE_CODEMASTERS: {
-                const struct StateCodemastersMapper* m = (const struct StateCodemastersMapper*)rts->cart.mapper;
-                memcpy(sms->cart.mappers.codemasters.slot, m->slot, sizeof(m->slot));
-                sms->cart.mappers.codemasters.ram_mapped = m->ram_mapped;
-            }   break;
-            case MAPPER_TYPE_KOREAN: {
-                const struct StateKoreanMapper* m = (const struct StateKoreanMapper*)rts->cart.mapper;
-                sms->cart.mappers.korean.slot2 = m->slot2;
-            }   break;
-
-            case MAPPER_TYPE_NONE:
-            case MAPPER_TYPE_DAHJEE_A:
-            case MAPPER_TYPE_DAHJEE_B:
-            case MAPPER_TYPE_THE_CASTLE:
-            case MAPPER_TYPE_OTHELLO:
-                break;
         }
     }
 

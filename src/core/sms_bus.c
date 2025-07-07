@@ -13,86 +13,114 @@
 static const uint8_t READ_UNUSED_BANK[0x400];
 static uint8_t WRITE_UNUSED_BANK[0x400];
 
-static bool sega_mapper_control_rom_write_enable(const struct SMS_Core* sms)
+static bool sega_mapper_control_rom_write_enable(const struct SMS_CartRom* cart)
 {
-    return IS_BIT_SET(sms->cart.mappers.sega.fffc, 7);
+    return IS_BIT_SET(cart->mappers.sega.fffc, 7);
 }
 
-static bool sega_mapper_control_ram_enable_c0000(const struct SMS_Core* sms)
+static bool sega_mapper_control_ram_enable_c0000(const struct SMS_CartRom* cart)
 {
-    return IS_BIT_SET(sms->cart.mappers.sega.fffc, 4);
+    return IS_BIT_SET(cart->mappers.sega.fffc, 4);
 }
 
-static bool sega_mapper_control_ram_enable_80000(const struct SMS_Core* sms)
+static bool sega_mapper_control_ram_enable_80000(const struct SMS_CartRom* cart)
 {
-    return IS_BIT_SET(sms->cart.mappers.sega.fffc, 3);
+    return IS_BIT_SET(cart->mappers.sega.fffc, 3);
 }
 
-static bool sega_mapper_control_ram_bank_select(const struct SMS_Core* sms)
+static bool sega_mapper_control_ram_bank_select(const struct SMS_CartRom* cart)
 {
-    return IS_BIT_SET(sms->cart.mappers.sega.fffc, 2);
+    return IS_BIT_SET(cart->mappers.sega.fffc, 2);
 }
 
-static uint8_t sega_mapper_control_bank_shift(const struct SMS_Core* sms)
+static uint8_t sega_mapper_control_bank_shift(const struct SMS_CartRom* cart)
 {
-    return sms->cart.mappers.sega.fffc & 0x3;
+    return cart->mappers.sega.fffc & 0x3;
 }
 
-static void sega_mapper_update_slot0(struct SMS_Core* sms)
+static bool in_bios_mode(const struct SMS_Core* sms)
 {
-    // if we have bios and is loaded, do not map rom here!
-    if (SMS_has_bios(sms) && !sms->memory_control.bios_rom_disable)
+    return SMS_has_bios(sms) && !sms->memory_control.bios_rom_disable && !SMS_is_system_type_sg(sms);
+}
+
+static size_t rom_page_max(const struct SMS_Core* sms, const struct SMS_CartRom* cart, uint8_t index)
+{
+    return 0x400 * (index % cart->rom_mask);
+}
+
+static void map_rom_page(struct SMS_Core* sms, const struct SMS_CartRom* cart, uint8_t index, size_t addr)
+{
+    if (cart->rom && index < cart->rom_mask)
     {
-        return;
+        // uncomment to play the built in bios game.
+        #if 0
+        if (in_bios_mode(sms))
+        {
+            sms->rmap[index] = cart->rom + addr;
+        }
+        else
+        {
+            sms->rmap[index] = READ_UNUSED_BANK;
+        }
+        #else
+        sms->rmap[index] = cart->rom + addr;
+        #endif
     }
+    else
+    {
+        sms->rmap[index] = READ_UNUSED_BANK;
+    }
+}
 
-    const size_t offset = 0x4000 * sms->cart.mappers.sega.fffd;
+static void sega_mapper_update_slot0(struct SMS_Core* sms, struct SMS_CartRom* cart)
+{
+    const size_t offset = 0x4000 * cart->mappers.sega.fffd;
 
     // this is fixed, never updated!
-    sms->rmap[0x00] = sms->rom;
+    map_rom_page(sms, cart, 0x00, 0x00);
 
     for (size_t i = 1; i < 0x10; i++)
     {
         // only the first 15 banks are saved
-        sms->rmap[i] = sms->rom + offset + (0x400 * i);
+        map_rom_page(sms, cart, i + 0x00, offset + rom_page_max(sms, cart, i));
     }
 }
 
-static void sega_mapper_update_slot1(struct SMS_Core* sms)
+static void sega_mapper_update_slot1(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
-    const size_t offset = 0x4000 * sms->cart.mappers.sega.fffe;
+    const size_t offset = 0x4000 * cart->mappers.sega.fffe;
 
     for (size_t i = 0; i < 0x10; i++)
     {
-        sms->rmap[i + 0x10] = sms->rom + offset + (0x400 * i);
+        map_rom_page(sms, cart, i + 0x10, offset + rom_page_max(sms, cart, i));
     }
 }
 
-static void sega_mapper_update_slot2(struct SMS_Core* sms)
+static void sega_mapper_update_slot2(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
-    const size_t offset = 0x4000 * sms->cart.mappers.sega.ffff;
+    const size_t offset = 0x4000 * cart->mappers.sega.ffff;
 
     for (size_t i = 0; i < 0x10; i++)
     {
-        sms->rmap[i + 0x20] = sms->rom + offset + (0x400 * i);
+        map_rom_page(sms, cart, i + 0x20, offset + rom_page_max(sms, cart, i));
         sms->wmap[i + 0x20] = WRITE_UNUSED_BANK;
     }
 }
 
-static void sega_mapper_update_ram0(struct SMS_Core* sms)
+static void sega_mapper_update_ram0(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
-    sms->cart.sram_used = true;
-    sms->cart.sram_dirty = true;
-    const bool ram_bank_select = sega_mapper_control_ram_bank_select(sms);
+    sms->cart_ram.used = true;
+    sms->cart_ram.dirty = true;
+    const bool ram_bank_select = sega_mapper_control_ram_bank_select(cart);
 
     for (size_t i = 0; i < 0x10; i++)
     {
-        sms->rmap[i + 0x20] = sms->cart.ram[ram_bank_select] + (0x400 * i);
-        sms->wmap[i + 0x20] = sms->cart.ram[ram_bank_select] + (0x400 * i);
+        sms->rmap[i + 0x20] = sms->cart_ram.ram[ram_bank_select] + (0x400 * i);
+        sms->wmap[i + 0x20] = sms->cart_ram.ram[ram_bank_select] + (0x400 * i);
     }
 }
 
-static void setup_mapper_unused_ram(struct SMS_Core* sms)
+static void setup_mapper_unused_ram(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (size_t i = 0; i < ARRAY_SIZE(sms->rmap); i++)
     {
@@ -101,11 +129,11 @@ static void setup_mapper_unused_ram(struct SMS_Core* sms)
     }
 }
 
-static void setup_mapper_none(struct SMS_Core* sms)
+static void setup_mapper_none(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x30; i++)
     {
-        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
+        map_rom_page(sms, cart, i, rom_page_max(sms, cart, i));
     }
 
     // sg only has 1k of ram
@@ -120,17 +148,17 @@ static void setup_mapper_none(struct SMS_Core* sms)
     }
 }
 
-static void init_mapper_sega(struct SMS_Core* sms)
+static void init_mapper_sega(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     // control is reset to zero
-    sms->cart.mappers.sega.fffc = 0;
+    cart->mappers.sega.fffc = 0;
     // default banks
-    sms->cart.mappers.sega.fffd = 0;
-    sms->cart.mappers.sega.fffe = 1;
-    sms->cart.mappers.sega.ffff = 2;
+    cart->mappers.sega.fffd = 0;
+    cart->mappers.sega.fffe = 1;
+    cart->mappers.sega.ffff = 2;
 }
 
-static void setup_mapper_sega(struct SMS_Core* sms)
+static void setup_mapper_sega(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x10; i++)
     {
@@ -138,28 +166,28 @@ static void setup_mapper_sega(struct SMS_Core* sms)
         sms->wmap[0x30 + i] = sms->system_ram + (0x400 * (i & 0x7));
     }
 
-    sega_mapper_update_slot0(sms);
-    sega_mapper_update_slot1(sms);
-    sega_mapper_update_slot2(sms);
+    sega_mapper_update_slot0(sms, cart);
+    sega_mapper_update_slot1(sms, cart);
+    sega_mapper_update_slot2(sms, cart);
 }
 
-static void codemaster_mapper_update_slot(struct SMS_Core* sms, const uint8_t slot, const uint8_t value)
+static void codemaster_mapper_update_slot(struct SMS_Core* sms, struct SMS_CartRom* cart, const uint8_t slot, const uint8_t value)
 {
-    sms->cart.mappers.codemasters.slot[slot] = value % sms->cart.max_bank_mask;
-    const size_t offset = 0x4000 * sms->cart.mappers.codemasters.slot[slot];
+    cart->mappers.codemasters.slot[slot] = value % cart->max_bank_mask;
+    const size_t offset = 0x4000 * cart->mappers.codemasters.slot[slot];
 
     for (size_t i = 0; i < 0x10; i++)
     {
-        sms->rmap[i + (0x10 * slot)] = sms->rom + offset + (0x400 * i);
+        map_rom_page(sms, cart, i + (0x10 * slot), offset + rom_page_max(sms, cart, i));
     }
 }
 
-static void codemaster_mapper_update_slot0(struct SMS_Core* sms, const uint8_t value)
+static void codemaster_mapper_update_slot0(struct SMS_Core* sms, struct SMS_CartRom* cart, const uint8_t value)
 {
-    codemaster_mapper_update_slot(sms, 0, value);
+    codemaster_mapper_update_slot(sms, cart, 0, value);
 }
 
-static void codemaster_mapper_update_slot1(struct SMS_Core* sms, const uint8_t value)
+static void codemaster_mapper_update_slot1(struct SMS_Core* sms, struct SMS_CartRom* cart, const uint8_t value)
 {
     // for codemaster games that feature on-cart ram
     // writing to ctrl-1 with bit7 set maps ram 0xA000-0xC000
@@ -167,17 +195,17 @@ static void codemaster_mapper_update_slot1(struct SMS_Core* sms, const uint8_t v
     {
         for (size_t i = 0; i < 0x8; i++)
         {
-            sms->rmap[i + 0x28] = sms->cart.ram[0] + (0x400 * i);
-            sms->wmap[i + 0x28] = sms->cart.ram[0] + (0x400 * i);
+            sms->rmap[i + 0x28] = sms->cart_ram.ram[0] + (0x400 * i);
+            sms->wmap[i + 0x28] = sms->cart_ram.ram[0] + (0x400 * i);
         }
 
-        sms->cart.mappers.codemasters.ram_mapped = true;
+        cart->mappers.codemasters.ram_mapped = true;
         return;
     }
     // was ram previously mapped?
-    else if (sms->cart.mappers.codemasters.ram_mapped)
+    else if (cart->mappers.codemasters.ram_mapped)
     {
-        sms->cart.mappers.codemasters.ram_mapped = false;
+        cart->mappers.codemasters.ram_mapped = false;
 
         // unmap ram and re-map the rom
         for (size_t i = 0; i < 0x8; i++)
@@ -185,41 +213,41 @@ static void codemaster_mapper_update_slot1(struct SMS_Core* sms, const uint8_t v
             sms->wmap[i + 0x28] = WRITE_UNUSED_BANK;
         }
 
-        codemaster_mapper_update_slot(sms, 2, sms->cart.mappers.codemasters.slot[2]);
+        codemaster_mapper_update_slot(sms, cart, 2, cart->mappers.codemasters.slot[2]);
     }
 
-    codemaster_mapper_update_slot(sms, 1, value);
+    codemaster_mapper_update_slot(sms, cart, 1, value);
 }
 
-static void codemaster_mapper_update_slot2(struct SMS_Core* sms, const uint8_t value)
+static void codemaster_mapper_update_slot2(struct SMS_Core* sms, struct SMS_CartRom* cart, const uint8_t value)
 {
     // NOTE: if ram is mapped (ernie elfs golf), then does writes to this
     // reg remap rom? or are they ignored?
-    if (sms->cart.mappers.codemasters.ram_mapped)
+    if (cart->mappers.codemasters.ram_mapped)
     {
-        sms->cart.mappers.codemasters.slot[2] = value % sms->cart.max_bank_mask;
-        const size_t offset = 0x4000 * sms->cart.mappers.codemasters.slot[2];
+        cart->mappers.codemasters.slot[2] = value % cart->max_bank_mask;
+        const size_t offset = 0x4000 * cart->mappers.codemasters.slot[2];
 
         for (size_t i = 0; i < 0x8; i++)
         {
-            sms->rmap[i + 0x20] = sms->rom + offset + (0x400 * i);
+            map_rom_page(sms, cart, i + 0x20, offset + (0x400 * i));
         }
     }
     else
     {
-        codemaster_mapper_update_slot(sms, 2, value);
+        codemaster_mapper_update_slot(sms, cart, 2, value);
     }
 }
 
-static void init_mapper_codemaster(struct SMS_Core* sms)
+static void init_mapper_codemaster(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
-    sms->cart.mappers.codemasters.slot[0] = 0;
-    sms->cart.mappers.codemasters.slot[1] = 1;
-    sms->cart.mappers.codemasters.slot[2] = 2;
-    sms->cart.mappers.codemasters.ram_mapped = false;
+    cart->mappers.codemasters.slot[0] = 0;
+    cart->mappers.codemasters.slot[1] = 1;
+    cart->mappers.codemasters.slot[2] = 2;
+    cart->mappers.codemasters.ram_mapped = false;
 }
 
-static void setup_mapper_codemaster(struct SMS_Core* sms)
+static void setup_mapper_codemaster(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x10; i++)
     {
@@ -227,32 +255,32 @@ static void setup_mapper_codemaster(struct SMS_Core* sms)
         sms->wmap[0x30 + i] = sms->system_ram + (0x400 * (i & 0x7));
     }
 
-    codemaster_mapper_update_slot0(sms, sms->cart.mappers.codemasters.slot[0]);
-    codemaster_mapper_update_slot1(sms, sms->cart.mappers.codemasters.slot[1]);
-    codemaster_mapper_update_slot2(sms, sms->cart.mappers.codemasters.slot[2]);
+    codemaster_mapper_update_slot0(sms, cart, cart->mappers.codemasters.slot[0]);
+    codemaster_mapper_update_slot1(sms, cart, cart->mappers.codemasters.slot[1]);
+    codemaster_mapper_update_slot2(sms, cart, cart->mappers.codemasters.slot[2]);
 }
 
-static void korean_mapper_update_slot2(struct SMS_Core* sms, const uint8_t value)
+static void korean_mapper_update_slot2(struct SMS_Core* sms, struct SMS_CartRom* cart, const uint8_t value)
 {
-    sms->cart.mappers.korean.slot2 = value % sms->cart.max_bank_mask;
-    const size_t offset = 0x4000 * sms->cart.mappers.korean.slot2;
+    cart->mappers.korean.slot2 = value % cart->max_bank_mask;
+    const size_t offset = 0x4000 * cart->mappers.korean.slot2;
 
     for (size_t i = 0; i < 0x10; i++)
     {
-        sms->rmap[i + 0x20] = sms->rom + offset + (0x400 * i);
+        map_rom_page(sms, cart, i + 0x20, offset + (0x400 * i));
     }
 }
 
-static void init_mapper_korean(struct SMS_Core* sms)
+static void init_mapper_korean(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
-    sms->cart.mappers.korean.slot2 = 2;
+    cart->mappers.korean.slot2 = 2;
 }
 
-static void setup_mapper_korean(struct SMS_Core* sms)
+static void setup_mapper_korean(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x20; i++)
     {
-        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
+        map_rom_page(sms, cart, i, rom_page_max(sms, cart, i));
     }
 
     for (int i = 0; i < 0x10; i++)
@@ -261,21 +289,21 @@ static void setup_mapper_korean(struct SMS_Core* sms)
         sms->wmap[0x30 + i] = sms->system_ram + (0x400 * (i & 0x7));
     }
 
-    korean_mapper_update_slot2(sms, sms->cart.mappers.korean.slot2);
+    korean_mapper_update_slot2(sms, cart, cart->mappers.korean.slot2);
 }
 
-static void setup_mapper_dahjee_a(struct SMS_Core* sms)
+static void setup_mapper_dahjee_a(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x30; i++)
     {
-        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
+        map_rom_page(sms, cart, i, rom_page_max(sms, cart, i));
     }
 
     // has 8K mapped at 0x2000-0x3FFF
     for (int i = 0; i < 0x8; i++)
     {
-        sms->rmap[0x8 + i] = sms->cart.ram[0] + (0x400 * i);
-        sms->wmap[0x8 + i] = sms->cart.ram[0] + (0x400 * i);
+        sms->rmap[0x8 + i] = sms->cart_ram.ram[0] + (0x400 * i);
+        sms->wmap[0x8 + i] = sms->cart_ram.ram[0] + (0x400 * i);
     }
 
     // normal 1K mapping 0xC000-0xFFFF
@@ -286,33 +314,33 @@ static void setup_mapper_dahjee_a(struct SMS_Core* sms)
     }
 }
 
-static void setup_mapper_dahjee_b(struct SMS_Core* sms)
+static void setup_mapper_dahjee_b(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x30; i++)
     {
-        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
+        map_rom_page(sms, cart, i, rom_page_max(sms, cart, i));
     }
 
     // 8K ram mapped 0xC000-0xFFFF
     for (int i = 0; i < 0x10; i++)
     {
-        sms->rmap[0x30 + i] = sms->cart.ram[0] + (0x400 * (i&7));
-        sms->wmap[0x30 + i] = sms->cart.ram[0] + (0x400 * (i&7));
+        sms->rmap[0x30 + i] = sms->cart_ram.ram[0] + (0x400 * (i&7));
+        sms->wmap[0x30 + i] = sms->cart_ram.ram[0] + (0x400 * (i&7));
     }
 }
 
-static void setup_mapper_castle(struct SMS_Core* sms)
+static void setup_mapper_castle(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x20; i++)
     {
-        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
+        map_rom_page(sms, cart, i, rom_page_max(sms, cart, i));
     }
 
     // 8k ram mapping 0x8000-0xBFFF
     for (int i = 0; i < 0x10; i++)
     {
-        sms->rmap[0x20 + i] = sms->cart.ram[0] + (0x400 * (i&7));
-        sms->wmap[0x20 + i] = sms->cart.ram[0] + (0x400 * (i&7));
+        sms->rmap[0x20 + i] = sms->cart_ram.ram[0] + (0x400 * (i&7));
+        sms->wmap[0x20 + i] = sms->cart_ram.ram[0] + (0x400 * (i&7));
     }
 
     // normal 1k mapping 0xC000-0xFFFF
@@ -323,61 +351,61 @@ static void setup_mapper_castle(struct SMS_Core* sms)
     }
 }
 
-static void setup_mapper_othello(struct SMS_Core* sms)
+static void setup_mapper_othello(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     for (int i = 0; i < 0x20; i++)
     {
-        sms->rmap[i] = sms->rom + 0x400 * (i % sms->rom_mask);
+        map_rom_page(sms, cart, i, rom_page_max(sms, cart, i));
     }
 
     // 2K ram mapped 0x8000-0xFFFF
     for (int i = 0; i < 0x20; i++)
     {
-        sms->rmap[0x20 + i] = sms->cart.ram[0] + (0x400 * (i & 1));
-        sms->wmap[0x20 + i] = sms->cart.ram[0] + (0x400 * (i & 1));
+        sms->rmap[0x20 + i] = sms->cart_ram.ram[0] + (0x400 * (i & 1));
+        sms->wmap[0x20 + i] = sms->cart_ram.ram[0] + (0x400 * (i & 1));
     }
 }
 
-static void sega_mapper_fffx_write(struct SMS_Core* sms, const uint16_t addr, const uint8_t value)
+static void sega_mapper_fffx_write(struct SMS_Core* sms, struct SMS_CartRom* cart, const uint16_t addr, const uint8_t value)
 {
-    assert(sms->cart.mapper_type == MAPPER_TYPE_SEGA && "wrong mapper, how did we get here?!?");
+    assert(cart->mapper_type == MAPPER_TYPE_SEGA && "wrong mapper, how did we get here?!?");
 
     switch (addr)
     {
         case 0xFFFC: // Cartridge RAM mapper control
-            sms->cart.mappers.sega.fffc = value;
+            cart->mappers.sega.fffc = value;
             // TODO: mapping at 0xC000
-            // assert(!sms->cart.mappers.sega.fffc.rom_write_enable && "rom write enable!");
-            assert(!sega_mapper_control_ram_enable_c0000(sms) && "unimp ram_enable_c0000");
-            assert(!sega_mapper_control_bank_shift(sms) && "unimp bank_shift");
+            // assert(!cart->mappers.sega.fffc.rom_write_enable && "rom write enable!");
+            assert(!sega_mapper_control_ram_enable_c0000(cart) && "unimp ram_enable_c0000");
+            assert(!sega_mapper_control_bank_shift(cart) && "unimp bank_shift");
 
-            if (sega_mapper_control_ram_enable_80000(sms))
+            if (sega_mapper_control_ram_enable_80000(cart))
             {
-                sega_mapper_update_ram0(sms);
+                sega_mapper_update_ram0(sms, cart);
                 SMS_log("game is mapping sram to rom region 0x8000!\n");
             }
             else
             {
                 // unamp ram
-                sega_mapper_update_slot2(sms);
+                sega_mapper_update_slot2(sms, cart);
             }
             break;
 
         case 0xFFFD: // Mapper slot 0 control
-            sms->cart.mappers.sega.fffd = value % sms->cart.max_bank_mask;
-            sega_mapper_update_slot0(sms);
+            cart->mappers.sega.fffd = value % cart->max_bank_mask;
+            sega_mapper_update_slot0(sms, cart);
             break;
 
         case 0xFFFE: // Mapper slot 1 control
-            sms->cart.mappers.sega.fffe = value % sms->cart.max_bank_mask;
-            sega_mapper_update_slot1(sms);
+            cart->mappers.sega.fffe = value % cart->max_bank_mask;
+            sega_mapper_update_slot1(sms, cart);
             break;
 
         case 0xFFFF: // Mapper slot 2 control
-            sms->cart.mappers.sega.ffff = value % sms->cart.max_bank_mask;
-            if (sega_mapper_control_ram_enable_80000(sms) == false)
+            cart->mappers.sega.ffff = value % cart->max_bank_mask;
+            if (sega_mapper_control_ram_enable_80000(cart) == false)
             {
-                sega_mapper_update_slot2(sms);
+                sega_mapper_update_slot2(sms, cart);
             }
             break;
     }
@@ -385,13 +413,15 @@ static void sega_mapper_fffx_write(struct SMS_Core* sms, const uint16_t addr, co
 
 static void mapper_write(struct SMS_Core* sms, const uint16_t addr, const uint8_t value)
 {
+    struct SMS_CartRom* cart = sms->cart_selected;
+
     // specific mapper writes
-    switch (sms->cart.mapper_type)
+    switch (cart->mapper_type)
     {
         case MAPPER_TYPE_SEGA:
             if UNLIKELY(addr >= 0xFFFC)
             {
-                sega_mapper_fffx_write(sms, addr, value);
+                sega_mapper_fffx_write(sms, cart, addr, value);
             }
             break;
 
@@ -400,21 +430,21 @@ static void mapper_write(struct SMS_Core* sms, const uint16_t addr, const uint8_
             if UNLIKELY(addr <= 0x3FFF)
             {
                 assert(!(addr & 0xFFF) && "codemaster ctrl mirror used!");
-                codemaster_mapper_update_slot0(sms, value);
+                codemaster_mapper_update_slot0(sms, cart, value);
                 return;
             }
             else if UNLIKELY(addr >= 0x4000 && addr <= 0x7FFF)
             {
                 assert(!(addr & 0xFFF) && "codemaster ctrl mirror used!");
-                codemaster_mapper_update_slot1(sms, value);
+                codemaster_mapper_update_slot1(sms, cart, value);
                 return;
             }
             else if UNLIKELY(addr >= 0x8000 && addr <= 0xBFFF)
             {
-                if (!sms->cart.mappers.codemasters.ram_mapped || addr <= 0x9FFF)
+                if (!cart->mappers.codemasters.ram_mapped || addr <= 0x9FFF)
                 {
                     assert(!(addr & 0xFFF) && "codemaster ctrl mirror used!");
-                    codemaster_mapper_update_slot2(sms, value);
+                    codemaster_mapper_update_slot2(sms, cart, value);
                     return;
                 }
             }
@@ -424,7 +454,7 @@ static void mapper_write(struct SMS_Core* sms, const uint16_t addr, const uint8_
         case MAPPER_TYPE_KOREAN:
             if UNLIKELY(addr == 0xA000)
             {
-                korean_mapper_update_slot2(sms, value);
+                korean_mapper_update_slot2(sms, cart, value);
                 return;
             }
             break;
@@ -454,7 +484,7 @@ static void IO_memory_control_write(struct SMS_Core* sms, const uint8_t value)
     if (SMS_has_bios(sms) && old.bios_rom_disable != sms->memory_control.bios_rom_disable)
     {
         // assert(!sms->memory_control.bios_rom_disable && "bios got remapped, this is impossible!");
-        // SMS_log("bios unmapped\n");
+        SMS_log("\tbios unmapped\n");
         mapper_update(sms);
     }
 
@@ -696,104 +726,102 @@ static void IO_gamegear_write(struct SMS_Core* sms, const uint8_t addr, const ui
     }
 }
 
-void mapper_update(struct SMS_Core* sms)
+static void mapper_update_internal(struct SMS_Core* sms, struct SMS_CartRom* cart)
 {
     // sets all banks to point to unused_bank[0x400]
-    setup_mapper_unused_ram(sms);
+    setup_mapper_unused_ram(sms, cart);
 
-    switch (sms->cart.mapper_type)
+    switch (cart->mapper_type)
     {
         case MAPPER_TYPE_SEGA:
-            setup_mapper_sega(sms);
+            setup_mapper_sega(sms, cart);
             break;
 
         case MAPPER_TYPE_CODEMASTERS:
-            setup_mapper_codemaster(sms);
+            setup_mapper_codemaster(sms, cart);
             break;
 
         case MAPPER_TYPE_KOREAN:
-            setup_mapper_korean(sms);
+            setup_mapper_korean(sms, cart);
             break;
 
         case MAPPER_TYPE_NONE:
-            setup_mapper_none(sms);
+            setup_mapper_none(sms, cart);
             break;
 
         case MAPPER_TYPE_DAHJEE_A:
-            setup_mapper_dahjee_a(sms);
+            setup_mapper_dahjee_a(sms, cart);
             break;
 
         case MAPPER_TYPE_DAHJEE_B:
-            setup_mapper_dahjee_b(sms);
+            setup_mapper_dahjee_b(sms, cart);
             break;
 
         case MAPPER_TYPE_THE_CASTLE:
-            setup_mapper_castle(sms);
+            setup_mapper_castle(sms, cart);
             break;
 
         case MAPPER_TYPE_OTHELLO:
-            setup_mapper_othello(sms);
+            setup_mapper_othello(sms, cart);
             break;
     }
+}
 
-    // map the bios is enabled (if we have it)
-    if (!sms->memory_control.bios_rom_disable)
+void mapper_update(struct SMS_Core* sms)
+{
+    if (in_bios_mode(sms))
     {
-        assert(SMS_has_bios(sms) && "bios was mapped, but we dont have it!");
+        sms->cart_selected = &sms->cart_bios;
+    }
+    else
+    {
+        sms->cart_selected = &sms->cart;
+    }
 
-        if (SMS_has_bios(sms))
-        {
-            // usually 8 (8kib)
-            const size_t map_max = SMS_MIN(ARRAY_SIZE(sms->rmap), sms->bios_size / 0x400);
+    mapper_update_internal(sms, sms->cart_selected);
+}
 
-            for (size_t i = 0; i < map_max; i++)
-            {
-                sms->rmap[i] = sms->bios + (0x400 * i);
-            }
+void mapper_init_internal(struct SMS_Core* sms, struct SMS_CartRom* cart)
+{
+    memset(&cart->mappers, 0, sizeof(cart->mappers));
 
-            // not really needed, but just in case
-            for (size_t i = map_max; i < 0x10; i++)
-            {
-                sms->rmap[i] = sms->rom + 0x400 * i;
-            }
-        }
+    switch (cart->mapper_type)
+    {
+        case MAPPER_TYPE_SEGA:
+            init_mapper_sega(sms, cart);
+            break;
+
+        case MAPPER_TYPE_CODEMASTERS:
+            init_mapper_codemaster(sms, cart);
+            break;
+
+        case MAPPER_TYPE_KOREAN:
+            init_mapper_korean(sms, cart);
+            break;
+
+        case MAPPER_TYPE_NONE:
+        case MAPPER_TYPE_DAHJEE_A:
+        case MAPPER_TYPE_DAHJEE_B:
+        case MAPPER_TYPE_THE_CASTLE:
+        case MAPPER_TYPE_OTHELLO:
+            break;
     }
 }
 
 void mapper_init(struct SMS_Core* sms)
 {
-    memset(&sms->cart.mappers, 0, sizeof(sms->cart.mappers));
-    memset(sms->cart.ram, 0, sizeof(sms->cart.ram));
-    sms->cart.sram_used = false;
+    memset(sms->cart_ram.ram, 0, sizeof(sms->cart_ram.ram));
+    sms->cart_ram.used = false;
 
-    switch (sms->cart.mapper_type)
-    {
-        case MAPPER_TYPE_SEGA:
-            init_mapper_sega(sms);
-            break;
-
-        case MAPPER_TYPE_CODEMASTERS:
-            init_mapper_codemaster(sms);
-            break;
-
-        case MAPPER_TYPE_KOREAN:
-            init_mapper_korean(sms);
-            break;
-
-        case MAPPER_TYPE_NONE:
-        case MAPPER_TYPE_DAHJEE_A:
-        case MAPPER_TYPE_DAHJEE_B:
-        case MAPPER_TYPE_THE_CASTLE:
-        case MAPPER_TYPE_OTHELLO:
-            break;
-    }
+    mapper_init_internal(sms, &sms->cart);
+    mapper_init_internal(sms, &sms->cart_bios);
 
     mapper_update(sms);
 }
 
 bool mapper_is_sram_mapped(const struct SMS_Core* sms)
 {
-    return sms->cart.mapper_type == MAPPER_TYPE_SEGA && sega_mapper_control_ram_enable_80000(sms);
+    return sms->cart_selected && sms->cart_selected->mapper_type == MAPPER_TYPE_SEGA && sega_mapper_control_ram_enable_80000(sms->cart_selected);
 }
 
 uint8_t SMS_read8(struct SMS_Core* sms, const uint16_t addr)

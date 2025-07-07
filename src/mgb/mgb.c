@@ -138,7 +138,7 @@ static void loadsave(void)
             // we allow for bigger sizes because it might be an vba save
             if (ifile_size(file) == save_size)
             {
-                if (ifile_read(file, mgb.sms->cart.ram, save_size))
+                if (ifile_read(file, mgb.sms->cart_ram.ram, save_size))
                 {
                     if (mgb.on_file_cb)
                     {
@@ -443,7 +443,7 @@ bool mgb_save_save_file(const char* path)
             if (file)
             {
                 const size_t save_size = SMS_SRAM_SIZE_MAX;
-                const bool result = ifile_write(file, mgb.sms->cart.ram, save_size);
+                const bool result = ifile_write(file, mgb.sms->cart_ram.ram, save_size);
                 ifile_close(file);
 
                 if (result)

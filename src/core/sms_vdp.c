@@ -365,7 +365,6 @@ static bool vdp_is_display_active(const struct SMS_Core* sms)
     return vdp_is_display_active_vcount(sms, VDP.vcount);
 }
 
-#ifndef SMS_PIXEL_WIDTH
 static enum VdpScanlineRenderType get_scanline_type(const struct SMS_Core* sms)
 {
     switch (sms->bpp)
@@ -388,6 +387,7 @@ static enum VdpScanlineRenderType get_scanline_type(const struct SMS_Core* sms)
     return -1;
 }
 
+#ifndef SMS_PIXEL_WIDTH
 static void write_scanline_to_frame(struct SMS_Core* sms, const pixel_width_t* scanline, const uint8_t y)
 {
     switch (get_scanline_type(sms))
@@ -1288,16 +1288,16 @@ bool vdp_has_interrupt(const struct SMS_Core* sms)
 
 static void vdp_render_line(struct SMS_Core* sms)
 {
-    // only render if display is enabled
-    if (!vdp_is_display_enabled(sms))
-    {
-        return;
-    }
-
     // exit early if we have no pixels (this will break games that need sprite overflow and collision)
     // todo: still render spirtes as far as detection even with
     // the screen disabled!
     if (!sms->pixels || sms->skip_frame)
+    {
+        return;
+    }
+
+    // check if vcount is in bounds.
+    if (!vdp_is_display_active(sms))
     {
         return;
     }
@@ -1314,74 +1314,96 @@ static void vdp_render_line(struct SMS_Core* sms)
         pixel_width_t* scanline = (pixel_width_t*)sms->pixels + (VDP.vcount * sms->stride);
     #endif
 
-    const bool m1 = IS_BIT_SET(VDP.registers[1], 4);
-    const bool m2 = IS_BIT_SET(VDP.registers[0], 1);
-    const bool m3 = IS_BIT_SET(VDP.registers[1], 3);
-    const bool m4 = IS_BIT_SET(VDP.registers[0], 2) && !SMS_is_system_type_sg(sms);
+    // only render if display is enabled.
+    if (vdp_is_display_enabled(sms))
+    {
+        vdp_update_palette(sms);
 
-    if (!m4 && !m3 && !m2 && !m1) // Graphic I
-    {
-        vdp_mode1_render_background(sms, scanline);
-        vdp_mode1_render_sprites(sms, scanline);
+        const bool m1 = IS_BIT_SET(VDP.registers[1], 4);
+        const bool m2 = IS_BIT_SET(VDP.registers[0], 1);
+        const bool m3 = IS_BIT_SET(VDP.registers[1], 3);
+        const bool m4 = IS_BIT_SET(VDP.registers[0], 2) && !SMS_is_system_type_sg(sms);
+
+        if (!m4 && !m3 && !m2 && !m1) // Graphic I
+        {
+            vdp_mode1_render_background(sms, scanline);
+            vdp_mode1_render_sprites(sms, scanline);
+        }
+        else if (!m4 && !m3 && !m2 && m1) // Text
+        {
+        }
+        else if (!m4 && !m3 && m2 && !m1) // Graphic II
+        {
+            vdp_mode2_render_background(sms, scanline);
+            vdp_mode1_render_sprites(sms, scanline);
+        }
+        else if (!m4 && !m3 && m2 && m1) // Mode 1+2
+        {
+        }
+        else if (!m4 && m3 && !m2 && !m1) // Mulicolor
+        {
+        }
+        else if (!m4 && m3 && !m2 && m1) // Mode 1+3
+        {
+        }
+        else if (!m4 && m3 && m2 && !m1) // Mode 2+3
+        {
+        }
+        else if (!m4 && m3 && m2 && m1) // Mode 1+2+3
+        {
+        }
+        else if (m4 && !m3 && !m2 && !m1) // Mode 4
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
+        else if (m4 && !m3 && !m2 && m1) // Invalid text mode
+        {
+        }
+        else if (m4 && !m3 && m2 && !m1) // Mode 4
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
+        else if (m4 && !m3 && m2 && m1) // Mode 4 (224-line display)
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
+        else if (m4 && m3 && !m2 && !m1) // Mode 4
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
+        else if (m4 && m3 && !m2 && m1) // Invalid text mode
+        {
+        }
+        else if (m4 && m3 && m2 && !m1) // Mode 4 (240-line display)
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
+        else if (m4 && m3 && m2 && m1) // Mode 4
+        {
+            vdp_render_background(sms, scanline, &prio);
+            vdp_render_sprites(sms, scanline, &prio);
+        }
     }
-    else if (!m4 && !m3 && !m2 && m1) // Text
+    else
     {
-    }
-    else if (!m4 && !m3 && m2 && !m1) // Graphic II
-    {
-        vdp_mode2_render_background(sms, scanline);
-        vdp_mode1_render_sprites(sms, scanline);
-    }
-    else if (!m4 && !m3 && m2 && m1) // Mode 1+2
-    {
-    }
-    else if (!m4 && m3 && !m2 && !m1) // Mulicolor
-    {
-    }
-    else if (!m4 && m3 && !m2 && m1) // Mode 1+3
-    {
-    }
-    else if (!m4 && m3 && m2 && !m1) // Mode 2+3
-    {
-    }
-    else if (!m4 && m3 && m2 && m1) // Mode 1+2+3
-    {
-    }
-    else if (m4 && !m3 && !m2 && !m1) // Mode 4
-    {
-        vdp_render_background(sms, scanline, &prio);
-        vdp_render_sprites(sms, scanline, &prio);
-    }
-    else if (m4 && !m3 && !m2 && m1) // Invalid text mode
-    {
-    }
-    else if (m4 && !m3 && m2 && !m1) // Mode 4
-    {
-        vdp_render_background(sms, scanline, &prio);
-        vdp_render_sprites(sms, scanline, &prio);
-    }
-    else if (m4 && !m3 && m2 && m1) // Mode 4 (224-line display)
-    {
-        vdp_render_background(sms, scanline, &prio);
-        vdp_render_sprites(sms, scanline, &prio);
-    }
-    else if (m4 && m3 && !m2 && !m1) // Mode 4
-    {
-        vdp_render_background(sms, scanline, &prio);
-        vdp_render_sprites(sms, scanline, &prio);
-    }
-    else if (m4 && m3 && !m2 && m1) // Invalid text mode
-    {
-    }
-    else if (m4 && m3 && m2 && !m1) // Mode 4 (240-line display)
-    {
-        vdp_render_background(sms, scanline, &prio);
-        vdp_render_sprites(sms, scanline, &prio);
-    }
-    else if (m4 && m3 && m2 && m1) // Mode 4
-    {
-        vdp_render_background(sms, scanline, &prio);
-        vdp_render_sprites(sms, scanline, &prio);
+        // screen is blanked, memset the buffer.
+        // todo: should this be the overscan colour?
+        #if 0
+        const uint32_t colour = sms->colour_callback(sms->userdata, 0, 0, 0);
+        #else
+        vdp_update_palette(sms);
+        const uint32_t colour = vdp_get_overscan_colour(sms);
+        #endif
+
+        for (int i = 0; i < SMS_SCREEN_WIDTH; i++)
+        {
+            scanline[i] = colour;
+        }
     }
 
     #ifndef SMS_PIXEL_WIDTH
@@ -1396,12 +1418,7 @@ static void vdp_render_line(struct SMS_Core* sms)
 static void on_active_event(struct SMS_Core* sms)
 {
     VDP.state = VdpState_BLANKING;
-
-    if (vdp_is_display_active(sms) && vdp_is_display_enabled(sms))
-    {
-        vdp_update_palette(sms);
-        vdp_render_line(sms);
-    }
+    vdp_render_line(sms);
 
     // calculate the next line
     const int line = (VDP.vcount + 1) % VDP_VCOUNT_MAX[sms->region];

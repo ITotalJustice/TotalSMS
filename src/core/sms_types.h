@@ -164,7 +164,7 @@ struct Z80
 
 enum SMS_MapperType
 {
-    MAPPER_TYPE_SEGA, // nomal sega mapper (can have sram)
+    MAPPER_TYPE_SEGA, // normal sega mapper (can have sram)
     MAPPER_TYPE_CODEMASTERS,
     MAPPER_TYPE_KOREAN,
     MAPPER_TYPE_NONE, // 8K - 48K
@@ -199,23 +199,30 @@ struct SMS_KoreanMapper
     uint8_t slot2;
 };
 
-struct SMS_Cart
+struct SMS_Mappers
 {
+    struct SMS_SegaMapper sega;
+    struct SMS_CodemastersMapper codemasters;
+    struct SMS_KoreanMapper korean;
+};
+
+struct SMS_CartRom
+{
+    const uint8_t* rom;
+    size_t rom_size;
+    uint32_t rom_mask;
+
     enum SMS_MapperType mapper_type;
-
-    union
-    {
-        struct SMS_SegaMapper sega;
-        struct SMS_CodemastersMapper codemasters;
-        struct SMS_KoreanMapper korean;
-    } mappers;
-
-    // some games have 8-16-32KiB ram
-    uint8_t ram[2][1024 * 16];
-
+    struct SMS_Mappers mappers;
     uint8_t max_bank_mask;
-    bool sram_used; // set when game uses sram at any point
-    bool sram_dirty; // set whilst sram is mapped.
+};
+
+// some games have 8-16-32KiB ram
+struct SMS_CartRam
+{
+    uint8_t ram[2][1024 * 16];
+    bool used; // set when game uses sram at any point.
+    bool dirty; // set whilst sram is mapped.
 };
 
 struct SMS_RomHeader
@@ -397,7 +404,10 @@ struct SMS_Core
     struct Z80 cpu;
     struct SMS_Vdp vdp;
     Sn76489* psg;
-    struct SMS_Cart cart;
+    struct SMS_CartRom* cart_selected;
+    struct SMS_CartRom cart;
+    struct SMS_CartRom cart_bios;
+    struct SMS_CartRam cart_ram;
     struct SMS_Ports port;
     struct SMS_MemoryControlRegister memory_control;
     uint8_t system_ram[0x2000];
@@ -406,13 +416,6 @@ struct SMS_Core
     enum SMS_System system;
     enum SMS_Region region;
     enum SMS_Console console;
-
-    const uint8_t* rom;
-    size_t rom_size;
-    uint32_t rom_mask;
-
-    const uint8_t* bios;
-    size_t bios_size;
 
     void* pixels;
     uint16_t stride;
