@@ -4,7 +4,7 @@ include(FetchContent)
 
 FetchContent_Declare(patch
     GIT_REPOSITORY https://github.com/ITotalJustice/libpatch.git
-    GIT_TAG        v1.1.0
+    GIT_TAG        24df63e
 )
 
 FetchContent_MakeAvailable(patch)
