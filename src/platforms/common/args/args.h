@@ -47,7 +47,11 @@ typedef enum ArgsResult {
   // returned when finished looping through argv.
   ArgsResult_DONE = 1,
   // trailing value found at the end of args.
-  ArgsResult_EXTRA_ARGS = 2,
+  ArgsResult_NOT_ARGS_END = 2,
+  // non-arg found at the start
+  ArgsResult_NOT_ARGS_START = 3,
+  // non-arg found in the middle
+  ArgsResult_NOT_ARGS_MIDDLE = 4,
 } ArgsResult;
 
 typedef struct ArgsMeta {

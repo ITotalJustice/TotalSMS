@@ -40,28 +40,28 @@ static const char* const region_code_string[0x10] =
     [0x7] = "GG International",
 };
 
-// these values was taken for sms power docs
-static const size_t CPU_CYCLES[2] = {
-    [SMS_Region_NTSC] = 3579545,
-    [SMS_Region_PAL] = 3546893,
-};
-
 static const size_t CYCLES_PER_FRAME[2] = {
     [SMS_Region_NTSC] = 228 * 262,
     [SMS_Region_PAL] = 228 * 313,
 };
 
-static const double TARGET_FPS[2] = {
-    [SMS_Region_NTSC] = 59.922743,
-    [SMS_Region_PAL] = 49.701459,
+static const double TARGET_FPS[2][2] = {
+    {
+        [SMS_Region_NTSC] = 60,
+        [SMS_Region_PAL] = 50,
+    },
+    {
+        [SMS_Region_NTSC] = 59.922743,
+        [SMS_Region_PAL] = 49.701459,
+    },
 };
 
 static void frame_event(void* user, unsigned id, unsigned late)
 {
     UNUSED(id);
-    UNUSED(late);
     struct SMS_Core* sms = user;
     sms->frame_end = true;
+    sms->frame_end_cycles_late = late;
 }
 
 void timeout_event(void* user, unsigned id, unsigned late)
@@ -112,15 +112,13 @@ static uint16_t find_rom_header_offset(const uint8_t* data)
 static bool init_auio(struct SMS_Core* sms, uint32_t freq)
 {
     // re-init psg if it doesn't exist of sample rate changed.
-    if (!sms->psg || sms->sample_freq != freq)
-    {
-        sms->sample_freq = freq;
-        psg_quit(sms->psg);
+    sms->sample_freq = freq;
+    psg_quit(sms->psg);
 
-        if (!(sms->psg = psg_init(CPU_CYCLES[sms->region], freq)))
-        {
-            return false;
-        }
+    const double cpu_clock = SMS_target_fps(sms) * SMS_cycles_per_frame(sms);
+    if (!(sms->psg = psg_init(cpu_clock, freq)))
+    {
+        return false;
     }
 
     // re-apply volume settings
@@ -333,6 +331,7 @@ void SMS_quit(struct SMS_Core* sms)
 void SMS_reset(struct SMS_Core* sms)
 {
     // do NOT reset cart!
+    sms->frame_end_cycles_late = 0;
     memset(sms->rmap, 0, sizeof(sms->rmap));
     memset(sms->wmap, 0, sizeof(sms->wmap));
     memset(&sms->cpu, 0, sizeof(sms->cpu));
@@ -403,14 +402,19 @@ size_t SMS_cycles_per_frame_region(enum SMS_Region region)
     return CYCLES_PER_FRAME[region];
 }
 
-double SMS_target_fps(const struct SMS_Core* sms)
+void SMS_set_use_exact_timing(struct SMS_Core* sms, bool enable)
 {
-    return SMS_target_fps_region(sms->region);
+    sms->use_exact_timing = true;
 }
 
-double SMS_target_fps_region(enum SMS_Region region)
+double SMS_target_fps(const struct SMS_Core* sms)
 {
-    return TARGET_FPS[region];
+    return SMS_target_fps_region(sms->region, sms->use_exact_timing);
+}
+
+double SMS_target_fps_region(enum SMS_Region region, bool use_exact_timing)
+{
+    return TARGET_FPS[use_exact_timing][region];
 }
 
 bool SMS_loadbios(struct SMS_Core* sms, const uint8_t* bios, size_t size)
@@ -701,10 +705,17 @@ bool SMS_parity8(uint8_t value)
     #endif
 }
 
-void SMS_run(struct SMS_Core* sms, size_t cycles)
+void SMS_run(struct SMS_Core* sms, int cycles)
 {
     sms->frame_end = false;
-    scheduler_add(&sms->scheduler, SchedulerID_FRAME, cycles, frame_event, sms);
+    sms->frame_run_until_vcount = cycles == SMS_RunEndFrame;
+
+    // check if user wants to run the emulator to the end of the frame
+    if (!sms->frame_run_until_vcount)
+    {
+        cycles -= sms->frame_end_cycles_late;
+        scheduler_add(&sms->scheduler, SchedulerID_FRAME, cycles, frame_event, sms);
+    }
 
     if (sms->cpu.execution_mode == Z80_ExecutionMode_HALT)
     {
@@ -719,14 +730,15 @@ void SMS_run(struct SMS_Core* sms, size_t cycles)
             if (scheduler_should_fire(&sms->scheduler))
             {
                 scheduler_fire(&sms->scheduler);
-                if (sms->frame_end)
-                {
-                    break;
-                }
 
                 if (sms->cpu.execution_mode == Z80_ExecutionMode_HALT)
                 {
                     z80_halt_loop(sms);
+                }
+
+                if (sms->frame_end)
+                {
+                    break;
                 }
             }
         }

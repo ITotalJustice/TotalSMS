@@ -39,6 +39,7 @@ struct Gamepad {
 // changes should be made whilst SDL_LockAudioStream is in affect.
 struct AudioSharedData {
     int speed_index;
+    int16_t last_sample_pair[2];
 };
 
 // see above.
@@ -121,6 +122,14 @@ typedef struct {
     bool frame_blending;
     // uses overscan colour to fill the screen.
     bool overscan_fill;
+    // set to run the emulator at a constant rate (until the end of the frame).
+    // disabling this adjusts the cycles to run the emulator for, enabling the emulator
+    // to run at the correct speed for any platform.
+    // however, this results in double frames and rarely dropped frames.
+    // this is due to vcount wobble, where it will never finish at the exact same point
+    // between frames, resulting in a frame not being completed (doubled) or running
+    // slightly past 1 frame (191-> -> 0 -> 192) (dropped).
+    bool run_until_frame_end;
 
     // how often to save a new frame.
     int rewind_keyframe_interval;

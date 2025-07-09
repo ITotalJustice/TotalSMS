@@ -79,6 +79,9 @@ enum
     // default max sprites
     SMS_MODE1_MAX_SPRITES = 4,
     SMS_MODE4_MAX_SPRITES = 8,
+
+    // pass this to sms_run to run until vcount == max (end of frame).
+    SMS_RunEndFrame = -1,
 };
 
 enum SMS_Region
@@ -425,7 +428,10 @@ struct SMS_Core
     bool skip_audio;
     bool skip_frame;
 
+    bool use_exact_timing;
     bool frame_end;
+    bool frame_run_until_vcount;
+    int frame_end_cycles_late;
 
     uint32_t builtin_palette[16];
 

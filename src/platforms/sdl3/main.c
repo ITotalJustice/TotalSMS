@@ -33,6 +33,7 @@ enum ArgsId {
     ArgsId_stretch,
     ArgsId_ratio,
     ArgsId_overscan_fill,
+    ArgsId_region,
 
     // latency
     ArgsId_runahead,
@@ -58,9 +59,15 @@ static const struct ArgsMeta ARGS_META[] = {
     ARGS_ENTRY(stretch, ArgsValueType_INT, 0)
     ARGS_ENTRY(ratio, ArgsValueType_INT, 0)
     ARGS_ENTRY(overscan_fill, ArgsValueType_BOOL, 0)
+    ARGS_ENTRY(region, ArgsValueType_INT, 0)
 
     ARGS_ENTRY(runahead, ArgsValueType_INT, 0)
     ARGS_ENTRY(runahead_lazy, ArgsValueType_NONE, 0)
+};
+
+static const int REGION[] = {
+    SMS_Region_NTSC,
+    SMS_Region_PAL,
 };
 
 static const int SDL_VSYNC[] = {
@@ -323,10 +330,24 @@ static bool update_window_size(App* app) {
     }
 
     SDL_Log("Display info:\n");
-    SDL_Log("\trefresh_rate: %.2f\n", display_mode->refresh_rate);
-    SDL_Log("\tpixel_density: %.2f\n", display_mode->pixel_density);
     SDL_Log("\tw: %d\n", display_mode->w);
     SDL_Log("\th: %d\n", display_mode->h);
+    SDL_Log("\trefresh_rate: %.2f\n", display_mode->refresh_rate);
+    SDL_Log("\tpixel_density: %.2f\n", display_mode->pixel_density);
+    SDL_Log("\trefresh_rate_numerator: %d\n", display_mode->refresh_rate_numerator);
+    SDL_Log("\trefresh_rate_denominator: %d\n\n", display_mode->refresh_rate_denominator);
+
+    SDL_DisplayMode** fullscreen_modes = SDL_GetFullscreenDisplayModes(display_id, NULL);
+    for (int i = 0; fullscreen_modes[i]; i++) {
+        const SDL_DisplayMode* mode = fullscreen_modes[i];
+        SDL_Log("\tFullscreen display info %d:\n", i);
+        SDL_Log("\t\tw: %d\n", mode->w);
+        SDL_Log("\t\th: %d\n", mode->h);
+        SDL_Log("\t\trefresh_rate: %.2f\n", mode->refresh_rate);
+        SDL_Log("\t\tpixel_density: %.2f\n", mode->pixel_density);
+        SDL_Log("\t\trefresh_rate_numerator: %d\n", mode->refresh_rate_numerator);
+        SDL_Log("\t\trefresh_rate_denominator: %d\n", mode->refresh_rate_denominator);
+    }
 
     #ifdef EMSCRIPTEN
         app->scale = 1;
@@ -432,6 +453,9 @@ static void on_rom_load(App* app) {
 
     // update screen and renderer size as the rom type may have changed.
     update_screen_and_renderer_size(app);
+
+    // reset speed to default.
+    on_set_speed(app, SPEED_DEFAULT_INDEX);
 }
 
 static void mgb_on_file_callback(void* user, const char* file_name, enum CallbackType type, bool result) {
@@ -609,6 +633,10 @@ static void core_vblank_callback(void* user, uint32_t overscan_colour) {
         return;
     }
 
+    if (app->pending_frame && app->speed_index == SPEED_DEFAULT_INDEX) {
+        SDL_Log("dropping frame\n");
+    }
+
     app->pending_frame = true;
     app->overscan_colour = overscan_colour;
     app->pixel_buffer_index ^= 1;
@@ -617,7 +645,13 @@ static void core_vblank_callback(void* user, uint32_t overscan_colour) {
 
 static void core_audio_callback(void* user, int16_t* samples, uint32_t size) {
     App* app = user;
-    SDL_PutAudioStreamData(app->audio_stream, samples, size * sizeof(*samples));
+
+    SDL_LockAudioStream(app->audio_stream);
+        const int index = size / 2 - 1;
+        app->audio_shared_data.last_sample_pair[0] = samples[index + 0];
+        app->audio_shared_data.last_sample_pair[1] = samples[index + 1];
+        SDL_PutAudioStreamData(app->audio_stream, samples, size * sizeof(*samples));
+    SDL_UnlockAudioStream(app->audio_stream);
 }
 
 static void sdl_poll_emu_key_inputs(App* app) {
@@ -720,21 +754,17 @@ static void core_input_callback(void* user, int port) {
 static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount) {
     struct AudioSharedData* shared_data = userdata;
 
-    if (additional_amount) {
-        SDL_Log("dropping samples: %d total: %d\n", additional_amount, total_amount);
-    }
-
-    SDL_AudioSpec spec;
-    if (!SDL_GetAudioStreamFormat(stream, &spec, NULL)) {
+    SDL_AudioSpec src_spec, dst_spec;
+    if (!SDL_GetAudioStreamFormat(stream, &src_spec, &dst_spec)) {
         return;
     }
 
     // 1s worth of audio, 5th of second (83.3ms)
     // https://github.com/higan-emu/emulation-articles/tree/master/audio/dynamic-rate-control
     const double avail = SDL_GetAudioStreamAvailable(stream);
-    const double ones = spec.freq * SDL_AUDIO_FRAMESIZE(spec);
+    const double ones = dst_spec.freq * SDL_AUDIO_FRAMESIZE(dst_spec);
     const double buf_size = ones / 5.0;
-    const double freq = spec.freq;
+    const double freq = dst_spec.freq;
 
     const double maxDelta = 0.005;
     const double fillLevel = (buf_size - avail) / buf_size;
@@ -742,7 +772,25 @@ static void sdl_audio_callback(void *userdata, SDL_AudioStream *stream, int addi
     const double ratio = SDL_clamp(freq / dynamicFrequency, 0.5, 2.0);
 
     const double speed = SPEED_TABLE[shared_data->speed_index];
+    // SDL_Log("total: %d avail: %.0f %d ratio: %.2f fillLevel: %.2f\n", total_amount, avail, SDL_GetAudioStreamQueued(stream), ratio, fillLevel);
     SDL_SetAudioStreamFrequencyRatio(stream, ratio * speed);
+
+    // apply padding after changing the ratio, as to not affect the above conversion.
+    if (additional_amount) {
+        SDL_Log("audio buffer underrun: %d total: %d\n", additional_amount, total_amount);
+
+        // convert this number src_spec amount.
+        const int padding_size = additional_amount / SDL_AUDIO_FRAMESIZE(dst_spec) * SDL_AUDIO_FRAMESIZE(src_spec);
+        int16_t* padding = SDL_malloc(padding_size);
+
+        for (int i = 0; i < padding_size / 2; i += 2) {
+            padding[i + 0] = shared_data->last_sample_pair[0];
+            padding[i + 1] = shared_data->last_sample_pair[1];
+        }
+
+        SDL_PutAudioStreamData(stream, padding, padding_size);
+        SDL_free(padding);
+    }
 }
 
 static void sdl_dialog_file_callback(void *userdata, const char * const *filelist, int filter) {
@@ -980,6 +1028,22 @@ static void on_set_speed(App* app, int speed) {
         app->speed_index = speed;
         on_speed_change(app);
     }
+
+    if (app->speed_index == SPEED_DEFAULT_INDEX) {
+        char fps_buf[64];
+        SDL_snprintf(fps_buf, sizeof(fps_buf), "%f", SMS_target_fps(&app->sms) * SPEED_TABLE[app->speed_index]);
+        app->run_until_frame_end = SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, fps_buf);
+        if (!app->run_until_frame_end) {
+            SDL_Log("failed to set SDL_HINT_MAIN_CALLBACK_RATE: %s\n", SDL_GetError());
+        }
+        else {
+            SDL_Log("set SDL_HINT_MAIN_CALLBACK_RATE to: %s\n", fps_buf);
+        }
+    }
+    else {
+        SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, NULL);
+        app->run_until_frame_end = false;
+    }
 }
 
 static void on_update_sound_playback_state(App* app) {
@@ -1024,6 +1088,10 @@ static void emulator_render(App* app) {
         return;
     }
 
+    if (!app->pending_frame && should_emu_run(app) && app->speed_index == SPEED_DEFAULT_INDEX) {
+        SDL_Log("doubled frame\n");
+    }
+
     // update texture pixels if we have a new frame pending.
     if (app->pending_frame) {
         emulator_update_texture_pixels(app, app->pixel_buffer[app->pixel_buffer_index]);
@@ -1054,11 +1122,17 @@ static void emulator_render(App* app) {
     }
 }
 
-static void emulator_run(App* app, size_t cycles, bool skip_audio, bool skip_video, bool lock_input) {
+static void emulator_run(App* app, double cycles, bool skip_audio, bool skip_video, bool lock_input) {
     app->runahead.lock_input = lock_input;
     SMS_skip_audio(&app->sms, skip_audio);
     SMS_skip_frame(&app->sms, skip_video);
-    SMS_run(&app->sms, cycles * SPEED_TABLE[app->speed_index]);
+
+    if (app->run_until_frame_end) {
+        SMS_run(&app->sms, SMS_RunEndFrame);
+    }
+    else {
+        SMS_run(&app->sms, cycles * SPEED_TABLE[app->speed_index]);
+    }
 }
 
 static void runahead_init(App* app, unsigned frames) {
@@ -1111,9 +1185,10 @@ static void runahead_run_frame(App* app, double delta) {
     // ie, filedialog, then cap the max delta to something reasonable!
     // maybe keep track of deltas here to get an average?
     // delta = SDL_min(delta, 1.333333);
-    delta = SDL_min(delta, 3.0);
-    const size_t cycles = SDL_floor((double)SMS_cycles_per_frame(&app->sms) * delta);
-    // const size_t cycles = SMS_CYCLES_PER_FRAME;
+    delta = SDL_min(delta, 1.5);
+    const double cycles = (double)SMS_cycles_per_frame(&app->sms) * delta;
+    // SDL_Log("\tdelta: %f cycles diff: %zd\n", delta, (Sint64)SMS_cycles_per_frame(&app->sms) - (Sint64)cycles);
+
 
     if (!runahead_is_enabled(app)) {
         // run frame as normal.
@@ -1220,6 +1295,9 @@ static SDL_AppResult ShowHelp(SDL_AppResult result, const char* argv0) {
         "        3 - pal            Sets the pixel ratio to 2950000:2128137.\n\n"
         "        4 - gamegear       Sets the pixel ratio to 6:5.\n\n"
         "    --overscan_fill        Fills the screen with overscan colour rather than black boarders.\n"
+        "    --region\n"
+        "        0 - NTSC           [Default].\n"
+        "        1 - PAL            50hz.\n\n"
 
         "Latency Options:\n"
         "    --runahead FRAMES      Runahead n frames, 0 to disable.\n"
@@ -1272,91 +1350,110 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     SDL_RendererLogicalPresentation stretch = SDL_LOGICAL_PRESENTATION_INTEGER_SCALE;
     int vsync = 1;
     int runahead = 0;
+    int region = 0;
     bool frame_blending = false;
     bool fullscreen = false;
     bool loadstate = false;
     bool overscan_fill = true;
 
     int arg_index = 1;
-    ArgsData arg_data;
-    ArgsResult arg_result;
-    while (!(arg_result = args_parse(&arg_index, argc, argv, ARGS_META, SDL_arraysize(ARGS_META), &arg_data))) {
-        switch (ARGS_META[arg_data.meta_index].id) {
-            case ArgsId_help:
-                show_help = true;
-                break;
-            case ArgsId_version:
-                show_version = true;
-                break;
+    for (;;) {
+        ArgsData arg_data;
+        const ArgsResult arg_result = args_parse(&arg_index, argc, argv, ARGS_META, SDL_arraysize(ARGS_META), &arg_data);
 
-            case ArgsId_rom:
-                rom_file = arg_data.value.s;
-                break;
-            case ArgsId_bios:
-                bios_file = arg_data.value.s;
-                break;
-            case ArgsId_loadstate:
-                loadstate = true;
-                break;
-            case ArgsId_patch:
-                patch_file = arg_data.value.s;
-                break;
+        if (arg_result == ArgsResult_DONE) {
+            break;
+        }
 
-            case ArgsId_fullscreen:
-                fullscreen = true;
-                break;
-            case ArgsId_vsync:
-                vsync = SDL_VSYNC[arg_data.value.i];
-                break;
-            case ArgsId_frame_blending:
-                frame_blending = arg_data.value.i;
-                break;
-            case ArgsId_scaler:
-                scaler = SDL_SCALER[arg_data.value.i];
-                break;
-            case ArgsId_stretch:
-                stretch = SDL_STRETCH[arg_data.value.i];
-                break;
-            case ArgsId_ratio:
-                break;
-            case ArgsId_overscan_fill:
-                overscan_fill = arg_data.value.b;
-                break;
+        // handle error.
+        if (arg_result) {
+            if (arg_result < 0) {
+                if (arg_result == ArgsResult_UNKNOWN_KEY) {
+                    SDL_SetError("unknown arg [%s]", argv[arg_index]);
+                }
+                else if (arg_result == ArgsResult_BAD_VALUE) {
+                    SDL_SetError("arg [--%s] had bad value type [%s]", ARGS_META[arg_data.meta_index].key, arg_data.value.s);
+                }
+                else if (arg_result == ArgsResult_MISSING_VALUE) {
+                    SDL_SetError("arg [--%s] requires a value", ARGS_META[arg_data.meta_index].key);
+                }
+                else {
+                    SDL_SetError("bad args: %d", arg_result);
+                }
 
-            case ArgsId_runahead:
-                runahead = arg_data.value.i;
-                break;
+                return ShowHelp(SDL_APP_FAILURE, argv[0]);
+            }
+            // handle warning.
+            else if (arg_result == ArgsResult_NOT_ARGS_START || arg_result == ArgsResult_NOT_ARGS_MIDDLE || arg_result == ArgsResult_NOT_ARGS_END) {
+                if (!rom_file) {
+                    rom_file = argv[arg_index];
+                    arg_index++;
+                }
+                else {
+                    SDL_SetError("arg [%s] unknown extra arg", argv[arg_index]);
+                    return SDL_APP_FAILURE;
+                }
+            }
+        }
+        else {
+        // while (!(arg_result = args_parse(&arg_index, argc, argv, ARGS_META, SDL_arraysize(ARGS_META), &arg_data))) {
+            switch (ARGS_META[arg_data.meta_index].id) {
+                case ArgsId_help:
+                    show_help = true;
+                    break;
+                case ArgsId_version:
+                    show_version = true;
+                    break;
+
+                case ArgsId_rom:
+                    rom_file = arg_data.value.s;
+                    break;
+                case ArgsId_bios:
+                    bios_file = arg_data.value.s;
+                    break;
+                case ArgsId_loadstate:
+                    loadstate = true;
+                    break;
+                case ArgsId_patch:
+                    patch_file = arg_data.value.s;
+                    break;
+
+                case ArgsId_fullscreen:
+                    fullscreen = true;
+                    break;
+                case ArgsId_vsync:
+                    vsync = SDL_VSYNC[arg_data.value.i];
+                    break;
+                case ArgsId_frame_blending:
+                    frame_blending = arg_data.value.i;
+                    break;
+                case ArgsId_scaler:
+                    scaler = SDL_SCALER[arg_data.value.i];
+                    break;
+                case ArgsId_stretch:
+                    stretch = SDL_STRETCH[arg_data.value.i];
+                    break;
+                case ArgsId_ratio:
+                    break;
+                case ArgsId_overscan_fill:
+                    overscan_fill = arg_data.value.b;
+                    break;
+                case ArgsId_region:
+                    region = arg_data.value.i;
+                    break;
+
+
+                case ArgsId_runahead:
+                    runahead = arg_data.value.i;
+                    break;
+            }
         }
     }
 
     if (show_version || show_help) {
         return ShowHelp(SDL_APP_SUCCESS, argv[0]);
     }
-
-    // handle error.
-    if (arg_result < 0) {
-        if (arg_result == ArgsResult_UNKNOWN_KEY) {
-            SDL_SetError("unknown arg [%s]", argv[arg_index]);
-        }
-        else if (arg_result == ArgsResult_BAD_VALUE) {
-            SDL_SetError("arg [--%s] had bad value type [%s]", ARGS_META[arg_data.meta_index].key, arg_data.value.s);
-        }
-        else if (arg_result == ArgsResult_MISSING_VALUE) {
-            SDL_SetError("arg [--%s] requires a value", ARGS_META[arg_data.meta_index].key);
-        }
-        else {
-            SDL_SetError("bad args: %d", arg_result);
-        }
-
-        return ShowHelp(SDL_APP_FAILURE, argv[0]);
-    }
-    // handle warning.
-    else if (arg_result == ArgsResult_EXTRA_ARGS) {
-        if (!rom_file) {
-            rom_file = argv[arg_index];
-        }
-    }
-    else if (arg_index < argc) {
+    if (arg_index < argc) {
         rom_file = argv[arg_index];
     }
 
@@ -1476,6 +1573,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SMS_init(&app->sms)) {
         return SDL_APP_FAILURE;
     }
+
+    // SDL supports decimal when setting the timming of the main loop.
+    // in previous versions it would round down (49 / 59 fps).
+    // todo: update this version number when 380b6a4 is in a release build.
+    #if SDL_VERSION_ATLEAST(3, 2, 17)
+        SMS_set_use_exact_timing(&app->sms, true);
+    #endif
+
     SMS_set_userdata(&app->sms, app);
     SMS_set_colour_callback(&app->sms, core_colour_callback);
     SMS_set_vblank_callback(&app->sms, core_vblank_callback);
@@ -1510,6 +1615,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         });
     );
 #endif // EMSCRIPTEN
+
+    if (REGION[region] == SMS_Region_PAL) {
+        mgb_set_region(SMS_Region_PAL);
+    }
 
     if (bios_file && !mgb_load_bios_file(bios_file)) {
         return SDL_APP_FAILURE;
@@ -1547,25 +1656,18 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     App* app = appstate;
 
     static Uint64 start = 0;
-    static Uint64 now = 0;
-    // const double TARGET_FRAME_TIME = 1.0 / 60;
-    // pal
-    // const double TARGET_FRAME_TIME = 1.0 / 49.701459;
-    // ntsc
-    const double TARGET_FRAME_TIME = 1.0 / SMS_target_fps(&app->sms);
-    double delta = TARGET_FRAME_TIME;
-
     if (start == 0) {
         start = SDL_GetPerformanceCounter();
     }
 
-    now = SDL_GetPerformanceCounter();
-    delta = (double)(now - start) / (double)SDL_GetPerformanceFrequency();
+    const Uint64 now = SDL_GetPerformanceCounter();
+    double delta = (double)(now - start) / (double)SDL_GetPerformanceFrequency();
     start = now;
 
     on_update_sound_playback_state(app);
 
     if (should_emu_run(app)) {
+        const double TARGET_FRAME_TIME = 1.0 / SMS_target_fps(&app->sms);
         runahead_run_frame(app, delta / TARGET_FRAME_TIME);
 
         if (app->rewind_should_push) {
@@ -1625,10 +1727,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 #endif
 
     // the below are for testing / simulating different fps targets.
-    if (!vsync) {
+#ifndef EMSCRIPTEN
+    if (!vsync && !app->run_until_frame_end) {
+        // todo: track how much time was spent rendering and sleep the remaining amount.
         // SDL_DelayPrecise(1000000000ULL / 144ULL);
         SDL_DelayPrecise(1000000000ULL / 59.922743);
     }
+#endif
 
     return SDL_APP_CONTINUE;
 }

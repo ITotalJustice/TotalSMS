@@ -184,10 +184,13 @@ enum ArgsResult args_parse(
   if (result.str == NULL) {
     // check if this is the last entry.
     if (i + 1 == argc) {
-      return ArgsResult_EXTRA_ARGS;
+      return ArgsResult_NOT_ARGS_END;
+    }
+    if (i == 1) {
+      return ArgsResult_NOT_ARGS_START;
     }
     else {
-      return ArgsResult_ERROR;
+      return ArgsResult_NOT_ARGS_MIDDLE;
     }
   }
   else if (result.end_dilem) {

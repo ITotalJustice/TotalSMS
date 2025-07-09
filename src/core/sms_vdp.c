@@ -786,6 +786,7 @@ static void vdp_render_background(struct SMS_Core* sms, pixel_width_t* scanline,
 
     const uint8_t starting_row = VDP.vertical_scroll >> 3;
     const uint8_t fine_scrolly = VDP.vertical_scroll & 0x7;
+    const uint8_t name_table_width = vdp_get_height_mode(sms) == VdpHeightMode_192 ? 28 : 32;
 
     const uint8_t* nametable = NULL;
     uint8_t check_col = 0;
@@ -801,7 +802,7 @@ static void vdp_render_background(struct SMS_Core* sms, pixel_width_t* scanline,
         // we need to check if we cross the next row
         const bool next_row = (fine_line + fine_scrolly) > 7;
 
-        const uint16_t vertical_offset = ((row + starting_row + next_row) % 28) * 64;
+        const uint16_t vertical_offset = ((row + starting_row + next_row) % name_table_width) * 64;
         palette_index_offset = (fine_line + fine_scrolly) & 0x7;
         nametable = &VDP.vram[vdp_get_nametable_base_addr(sms) + vertical_offset];
     }
@@ -827,7 +828,7 @@ static void vdp_render_background(struct SMS_Core* sms, pixel_width_t* scanline,
         // check if vertical scrolling should be disabled
         if (IS_BIT_SET(VDP.registers[0x0], 7) && check_col >= 24)
         {
-            const uint16_t vertical_offset = (row % 28) * 64;
+            const uint16_t vertical_offset = (row % name_table_width) * 64;
             palette_index_offset = fine_line;
             nametable = &VDP.vram[vdp_get_nametable_base_addr(sms) + vertical_offset];
         }
@@ -1443,6 +1444,7 @@ static void on_active_event(struct SMS_Core* sms)
 static void on_blanking_event(struct SMS_Core* sms)
 {
     VDP.state = VdpState_ACTIVE;
+    VDP.vertical_scroll = VDP.registers[0x9];
     VDP.vcount++;
 
     const enum VdpHeightMode height_mode = vdp_get_height_mode(sms);
@@ -1477,8 +1479,9 @@ static void on_blanking_event(struct SMS_Core* sms)
         }
     }
 
-    // nmi is asserted at the start of line 261
-    if (VDP.vcount == 261 && VDP.nmi_pending)
+    // nmi is asserted at the start of line 261/312.
+    // TODO: confirm that PAL nmi happens at 312.
+    if (VDP.vcount == VDP_VCOUNT_MAX[sms->region] - 1 && VDP.nmi_pending)
     {
         VDP.nmi_pending = false;
         z80_nmi(sms);
@@ -1488,8 +1491,13 @@ static void on_blanking_event(struct SMS_Core* sms)
     if (VDP.vcount == VDP_VCOUNT_MAX[sms->region])
     {
         VDP.vcount = 0;
-        VDP.vertical_scroll = VDP.registers[0x9];
         VDP.line_counter = VDP.registers[0xA];
+
+        // if SMS_run(SMS_RunEndFrame) was called, exit frame here.
+        if (sms->frame_run_until_vcount)
+        {
+            sms->frame_end = true;
+        }
     }
 }
 
@@ -1511,7 +1519,7 @@ void vdp_on_event(void* user, unsigned id, unsigned late)
 {
     struct SMS_Core* sms = user;
     vdp_tick(sms);
-    scheduler_add(&sms->scheduler, id, NTSC_NEXT_EVENT_CYCLES[VDP.state], vdp_on_event, user);
+    scheduler_add(&sms->scheduler, id, NTSC_NEXT_EVENT_CYCLES[VDP.state] - late, vdp_on_event, user);
 }
 
 void vdp_init(struct SMS_Core* sms)
@@ -1534,7 +1542,7 @@ void vdp_init(struct SMS_Core* sms)
     VDP.registers[0xA] = 0xFF; // %11111111 (taken from VDPTEST)
     // vdp registers are write-only, so the the values of 0xB-0xF don't matter
 
-    if (1) // values after bios (todo: optional bios skip)
+    if (!SMS_has_bios(sms)) // values after bios
     {
         VDP.registers[0x0] = 0x36;
         VDP.registers[0x1] = 0x80;
