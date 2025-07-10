@@ -235,12 +235,40 @@ static bool vdp_is_mode4(const struct SMS_Core* sms)
     return IS_BIT_SET(VDP.registers[0x0], 2) && !SMS_is_system_type_sg(sms);
 }
 
+// returns the height of the screen
+static enum VdpHeightMode vdp_get_height_mode(const struct SMS_Core* sms)
+{
+    if (vdp_is_mode4(sms) && vdp_is_screen_size_change_enabled(sms))
+    {
+        if (IS_BIT_SET(VDP.registers[1], 4))
+        {
+            assert(!"screen mode not impelented!");
+            return VdpHeightMode_224;
+        }
+        else if (IS_BIT_SET(VDP.registers[1], 3))
+        {
+            assert(!"screen mode not impelented!");
+            return VdpHeightMode_240;
+        }
+    }
+
+    return VdpHeightMode_192;
+}
+
 static uint16_t vdp_get_nametable_base_addr(const struct SMS_Core* sms)
 {
     if (vdp_is_mode4(sms))
     {
         // todo: handle mask bit on sms1
-        return (VDP.registers[0x2] & 0xE) << 10;
+        if (vdp_get_height_mode(sms) == VdpHeightMode_192)
+        {
+            return (VDP.registers[0x2] & 0xE) << 10;
+        }
+        else
+        {
+            // only bits 2-3 are used with 0x700 added.
+            return ((VDP.registers[0x2] & 0xC) << 10) + 0x700;
+        }
     }
     else
     {
@@ -271,32 +299,20 @@ static bool vdp_is_display_enabled(const struct SMS_Core* sms)
     return IS_BIT_SET(VDP.registers[0x1], 6);
 }
 
+static uint8_t vdp_get_sprite_width(const struct SMS_Core* sms)
+{
+    const bool doubled_sprites = IS_BIT_SET(VDP.registers[0x1], 0);
+    const uint8_t sprite_size = !vdp_is_mode4(sms) && IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
+
+    return sprite_size << doubled_sprites;
+}
+
 static uint8_t vdp_get_sprite_height(const struct SMS_Core* sms)
 {
     const bool doubled_sprites = IS_BIT_SET(VDP.registers[0x1], 0);
     const uint8_t sprite_size = IS_BIT_SET(VDP.registers[0x1], 1) ? 16 : 8;
 
     return sprite_size << doubled_sprites;
-}
-
-// returns the height of the screen
-static enum VdpHeightMode vdp_get_height_mode(const struct SMS_Core* sms)
-{
-    if (vdp_is_mode4(sms) && vdp_is_screen_size_change_enabled(sms))
-    {
-        if (IS_BIT_SET(VDP.registers[1], 4))
-        {
-            assert(!"screen mode not impelented!");
-            return VdpHeightMode_224;
-        }
-        else if (IS_BIT_SET(VDP.registers[1], 3))
-        {
-            assert(!"screen mode not impelented!");
-            return VdpHeightMode_240;
-        }
-    }
-
-    return VdpHeightMode_192;
 }
 
 static uint8_t vdp_get_overscan_colour(const struct SMS_Core* sms)
@@ -1049,7 +1065,8 @@ static void vdp_mode4_parse_sprites(struct SMS_Core* sms, int line)
     const uint8_t sprite_size = vdp_get_sprite_height(sms);
     const uint8_t max_sprites = sms->mode4_max_spirtes;
 
-    const int sprite_eof = 208;
+    // eof does not function in extended hight modes.
+    const int sprite_eof = vdp_get_height_mode(sms) == VdpHeightMode_192 ? 208 : 0x100;
 
     for (uint8_t i = 0; i < 64; ++i)
     {
@@ -1058,7 +1075,6 @@ static void vdp_mode4_parse_sprites(struct SMS_Core* sms, int line)
         // int16_t y = VDP.vram[sprite_attribute_base_addr + i];// + 1;
 
         // special number used to stop sprite parsing!
-        // todo:
         if (y == sprite_eof + 1)
         // if (y == sprite_eof)
         {
@@ -1118,6 +1134,7 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
     const uint16_t pattern_select = vdp_get_sprite_pattern_select(sms) ? 256 : 0;
     // if set, sprites start 8 to the left
     const int8_t sprite_x_offset = IS_BIT_SET(VDP.registers[0x0], 3) ? -8 : 0;
+    const uint8_t sprite_size = vdp_get_sprite_width(sms);
 
     // const struct SpriteEntries sprites = vdp_mode4_parse_sprites(sms);
 
@@ -1130,7 +1147,7 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
         // signed because the sprite can be negative if -8!
         const int16_t sprite_x = VDP.vram[attr_addr + sprite->x + 0] + sprite_x_offset;
 
-        if (sprite_x+8 < region.startx || sprite_x>=region.endx)
+        if (sprite_x+sprite_size < region.startx || sprite_x>=region.endx)
         {
             continue;
         }
@@ -1161,7 +1178,7 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
 
         // note: the order of the below ifs are important.
         // opaque sprites can collide, even when behind background/
-        for (uint8_t x = 0; x < 8; ++x)
+        for (uint8_t x = 0; x < sprite_size; ++x)
         {
             const int16_t x_index = x + sprite_x;
 
@@ -1176,7 +1193,9 @@ static void vdp_render_sprites(struct SMS_Core* sms, pixel_width_t* scanline, co
                 break;
             }
 
-            const uint8_t palette_index = (palette >> (28 - (4 * x))) & 0xF;
+            // not sure if correct, see vdp_mode1_render_sprites().
+            const uint8_t x2 = x >> (sprite_size == 16);
+            const uint8_t palette_index = (palette >> (28 - (4 * x2))) & 0xF;
 
             // for sprites, pal0 is transparent
             if (palette_index == 0)
