@@ -102,6 +102,7 @@ void rewind_bar_button(App* app, enum RewindBarButton button) {
 
             // load savestate and disable the menu bar.
             SMS_loadstate(&app->sms, app->rewind_state_buffer, app->rewind_state_buffer_size, &app->rewind_state_config);
+            runahead_clear_frames(app);
             rewind_bar_set_open_internal(app, false, false);
             break;
 

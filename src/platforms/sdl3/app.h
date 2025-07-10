@@ -144,3 +144,8 @@ typedef struct {
 
 bool rewind_push_new_frame(App* app);
 void emulator_update_texture_pixels(App* app, const void* pixel_buffer);
+
+// this should be called when:
+// - a new rom is loaded.
+// - a savestate is loaded.
+void runahead_clear_frames(App* app);

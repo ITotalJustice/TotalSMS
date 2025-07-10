@@ -456,6 +456,9 @@ static void on_rom_load(App* app) {
 
     // reset speed to default.
     on_set_speed(app, SPEED_DEFAULT_INDEX);
+
+    // reset runahead buffer.
+    runahead_clear_frames(app);
 }
 
 static void mgb_on_file_callback(void* user, const char* file_name, enum CallbackType type, bool result) {
@@ -490,6 +493,7 @@ static void mgb_on_file_callback(void* user, const char* file_name, enum Callbac
         case CallbackType_LOAD_STATE:
             if (result) {
                 on_set_rewind(app, false);
+                runahead_clear_frames(app);
                 text_popup_push(TextPopupType_INFO, "Loaded State");
             } else {
                 text_popup_push(TextPopupType_ERROR, "Failed to load state");
@@ -618,6 +622,10 @@ static uint32_t core_colour_callback(void* user, uint8_t r, uint8_t g, uint8_t b
 static void core_vblank_callback(void* user, uint32_t overscan_colour) {
     App* app = user;
 
+    if (SMS_get_skip_frame(&app->sms)) {
+        return;
+    }
+
     SDL_LockMutex(app->timer_shared_data.mutex);
         app->timer_shared_data.vblank_counter++;
     SDL_UnlockMutex(app->timer_shared_data.mutex);
@@ -627,10 +635,6 @@ static void core_vblank_callback(void* user, uint32_t overscan_colour) {
         app->rewind_should_push = true;
     } else {
         app->rewind_counter--;
-    }
-
-    if (SMS_get_skip_frame(&app->sms)) {
-        return;
     }
 
     if (app->pending_frame && app->speed_index == SPEED_DEFAULT_INDEX) {
@@ -1168,7 +1172,7 @@ static bool runahead_is_enabled(const App* app) {
 
 // clears frame count so that all new frames must be generated.
 // this should be called on input change, loadstate and loadrom.
-static void runahead_clear_frames(App* app) {
+void runahead_clear_frames(App* app) {
     app->runahead.count = 0;
 }
 
@@ -1355,6 +1359,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     bool fullscreen = false;
     bool loadstate = false;
     bool overscan_fill = true;
+    bool runahead_lazy = false;
 
     int arg_index = 1;
     for (;;) {
@@ -1396,7 +1401,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
             }
         }
         else {
-        // while (!(arg_result = args_parse(&arg_index, argc, argv, ARGS_META, SDL_arraysize(ARGS_META), &arg_data))) {
             switch (ARGS_META[arg_data.meta_index].id) {
                 case ArgsId_help:
                     show_help = true;
@@ -1445,6 +1449,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
                 case ArgsId_runahead:
                     runahead = arg_data.value.i;
+                    break;
+                case ArgsId_runahead_lazy:
+                    runahead_lazy = true;
                     break;
             }
         }
@@ -1644,6 +1651,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         text_popup_push(TextPopupType_INFO, "Press CTRL+O to load ROM");
     }
 
+    app->runahead.lazy = runahead_lazy;
     runahead_init(app, runahead);
 
     app->focus = SDL_GetWindowFlags(app->window) & SDL_WINDOW_INPUT_FOCUS;
